@@ -40,3 +40,19 @@ export type ChatMessage = {
     content: string;
     timestamp: number;
 };
+
+export type Campaign = {
+    id: string;
+    name: string;
+    coverImage: string; // base64 data URL
+    createdAt: number;
+    lastPlayedAt: number;
+};
+
+export type LoreChunk = {
+    id: string;
+    header: string;
+    content: string;
+    tokens: number;
+    alwaysInclude: boolean;
+};

@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, GameContext } from '../types';
+import type { AppSettings, ChatMessage, GameContext, LoreChunk } from '../types';
 import { getVerbatimWindow } from './condenser';
 
 type OpenAIMessage = {
@@ -16,14 +16,24 @@ export function buildPayload(
     context: GameContext,
     history: ChatMessage[],
     userMessage: string,
-    condensedSummary?: string
+    condensedSummary?: string,
+    relevantLore?: LoreChunk[]
 ): OpenAIMessage[] {
     // === 1. Build system prompt (protected — never compressed) ===
     const systemParts: string[] = [];
 
-    if (context.loreRaw) systemParts.push(context.loreRaw);
+    // Dynamic lore injection (RAG) or fallback to raw lore
+    if (relevantLore && relevantLore.length > 0) {
+        const loreBlock = relevantLore
+            .map((c) => `### ${c.header}\n${c.content}`)
+            .join('\n\n');
+        systemParts.push(`[WORLD LORE — RELEVANT SECTIONS]\n${loreBlock}\n[END WORLD LORE]`);
+    } else if (context.loreRaw) {
+        systemParts.push(context.loreRaw);
+    }
     if (context.rulesRaw) systemParts.push(context.rulesRaw);
 
+    // Template fields (only when toggled on)
     if (context.saveFormat1Active && context.saveFormat1) systemParts.push(context.saveFormat1);
     if (context.saveFormat2Active && context.saveFormat2) systemParts.push(context.saveFormat2);
     if (context.saveInstructionActive && context.saveInstruction) systemParts.push(context.saveInstruction);

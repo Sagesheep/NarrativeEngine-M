@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { BookOpen, ScrollText, FileText, FileCode, Terminal, MessageSquare, ChevronDown, ChevronRight, Database, List } from 'lucide-react';
+import { ScrollText, FileText, FileCode, Terminal, MessageSquare, ChevronDown, ChevronRight, Database, List } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
-const LORE_LIMIT = 15000;
 const RULES_LIMIT = 5000;
 
 function TokenCounter({ text, limit }: { text: string; limit: number }) {
@@ -118,21 +117,6 @@ export function ContextDrawer() {
             <div className="flex-1 overflow-y-auto">
                 {/* Context Section */}
                 <Section title="◆ System Context" color="text-terminal glow-green" defaultOpen={true}>
-                    <div>
-                        <label className="flex items-center gap-2 text-[11px] text-ember uppercase tracking-wider mb-2">
-                            <BookOpen size={13} />
-                            World Lore
-                        </label>
-                        <textarea
-                            value={context.loreRaw}
-                            onChange={(e) => updateContext({ loreRaw: e.target.value })}
-                            placeholder="Paste world info, lore, setting details..."
-                            rows={10}
-                            className="w-full bg-void border border-border px-3 py-2 text-xs text-text-primary placeholder:text-text-dim/40 font-mono resize-y"
-                        />
-                        <TokenCounter text={context.loreRaw} limit={LORE_LIMIT} />
-                    </div>
-
                     <div>
                         <label className="flex items-center gap-2 text-[11px] text-ice uppercase tracking-wider mb-2">
                             <ScrollText size={13} />

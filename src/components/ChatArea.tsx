@@ -5,6 +5,7 @@ import { useAppStore } from '../store/useAppStore';
 import { buildPayload, sendMessage } from '../services/chatEngine';
 import { shouldCondense, condenseHistory } from '../services/condenser';
 import { runSaveFilePipeline } from '../services/saveFileEngine';
+import { retrieveRelevantLore } from '../services/loreRetriever';
 
 function uid(): string {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -17,6 +18,7 @@ export function ChatArea() {
         context,
         isStreaming,
         condenser,
+        loreChunks,
         addMessage,
         updateLastAssistant,
         setStreaming,
@@ -76,7 +78,10 @@ export function ChatArea() {
         addMessage(userMsg);
         setInput('');
 
-        const payload = buildPayload(settings, context, messages, text, condenser.condensedSummary || undefined);
+        const relevantLore = loreChunks.length > 0
+            ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex)
+            : undefined;
+        const payload = buildPayload(settings, context, messages, text, condenser.condensedSummary || undefined, relevantLore);
 
         const assistantMsg = { id: uid(), role: 'assistant' as const, content: '', timestamp: Date.now() };
         addMessage(assistantMsg);

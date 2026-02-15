@@ -1,11 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AppSettings, GameContext, ChatMessage, CondenserState } from '../types';
+import type { AppSettings, GameContext, ChatMessage, CondenserState, LoreChunk } from '../types';
 
 type AppState = {
     // Settings
     settings: AppSettings;
     updateSettings: (patch: Partial<AppSettings>) => void;
+
+    // Campaign
+    activeCampaignId: string | null;
+    setActiveCampaign: (id: string | null) => void;
+    loreChunks: LoreChunk[];
+    setLoreChunks: (chunks: LoreChunk[]) => void;
 
     // Context
     context: GameContext;
@@ -45,6 +51,12 @@ export const useAppStore = create<AppState>()(
             },
             updateSettings: (patch) =>
                 set((s) => ({ settings: { ...s.settings, ...patch } })),
+
+            // Campaign defaults
+            activeCampaignId: null,
+            setActiveCampaign: (id) => set({ activeCampaignId: id }),
+            loreChunks: [],
+            setLoreChunks: (chunks) => set({ loreChunks: chunks }),
 
             // Context defaults
             context: {
@@ -110,10 +122,9 @@ export const useAppStore = create<AppState>()(
             name: 'gm-cockpit-store',
             partialize: (state) => ({
                 settings: state.settings,
-                context: state.context,
-                messages: state.messages,
-                condenser: state.condenser,
+                activeCampaignId: state.activeCampaignId,
             }),
         }
     )
 );
+

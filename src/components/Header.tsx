@@ -1,9 +1,28 @@
-import { Settings, PanelLeftOpen, PanelLeftClose, Trash2 } from 'lucide-react';
+import { Settings, PanelLeftOpen, PanelLeftClose, Trash2, LogOut } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { TokenGauge } from './TokenGauge';
+import { saveCampaignState } from '../store/campaignStore';
 
 export function Header() {
-    const { toggleSettings, toggleDrawer, drawerOpen, clearChat } = useAppStore();
+    const {
+        toggleSettings,
+        toggleDrawer,
+        drawerOpen,
+        clearChat,
+        activeCampaignId,
+        setActiveCampaign,
+        context,
+        messages,
+        condenser,
+    } = useAppStore();
+
+    const handleExit = async () => {
+        // Save current state before exiting
+        if (activeCampaignId) {
+            await saveCampaignState(activeCampaignId, { context, messages, condenser });
+        }
+        setActiveCampaign(null);
+    };
 
     return (
         <header className="h-12 bg-surface border-b border-border flex items-center px-4 gap-2 shrink-0">
@@ -36,6 +55,15 @@ export function Header() {
             >
                 <Settings size={18} />
             </button>
+
+            <button
+                onClick={handleExit}
+                className="text-text-dim hover:text-ember transition-colors p-1 ml-1"
+                title="Exit campaign"
+            >
+                <LogOut size={16} />
+            </button>
         </header>
     );
 }
+
