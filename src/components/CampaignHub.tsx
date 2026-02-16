@@ -14,7 +14,6 @@ const DEFAULT_CONTEXT = {
     saveFormat1: '',
     saveFormat2: '',
     saveInstruction: '',
-    saveStateMacro: '[SYSTEM: Please summarize the current inventory, HP, and quest status into a JSON block for saving.]',
     canonState: '',
     headerIndex: '',
     starter: '',
@@ -22,7 +21,6 @@ const DEFAULT_CONTEXT = {
     saveFormat1Active: false,
     saveFormat2Active: false,
     saveInstructionActive: false,
-    saveStateMacroActive: true,
     canonStateActive: false,
     headerIndexActive: false,
     starterActive: false,
@@ -32,7 +30,7 @@ const DEFAULT_CONTEXT = {
 const DEFAULT_CONDENSER = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
 
 export function CampaignHub() {
-    const { setActiveCampaign, setLoreChunks } = useAppStore();
+    useAppStore(); // state accessed via useAppStore.setState / useAppStore.getState
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -250,7 +248,7 @@ export function CampaignHub() {
 
             {/* Delete Confirmation */}
             {confirmDelete && (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setConfirmDelete(null)}>
+                <div className="fixed inset-0 bg-ember/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setConfirmDelete(null)}>
                     <div className="bg-surface border border-danger rounded-lg p-6 max-w-sm" onClick={(e) => e.stopPropagation()}>
                         <p className="text-text-primary text-sm mb-4">Delete this campaign? All data (chat, lore, saves) will be lost.</p>
                         <div className="flex gap-3 justify-end">
@@ -267,7 +265,7 @@ export function CampaignHub() {
 
             {/* Create / Edit Campaign Modal */}
             {modalOpen && (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => { setModalOpen(false); resetForm(); }}>
+                <div className="fixed inset-0 bg-ember/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => { setModalOpen(false); resetForm(); }}>
                     <div className="bg-surface border border-border rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
                         <h2 className="text-terminal text-sm font-bold tracking-widest uppercase mb-6">
                             {editingCampaign ? 'Edit Campaign' : 'New Campaign'}

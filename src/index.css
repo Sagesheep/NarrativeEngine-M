@@ -1,20 +1,48 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @theme {
-  --color-void: #0a0a0f;
-  --color-void-light: #12121a;
-  --color-void-lighter: #1a1a26;
-  --color-terminal: #39FF14;
-  --color-terminal-dim: #1a7a0a;
-  --color-ember: #FF6B00;
-  --color-ember-dim: #993f00;
-  --color-ice: #00E5FF;
-  --color-ice-dim: #006b77;
-  --color-danger: #FF1744;
-  --color-surface: #16161e;
-  --color-border: #2a2a3a;
-  --color-text-primary: #e0e0e0;
-  --color-text-dim: #6a6a7a;
+  /*
+   * Warm Parchment Theme
+   * ────────────────────
+   * Cream background, dark-brown text, amber accents.
+   * Easy on the eyes, readable, RPG-manuscript vibe.
+   */
+  --color-void: #F5F5DC;
+  /* Cream – main background         */
+  --color-void-light: #EDE8C8;
+  /* Slightly deeper cream            */
+  --color-void-lighter: #E6DFBA;
+  /* Warm tan inset panels            */
+
+  --color-terminal: #D47E30;
+  /* Amber – primary accent           */
+  --color-terminal-dim: #B5641E;
+  /* Muted amber                      */
+
+  --color-ember: #6F4E37;
+  /* Coffee – secondary accent        */
+  --color-ember-dim: #5A3D2B;
+  /* Deeper coffee                    */
+
+  --color-ice: #6D3B07;
+  /* Dark brown – high-contrast label */
+  --color-ice-dim: #8B6A3E;
+  /* Warm khaki                       */
+
+  --color-danger: #C0392B;
+  /* Warm red – errors                */
+
+  --color-surface: #FFFDF0;
+  /* Near-white warm – cards/modals   */
+  --color-border: #6D3B07;
+  /* Dark brown border                */
+
+  --color-text-primary: #3B2310;
+  /* Rich dark brown – body text      */
+  --color-text-dim: #8B7355;
+  /* Muted brown                      */
+
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
 
@@ -41,16 +69,16 @@
     flex-direction: column;
   }
 
-  /* CRT scan-line overlay */
+  /* Subtle parchment grain overlay */
   #root::after {
     content: '';
     position: fixed;
     inset: 0;
     background: repeating-linear-gradient(0deg,
         transparent,
-        transparent 2px,
-        rgba(0, 0, 0, 0.08) 2px,
-        rgba(0, 0, 0, 0.08) 4px);
+        transparent 3px,
+        rgba(110, 80, 40, 0.03) 3px,
+        rgba(110, 80, 40, 0.03) 6px);
     pointer-events: none;
     z-index: 9999;
   }
@@ -70,7 +98,7 @@
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-terminal-dim);
+    background: var(--color-terminal);
   }
 
   textarea:focus,
@@ -82,11 +110,11 @@
 
 @layer utilities {
   .glow-green {
-    text-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
+    text-shadow: 0 0 6px rgba(212, 126, 48, 0.35);
   }
 
   .glow-border {
-    box-shadow: 0 0 6px rgba(57, 255, 20, 0.15), inset 0 0 6px rgba(57, 255, 20, 0.05);
+    box-shadow: 0 0 6px rgba(212, 126, 48, 0.12), inset 0 0 6px rgba(212, 126, 48, 0.04);
   }
 
   .animate-pulse-slow {
@@ -104,4 +132,125 @@
       opacity: 0.7;
     }
   }
+}
+
+/* ─── Prose overrides for readable AI output ─── */
+.gm-prose {
+  line-height: 1.75;
+  color: var(--color-text-primary);
+}
+
+.gm-prose p {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+.gm-prose p:first-child {
+  margin-top: 0;
+}
+
+.gm-prose h1,
+.gm-prose h2,
+.gm-prose h3,
+.gm-prose h4 {
+  color: var(--color-ice);
+  font-weight: 700;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  letter-spacing: 0.02em;
+}
+
+.gm-prose h1 {
+  font-size: 1.25em;
+}
+
+.gm-prose h2 {
+  font-size: 1.1em;
+}
+
+.gm-prose h3 {
+  font-size: 1em;
+}
+
+.gm-prose ul,
+.gm-prose ol {
+  padding-left: 1.5em;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.gm-prose li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.gm-prose li::marker {
+  color: var(--color-terminal);
+}
+
+.gm-prose strong {
+  color: var(--color-ice);
+  font-weight: 700;
+}
+
+.gm-prose em {
+  color: var(--color-ember);
+  font-style: italic;
+}
+
+.gm-prose blockquote {
+  border-left: 3px solid var(--color-terminal);
+  padding-left: 1em;
+  margin: 0.75em 0;
+  color: var(--color-text-dim);
+  font-style: italic;
+}
+
+.gm-prose hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1em 0;
+}
+
+.gm-prose pre {
+  background: var(--color-void-lighter);
+  border: 1px solid var(--color-border);
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+  font-size: 0.85em;
+}
+
+.gm-prose code {
+  color: var(--color-terminal);
+  font-size: 0.85em;
+}
+
+.gm-prose pre code {
+  color: var(--color-text-primary);
+}
+
+.gm-prose a {
+  color: var(--color-terminal);
+  text-decoration: underline;
+}
+
+.gm-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.9em;
+}
+
+.gm-prose th,
+.gm-prose td {
+  border: 1px solid var(--color-border);
+  padding: 0.4em 0.6em;
+  text-align: left;
+}
+
+.gm-prose th {
+  background: var(--color-void-lighter);
+  color: var(--color-ice);
+  font-weight: 600;
 }

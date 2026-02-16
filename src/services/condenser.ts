@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, GameContext } from '../types';
+import type { ChatMessage, GameContext, ProviderConfig } from '../types';
 
 const VERBATIM_WINDOW = 5;
 const CONDENSE_BUDGET_RATIO = 0.4;
@@ -64,7 +64,7 @@ function buildCondenserPrompt(
 }
 
 export async function condenseHistory(
-    settings: AppSettings,
+    provider: ProviderConfig,
     messages: ChatMessage[],
     context: GameContext,
     condensedUpToIndex: number,
@@ -84,17 +84,17 @@ export async function condenseHistory(
         existingSummary
     );
 
-    const url = `${settings.endpoint.replace(/\/+$/, '')}/chat/completions`;
+    const url = `${provider.endpoint.replace(/\/+$/, '')}/chat/completions`;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (settings.apiKey) {
-        headers['Authorization'] = `Bearer ${settings.apiKey}`;
+    if (provider.apiKey) {
+        headers['Authorization'] = `Bearer ${provider.apiKey}`;
     }
 
     const res = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-            model: settings.modelName,
+            model: provider.modelName,
             messages: [{ role: 'user', content: prompt }],
             stream: false,
         }),

@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, GameContext } from '../types';
+import type { ChatMessage, GameContext, ProviderConfig } from '../types';
 
 // ─── Canon State Section Headers (from canon_state.md template) ───
 const CANON_STATE_SECTIONS = [
@@ -45,18 +45,18 @@ export function validateHeaderIndex(output: string): { valid: boolean; missing: 
 
 // ─── LLM Call Helper ───
 
-async function llmCall(settings: AppSettings, prompt: string): Promise<string> {
-    const url = `${settings.endpoint.replace(/\/+$/, '')}/chat/completions`;
+async function llmCall(provider: ProviderConfig, prompt: string): Promise<string> {
+    const url = `${provider.endpoint.replace(/\/+$/, '')}/chat/completions`;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (settings.apiKey) {
-        headers['Authorization'] = `Bearer ${settings.apiKey}`;
+    if (provider.apiKey) {
+        headers['Authorization'] = `Bearer ${provider.apiKey}`;
     }
 
     const res = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-            model: settings.modelName,
+            model: provider.modelName,
             messages: [{ role: 'user', content: prompt }],
             stream: false,
         }),
@@ -145,7 +145,7 @@ function buildCanonStatePrompt(recentMessages: ChatMessage[], existingCanonState
 }
 
 export async function generateCanonState(
-    settings: AppSettings,
+    provider: ProviderConfig,
     recentMessages: ChatMessage[],
     existingCanonState: string,
     maxRetries = 1
@@ -156,7 +156,7 @@ export async function generateCanonState(
             : buildCanonStatePrompt(recentMessages, existingCanonState) +
             '\n\nPREVIOUS ATTEMPT FAILED VALIDATION. Ensure ALL sections are present.';
 
-        const output = await llmCall(settings, prompt);
+        const output = await llmCall(provider, prompt);
         const { valid } = validateCanonState(output);
 
         if (valid) {
@@ -285,7 +285,7 @@ export function mergeHeaderIndex(existing: string, llmOutput: string): string {
 }
 
 export async function generateHeaderIndex(
-    settings: AppSettings,
+    provider: ProviderConfig,
     recentMessages: ChatMessage[],
     existingHeaderIndex: string,
     maxRetries = 1
@@ -296,7 +296,7 @@ export async function generateHeaderIndex(
             : buildHeaderIndexPrompt(recentMessages, existingHeaderIndex) +
             '\n\nPREVIOUS ATTEMPT FAILED VALIDATION. Ensure BOTH sections are present with SCENE_HEADERS entries.';
 
-        const output = await llmCall(settings, prompt);
+        const output = await llmCall(provider, prompt);
         const { valid } = validateHeaderIndex(output);
 
         if (valid) {
@@ -312,15 +312,15 @@ export async function generateHeaderIndex(
 // ─── Full Pipeline ───
 
 export async function runSaveFilePipeline(
-    settings: AppSettings,
+    provider: ProviderConfig,
     recentMessages: ChatMessage[],
     context: GameContext
 ): Promise<{ canonState: string; headerIndex: string; canonSuccess: boolean; indexSuccess: boolean }> {
     // Step 1: Generate Canon State (full overwrite)
-    const canonResult = await generateCanonState(settings, recentMessages, context.canonState);
+    const canonResult = await generateCanonState(provider, recentMessages, context.canonState);
 
     // Step 2: Generate Header Index (append S1, overwrite S2)
-    const indexResult = await generateHeaderIndex(settings, recentMessages, context.headerIndex);
+    const indexResult = await generateHeaderIndex(provider, recentMessages, context.headerIndex);
 
     return {
         canonState: canonResult.canonState,

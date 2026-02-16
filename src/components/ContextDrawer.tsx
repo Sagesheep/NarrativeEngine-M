@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollText, FileText, FileCode, Terminal, MessageSquare, ChevronDown, ChevronRight, Database, List } from 'lucide-react';
+import { ScrollText, FileText, FileCode, MessageSquare, ChevronDown, ChevronRight, Database, List } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
 const RULES_LIMIT = 5000;
@@ -33,7 +33,7 @@ function Toggle({ active, onChange }: { active: boolean; onChange: () => void })
             title={active ? 'Active — will be appended' : 'Inactive — will not be appended'}
         >
             <div
-                className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white transition-transform ${active ? 'translate-x-3.5' : 'translate-x-0.5'}`}
+                className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-surface transition-transform ${active ? 'translate-x-3.5' : 'translate-x-0.5'}`}
             />
         </button>
     );
@@ -173,19 +173,6 @@ export function ContextDrawer() {
                         rows={3}
                         active={context.saveInstructionActive}
                         onToggle={() => updateContext({ saveInstructionActive: !context.saveInstructionActive })}
-                    />
-
-                    <TemplateField
-                        icon={<Terminal size={13} />}
-                        label="Save State Macro"
-                        color="text-terminal"
-                        value={context.saveStateMacro}
-                        onChange={(v) => updateContext({ saveStateMacro: v })}
-                        placeholder="Text inserted by the Save State button..."
-                        rows={3}
-                        active={context.saveStateMacroActive}
-                        onToggle={() => updateContext({ saveStateMacroActive: !context.saveStateMacroActive })}
-                        hint="↑ Core prompt — the [Save State] button builds from all active fields above"
                     />
                 </Section>
 

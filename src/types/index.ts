@@ -1,9 +1,20 @@
-export type AppSettings = {
+export type ProviderConfig = {
+    id: string;
+    label: string;
     endpoint: string;
     apiKey: string;
     modelName: string;
+};
+
+export type AppSettings = {
+    providers: ProviderConfig[];
+    activeProviderId: string;
     contextLimit: number;
     autoCondenseEnabled: boolean;
+    // Legacy fields kept for migration only
+    endpoint?: string;
+    apiKey?: string;
+    modelName?: string;
 };
 
 export type CondenserState = {
@@ -18,7 +29,6 @@ export type GameContext = {
     saveFormat1: string;
     saveFormat2: string;
     saveInstruction: string;
-    saveStateMacro: string;
     canonState: string;
     headerIndex: string;
     starter: string;
@@ -27,7 +37,6 @@ export type GameContext = {
     saveFormat1Active: boolean;
     saveFormat2Active: boolean;
     saveInstructionActive: boolean;
-    saveStateMacroActive: boolean;
     canonStateActive: boolean;
     headerIndexActive: boolean;
     starterActive: boolean;

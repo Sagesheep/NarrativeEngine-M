@@ -1,4 +1,5 @@
 import './index.css';
+import { useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
 import { CampaignHub } from './components/CampaignHub';
 import { Header } from './components/Header';
@@ -8,6 +9,20 @@ import { SettingsModal } from './components/SettingsModal';
 
 export default function App() {
   const activeCampaignId = useAppStore((s) => s.activeCampaignId);
+  const settingsLoaded = useAppStore((s) => s.settingsLoaded);
+  const loadSettings = useAppStore((s) => s.loadSettings);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  if (!settingsLoaded) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-950 text-gray-400">
+        <div className="text-lg animate-pulse">Loading…</div>
+      </div>
+    );
+  }
 
   if (!activeCampaignId) {
     return <CampaignHub />;

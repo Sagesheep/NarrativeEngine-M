@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, GameContext, LoreChunk } from '../types';
+import type { AppSettings, ChatMessage, GameContext, LoreChunk, ProviderConfig } from '../types';
 import { getVerbatimWindow } from './condenser';
 
 type OpenAIMessage = {
@@ -37,7 +37,6 @@ export function buildPayload(
     if (context.saveFormat1Active && context.saveFormat1) systemParts.push(context.saveFormat1);
     if (context.saveFormat2Active && context.saveFormat2) systemParts.push(context.saveFormat2);
     if (context.saveInstructionActive && context.saveInstruction) systemParts.push(context.saveInstruction);
-    if (context.saveStateMacroActive && context.saveStateMacro) systemParts.push(context.saveStateMacro);
     if (context.canonStateActive && context.canonState) systemParts.push(context.canonState);
     if (context.headerIndexActive && context.headerIndex) systemParts.push(context.headerIndex);
     if (context.starterActive && context.starter) systemParts.push(context.starter);
@@ -81,17 +80,17 @@ export function buildPayload(
 }
 
 export async function sendMessage(
-    settings: AppSettings,
+    provider: ProviderConfig,
     messages: OpenAIMessage[],
     onChunk: (text: string) => void,
     onDone: () => void,
     onError: (err: string) => void
 ): Promise<void> {
-    const url = `${settings.endpoint.replace(/\/+$/, '')}/chat/completions`;
+    const url = `${provider.endpoint.replace(/\/+$/, '')}/chat/completions`;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (settings.apiKey) {
-        headers['Authorization'] = `Bearer ${settings.apiKey}`;
+    if (provider.apiKey) {
+        headers['Authorization'] = `Bearer ${provider.apiKey}`;
     }
 
     try {
@@ -99,7 +98,7 @@ export async function sendMessage(
             method: 'POST',
             headers,
             body: JSON.stringify({
-                model: settings.modelName,
+                model: provider.modelName,
                 messages,
                 stream: true,
             }),
@@ -154,11 +153,11 @@ export async function sendMessage(
     }
 }
 
-export async function testConnection(settings: AppSettings): Promise<{ ok: boolean; detail: string }> {
-    const url = `${settings.endpoint.replace(/\/+$/, '')}/models`;
+export async function testConnection(provider: ProviderConfig): Promise<{ ok: boolean; detail: string }> {
+    const url = `${provider.endpoint.replace(/\/+$/, '')}/models`;
     const headers: Record<string, string> = {};
-    if (settings.apiKey) {
-        headers['Authorization'] = `Bearer ${settings.apiKey}`;
+    if (provider.apiKey) {
+        headers['Authorization'] = `Bearer ${provider.apiKey}`;
     }
 
     try {

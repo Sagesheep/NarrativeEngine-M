@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Dices, Save, Loader2, Zap } from 'lucide-react';
+import { Send, Dices, Loader2, Zap, ChevronDown, Scroll } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAppStore } from '../store/useAppStore';
 import { buildPayload, sendMessage } from '../services/chatEngine';
@@ -25,23 +25,42 @@ export function ChatArea() {
         updateContext,
         setCondensed,
         setCondensing,
+        getActiveProvider,
+        setActiveProvider,
+        activeCampaignId,
     } = useAppStore();
 
     const [input, setInput] = useState('');
+    const [dropdownOpen, setDropdownOpen] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, []);
+
+    const activeProvider = getActiveProvider();
+
     const triggerCondense = async () => {
         if (condenser.isCondensing) return;
         setCondensing(true);
         try {
+            const provider = useAppStore.getState().getActiveProvider();
             // Step 1 & 2: Generate Canon State + Header Index BEFORE condensing
             const currentCtx = useAppStore.getState().context;
-            const saveResult = await runSaveFilePipeline(settings, messages, currentCtx);
+            const saveResult = await runSaveFilePipeline(provider, messages, currentCtx);
 
             // Auto-populate fields
             if (saveResult.canonSuccess) {
@@ -56,7 +75,7 @@ export function ChatArea() {
             // Step 3: Condense history (using fresh context with updated glossary)
             const freshCtx = useAppStore.getState().context;
             const result = await condenseHistory(
-                settings,
+                provider,
                 messages,
                 freshCtx,
                 condenser.condensedUpToIndex,
@@ -74,6 +93,8 @@ export function ChatArea() {
         const text = input.trim();
         if (!text || isStreaming) return;
 
+        const provider = useAppStore.getState().getActiveProvider();
+
         const userMsg = { id: uid(), role: 'user' as const, content: text, timestamp: Date.now() };
         addMessage(userMsg);
         setInput('');
@@ -88,11 +109,17 @@ export function ChatArea() {
         setStreaming(true);
 
         await sendMessage(
-            settings,
+            provider,
             payload,
             (fullText) => updateLastAssistant(fullText),
             () => {
                 setStreaming(false);
+                // Archive the exchange (non-blocking)
+                const allMsgs = useAppStore.getState().messages;
+                const lastAssistant = allMsgs[allMsgs.length - 1];
+                if (lastAssistant?.role === 'assistant' && lastAssistant.content) {
+                    appendToArchive(text, lastAssistant.content);
+                }
                 // Auto-condense check (non-blocking)
                 const allMessages = useAppStore.getState().messages;
                 if (settings.autoCondenseEnabled && shouldCondense(allMessages, settings.contextLimit, condenser.condensedUpToIndex)) {
@@ -123,18 +150,34 @@ export function ChatArea() {
         insertMacro(`[SYSTEM: User rolled D20: ${result}]`);
     };
 
-    const saveState = () => {
-        const parts: string[] = [];
-        if (context.saveFormat1Active && context.saveFormat1) parts.push(context.saveFormat1);
-        if (context.saveFormat2Active && context.saveFormat2) parts.push(context.saveFormat2);
-        if (context.saveInstructionActive && context.saveInstruction) parts.push(context.saveInstruction);
-        if (context.saveStateMacroActive && context.saveStateMacro) parts.push(context.saveStateMacro);
-
-        const macro = parts.length > 0
-            ? parts.join('\n\n')
-            : '[SYSTEM: Please summarize the current inventory, HP, and quest status into a JSON block for saving.]';
-        insertMacro(macro);
+    // ─── Archive helpers ───
+    const appendToArchive = async (userText: string, assistantText: string) => {
+        const campaignId = useAppStore.getState().activeCampaignId;
+        if (!campaignId) return;
+        try {
+            await fetch(`/api/campaigns/${campaignId}/archive`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userContent: userText, assistantContent: assistantText }),
+            });
+        } catch (err) {
+            console.warn('[Archive] Failed to append:', err);
+        }
     };
+
+    const openArchive = async () => {
+        if (!activeCampaignId) return;
+        try {
+            const res = await fetch(`/api/campaigns/${activeCampaignId}/archive/open`);
+            if (!res.ok) {
+                const data = await res.json();
+                console.warn('[Archive]', data.error || 'Failed to open');
+            }
+        } catch (err) {
+            console.warn('[Archive] Failed to open:', err);
+        }
+    };
+
 
     return (
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -183,7 +226,7 @@ export function ChatArea() {
                                 </span>
                             </div>
 
-                            <div className="prose prose-invert prose-sm max-w-none [&_pre]:bg-void [&_pre]:border [&_pre]:border-border [&_pre]:p-3 [&_code]:text-terminal [&_code]:text-xs">
+                            <div className="gm-prose">
                                 <ReactMarkdown>{msg.content}</ReactMarkdown>
                             </div>
                         </div>
@@ -210,19 +253,20 @@ export function ChatArea() {
                     Roll D20
                 </button>
                 <button
-                    onClick={saveState}
-                    className="flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[11px] uppercase tracking-wider px-3 py-1.5 transition-all hover:bg-ice/5"
-                >
-                    <Save size={13} />
-                    Save State
-                </button>
-                <button
                     onClick={triggerCondense}
                     disabled={condenser.isCondensing || messages.length < 6}
                     className="flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[11px] uppercase tracking-wider px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                     {condenser.isCondensing ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
                     {condenser.isCondensing ? 'Condensing...' : 'Condense'}
+                </button>
+                <button
+                    onClick={openArchive}
+                    disabled={!activeCampaignId}
+                    className="flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[11px] uppercase tracking-wider px-3 py-1.5 transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto"
+                >
+                    <Scroll size={13} />
+                    Archive
                 </button>
                 {condenser.condensedSummary && (
                     <span className="text-[9px] text-terminal/60 self-center ml-1">
@@ -233,7 +277,41 @@ export function ChatArea() {
 
             {/* Input */}
             <div className="px-4 pb-4 pt-1">
-                <div className="flex gap-2 border border-border bg-void focus-within:border-terminal transition-colors">
+                <div className="flex gap-0 border border-border bg-void focus-within:border-terminal transition-colors">
+                    {/* Provider Dropdown */}
+                    <div ref={dropdownRef} className="relative flex-shrink-0">
+                        <button
+                            onClick={() => setDropdownOpen(!dropdownOpen)}
+                            className="flex items-center gap-1 px-3 h-full text-[11px] text-ice uppercase tracking-wider border-r border-border hover:bg-ice/5 transition-colors whitespace-nowrap"
+                        >
+                            {activeProvider.label}
+                            <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {dropdownOpen && settings.providers.length > 1 && (
+                            <div className="absolute bottom-full left-0 mb-1 bg-surface border border-border min-w-[160px] z-50 shadow-lg">
+                                {settings.providers.map((p) => (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => {
+                                            setActiveProvider(p.id);
+                                            setDropdownOpen(false);
+                                        }}
+                                        className={`w-full text-left px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${p.id === activeProvider.id
+                                            ? 'text-ice bg-ice/10'
+                                            : 'text-text-dim hover:text-text-primary hover:bg-void'
+                                            }`}
+                                    >
+                                        <span className="font-mono">{p.label}</span>
+                                        <span className="block text-[9px] text-text-dim/50 normal-case tracking-normal">
+                                            {p.modelName}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     <textarea
                         ref={inputRef}
                         value={input}
