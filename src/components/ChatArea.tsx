@@ -122,6 +122,48 @@ export function ChatArea() {
         }
         updateContext({ surpriseDC: newDC });
 
+        // <--- DICE FAIRNESS ENGINE ---!>
+        const generatePool = () => {
+            const rolls = [
+                Math.floor(Math.random() * 20) + 1,
+                Math.floor(Math.random() * 20) + 1,
+                Math.floor(Math.random() * 20) + 1
+            ].sort((a, b) => a - b);
+            return `[Disadvantage: ${rolls[0]} | Normal: ${rolls[1]} | Advantage: ${rolls[2]}]`;
+        };
+
+        const diceBlock = `
+[SYSTEM: ACTION RESOLUTION PROTOCOL]
+Identify the CORE intent of the player's action, pick the SINGLE most relevant category, and resolve the action using ONLY the pre-generated dice numbers below.
+
+=== GENERATED DICE POOLS FOR THIS TURN ===
+* COMBAT_AND_PHYSICAL: ${generatePool()}
+* PERCEPTION_AND_INVESTIGATION: ${generatePool()}
+* STEALTH_AND_DECEPTION: ${generatePool()}
+* SOCIAL_AND_PERSUASION: ${generatePool()}
+* MOVEMENT_AND_ACROBATICS: ${generatePool()}
+* KNOWLEDGE_AND_SYSTEMS: ${generatePool()}
+* MUNDANE_SAFE_ACTION: [Disadvantage: 20 | Normal: 20 | Advantage: 20] 
+
+=== HOW TO CHOOSE ADVANTAGE LEVEL ===
+Look at the player's contextual tags, tools, and narrative positioning.
+- Use **Advantage** if they are a master, have the perfect tool, or the enemy is highly vulnerable.
+- Use **Normal** for standard baseline attempts.
+- Use **Disadvantage** if they are unskilled, impaired, or the task is bordering on impossible.
+
+=== FLAT RESOLUTION SCALE (MANDATORY OUTCOMES) ===
+Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC.
+* 1-2 = Catastrophe (Action fails terribly, severe consequences)
+* 3-6 = Failure (Action fails, player takes damage, setback, or loses an item)
+* 7-11 = Mixed Success (Action succeeds, but at a steep cost, compromise, or partial injury)
+* 12-17 = Clean Success (Action succeeds exactly as intended)
+* 18-19 = Exceptional Success (Action succeeds rapidly with an unexpected minor benefit)
+* 20 = Narrative Boon (Flawless victory, the player gains a massive strategic advantage)
+[END SYSTEM INSTRUCTION]`;
+
+        finalInput += `\n\n${diceBlock}`;
+        // <----------------------!>
+
         const payload = buildPayload(settings, context, messages, finalInput, condenser.condensedSummary || undefined, relevantLore);
 
         const assistantMsg = { id: uid(), role: 'assistant' as const, content: '', timestamp: Date.now() };
