@@ -8,6 +8,21 @@ const GENERIC_OBVIOUS_RULES = [
     'economy', 'currency', 'power level', 'global rules', 'mechanics'
 ];
 
+// Common stop words to exclude from auto-extracted keywords
+const STOP_WORDS = new Set([
+    'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'has', 'her',
+    'was', 'one', 'our', 'out', 'his', 'had', 'may', 'who', 'been', 'some',
+    'them', 'than', 'its', 'into', 'only', 'with', 'from', 'this', 'that',
+    'they', 'will', 'each', 'make', 'like', 'been', 'have', 'many', 'most',
+    'also', 'made', 'after', 'being', 'their', 'much', 'very', 'when', 'what',
+    'which', 'more', 'other', 'about', 'such', 'over', 'just', 'does', 'then',
+    'could', 'would', 'should', 'where', 'there', 'those', 'these', 'still',
+    'well', 'back', 'even', 'here', 'every', 'both', 'through', 'between',
+    'before', 'after', 'during', 'without', 'again', 'because', 'under',
+    'real', 'name', 'alias', 'note', 'key', 'class', 'status', 'location',
+    'currently', 'known', 'anyone', 'power', 'none', 'variable',
+]);
+
 function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
 }
@@ -19,10 +34,6 @@ function slugify(text: string): string {
         .replace(/(^-|-$)/g, '');
 }
 
-/**
- * Only searches the *header* for rule-designating keywords to prevent
- * huge swaths of regular lore (like NPCs with 'Rank: B') from being always-included.
- */
 function shouldAlwaysInclude(header: string): boolean {
     const headerLower = header.toLowerCase();
     if (ALWAYS_INCLUDE_PREFIXES.some((prefix) => headerLower.includes(prefix))) return true;
@@ -30,17 +41,73 @@ function shouldAlwaysInclude(header: string): boolean {
 }
 
 /**
+ * Auto-extract trigger keywords from a chunk's header and content.
+ * Extracts: proper nouns, unique terms, dollar amounts, organization names.
+ * Returns lowercase keywords, deduplicated, max 15.
+ */
+function extractTriggerKeywords(header: string, content: string): string[] {
+    const keywords = new Set<string>();
+    const text = header + '\n' + content;
+
+    // 1. Proper nouns (capitalized words, 3+ chars)
+    const properNouns = text.match(/[A-Z][a-z]{2,}(?:\s[A-Z][a-z]{2,})*/g);
+    if (properNouns) {
+        for (const noun of properNouns) {
+            const lower = noun.toLowerCase();
+            if (!STOP_WORDS.has(lower) && lower.length > 2) {
+                keywords.add(lower);
+            }
+        }
+    }
+
+    // 2. Values after known field labels (e.g., "Location: Wakanda")
+    const fieldPatterns = [
+        /(?:Real Name|Alias|Affiliation|Location|Slogan)[:\s]+([A-Z][A-Za-z\s]+)/g,
+    ];
+    for (const pattern of fieldPatterns) {
+        let match;
+        while ((match = pattern.exec(text)) !== null) {
+            const val = match[1].trim().toLowerCase();
+            if (val.length > 2 && !STOP_WORDS.has(val)) {
+                keywords.add(val);
+                // Also add individual words if multi-word
+                val.split(/\s+/).forEach(w => {
+                    if (w.length > 2 && !STOP_WORDS.has(w)) keywords.add(w);
+                });
+            }
+        }
+    }
+
+    // 3. Header keywords (split header into meaningful terms)
+    const headerWords = header
+        .replace(/\[CHUNK:\s*[A-Z_-]+\]\s*/i, '') // strip [CHUNK: X] prefix
+        .split(/[\s/—–]+/)
+        .map(w => w.toLowerCase().replace(/[^a-z0-9]/g, ''))
+        .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+    headerWords.forEach(w => keywords.add(w));
+
+    // 4. Dollar amounts → add "money", "cost", "buy" context triggers
+    if (/\$[\d,]+/.test(text)) {
+        keywords.add('money');
+        keywords.add('cost');
+        keywords.add('buy');
+        keywords.add('gear');
+    }
+
+    // Cap at 15 keywords to prevent overly broad matching
+    return Array.from(keywords).slice(0, 15);
+}
+
+/**
  * Splits a markdown lore file into chunks by ### headers.
  * Falls back to ## if no ### found.
- * Each chunk = { id, header, content, tokens, alwaysInclude }
+ * Each chunk gets auto-extracted trigger keywords.
  */
 export function chunkLoreFile(markdown: string): LoreChunk[] {
-    // Normalize escaped headers (e.g. \### -> \n### ) that occur from bad copy-pasting
     const normalizedMarkdown = markdown.replace(/\\(#{2,3})\s*/g, '\n$1 ');
     const lines = normalizedMarkdown.split(/\r?\n/);
     const chunks: LoreChunk[] = [];
 
-    // Split on ANY ## or ### header to prevent massive chunks (allow leading whitespace)
     const headerRegex = /^\s*(?:#{2,3})\s+(.+)/;
 
     let currentHeader = '';
@@ -50,7 +117,6 @@ export function chunkLoreFile(markdown: string): LoreChunk[] {
     for (const line of lines) {
         const match = line.match(headerRegex);
         if (match) {
-            // Save previous chunk
             if (currentHeader) {
                 const content = currentLines.join('\n').trim();
                 if (content) {
@@ -60,10 +126,11 @@ export function chunkLoreFile(markdown: string): LoreChunk[] {
                         content,
                         tokens: estimateTokens(currentHeader + '\n' + content),
                         alwaysInclude: shouldAlwaysInclude(currentHeader),
+                        triggerKeywords: extractTriggerKeywords(currentHeader, content),
+                        scanDepth: 2,
                     });
                 }
             } else if (currentLines.length > 0) {
-                // Text before first header = preamble
                 preambleLines = [...currentLines];
             }
             currentHeader = match[1].trim();
@@ -73,7 +140,7 @@ export function chunkLoreFile(markdown: string): LoreChunk[] {
         }
     }
 
-    // Don't forget last chunk
+    // Last chunk
     if (currentHeader) {
         const content = currentLines.join('\n').trim();
         if (content) {
@@ -83,11 +150,13 @@ export function chunkLoreFile(markdown: string): LoreChunk[] {
                 content,
                 tokens: estimateTokens(currentHeader + '\n' + content),
                 alwaysInclude: shouldAlwaysInclude(currentHeader),
+                triggerKeywords: extractTriggerKeywords(currentHeader, content),
+                scanDepth: 3,
             });
         }
     }
 
-    // If preamble has substantial content, add as first chunk
+    // Preamble chunk
     const preamble = preambleLines.join('\n').trim();
     if (preamble && estimateTokens(preamble) > 20) {
         chunks.unshift({
@@ -96,6 +165,8 @@ export function chunkLoreFile(markdown: string): LoreChunk[] {
             content: preamble,
             tokens: estimateTokens('World Overview\n' + preamble),
             alwaysInclude: true,
+            triggerKeywords: extractTriggerKeywords('World Overview', preamble),
+            scanDepth: 3,
         });
     }
 

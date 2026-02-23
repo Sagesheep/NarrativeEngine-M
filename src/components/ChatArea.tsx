@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Dices, Loader2, Zap, ChevronDown, Scroll } from 'lucide-react';
+import { Send, Dices, Loader2, Zap, ChevronDown, Scroll, Edit2, RotateCcw, Trash2, Check, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAppStore } from '../store/useAppStore';
 import { buildPayload, sendMessage, generateNPCProfile, updateExistingNPCs } from '../services/chatEngine';
-import type { NPCEntry } from '../types';
+import type { NPCEntry, ChatMessage } from '../types';
 import { shouldCondense, condenseHistory } from '../services/condenser';
 import { runSaveFilePipeline } from '../services/saveFileEngine';
 import { retrieveRelevantLore, searchLoreByQuery } from '../services/loreRetriever';
@@ -17,31 +17,34 @@ export function ChatArea() {
         messages,
         settings,
         context,
-        isStreaming,
         condenser,
         loreChunks,
         npcLedger,
-        addMessage,
         updateLastAssistant,
-        setStreaming,
         updateContext,
         setCondensed,
         setCondensing,
         getActiveProvider,
         setActiveProvider,
         activeCampaignId,
+        deleteMessage,
+        deleteMessagesFrom,
     } = useAppStore();
 
     const [input, setInput] = useState('');
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [isStreaming, setStreaming] = useState(false); // Moved from store to local state
     const [isCheckingNotes, setIsCheckingNotes] = useState(false);
+    const [visibleCount, setVisibleCount] = useState(20);
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
+    // Auto-scroll only when a NEW message appears, not on every streaming token update.
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+    }, [messages.length]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -92,21 +95,21 @@ export function ChatArea() {
         }
     };
 
-    const handleSend = async () => {
-        const text = input.trim();
-        if (!text || isStreaming) return;
+    const handleSend = async (overrideText?: string) => {
+        const textToUse = overrideText || input.trim();
+        if (!textToUse || isStreaming) return;
+
+        if (!overrideText) setInput('');
 
         const provider = useAppStore.getState().getActiveProvider();
 
-        setInput('');
-
         const relevantLore = loreChunks.length > 0
-            ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex, text)
+            ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex, textToUse, 1200, messages)
             : undefined;
 
         let newDC = context.surpriseDC ?? 98;
         const roll = Math.floor(Math.random() * 100) + 1;
-        let finalInput = text;
+        let finalInput = textToUse;
 
         if (roll >= newDC) {
             const slot1 = ["ENVIRONMENTAL_HAZARD", "NPC_ACTION", "WEATHER_CHANGE", "ITEM_COMPLICATION", "SUDDEN_DANGER", "FACTION_INTERVENTION", "STRANGE_DISCOVERY", "MAGIC_ANOMALY", "BEAST_BEHAVIOR", "STRUCTURAL_COLLAPSE", "SUDDEN_ARRIVAL", "LOST_ITEM", "MISUNDERSTANDING", "REVELATION", "TRAP_TRIGGERED", "OPPORTUNITY"];
@@ -114,7 +117,7 @@ export function ChatArea() {
             const type = slot1[Math.floor(Math.random() * slot1.length)];
             const tone = slot2[Math.floor(Math.random() * slot2.length)];
 
-            finalInput += `\n\n[SYSTEM OVERRIDE: SURPRISE EVENT TRIGGERED! Constraints: Event Type = [${type}], Tone = [${tone}]. You MUST inject an unexpected event matching these exact constraints into your immediate narrative response, based strictly on the CURRENT location and situation.]`;
+            finalInput += `\n[SURPRISE: TYPE=${type}, TONE=${tone}]`;
             newDC = 98;
             console.log(`[Surprise Engine] Triggered! Type: ${type}, Tone: ${tone}`);
         } else {
@@ -130,51 +133,31 @@ export function ChatArea() {
                 Math.floor(Math.random() * 20) + 1,
                 Math.floor(Math.random() * 20) + 1
             ].sort((a, b) => a - b);
-            return `[Disadvantage: ${rolls[0]} | Normal: ${rolls[1]} | Advantage: ${rolls[2]}]`;
+            return `${rolls[0]},${rolls[1]},${rolls[2]}`;
         };
 
-        const diceBlock = `
-[SYSTEM: ACTION RESOLUTION PROTOCOL]
-Identify the CORE intent of the player's action, pick the SINGLE most relevant category, and resolve the action using ONLY the pre-generated dice numbers below.
-
-=== GENERATED DICE POOLS FOR THIS TURN ===
-* COMBAT_AND_PHYSICAL: ${generatePool()}
-* PERCEPTION_AND_INVESTIGATION: ${generatePool()}
-* STEALTH_AND_DECEPTION: ${generatePool()}
-* SOCIAL_AND_PERSUASION: ${generatePool()}
-* MOVEMENT_AND_ACROBATICS: ${generatePool()}
-* KNOWLEDGE_AND_SYSTEMS: ${generatePool()}
-* MUNDANE_SAFE_ACTION: [Disadvantage: 20 | Normal: 20 | Advantage: 20] 
-
-=== HOW TO CHOOSE ADVANTAGE LEVEL ===
-Look at the player's contextual tags, tools, and narrative positioning.
-- Use **Advantage** if they are a master, have the perfect tool, or the enemy is highly vulnerable.
-- Use **Normal** for standard baseline attempts.
-- Use **Disadvantage** if they are unskilled, impaired, or the task is bordering on impossible.
-
-=== FLAT RESOLUTION SCALE (MANDATORY OUTCOMES) ===
-Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC.
-* 1-2 = Catastrophe (Action fails terribly, severe consequences)
-* 3-6 = Failure (Action fails, player takes damage, setback, or loses an item)
-* 7-11 = Mixed Success (Action succeeds, but at a steep cost, compromise, or partial injury)
-* 12-17 = Clean Success (Action succeeds exactly as intended)
-* 18-19 = Exceptional Success (Action succeeds rapidly with an unexpected minor benefit)
-* 20 = Narrative Boon (Flawless victory, the player gains a massive strategic advantage)
-[END SYSTEM INSTRUCTION]`;
-
-        finalInput += `\n\n${diceBlock}`;
+        finalInput += `\n[DICE: COMBAT=${generatePool()} | PERCEPTION=${generatePool()} | STEALTH=${generatePool()} | SOCIAL=${generatePool()} | MOVEMENT=${generatePool()} | KNOWLEDGE=${generatePool()} | MUNDANE=20,20,20]`;
         // <----------------------!>
 
-        const payload = buildPayload(settings, context, messages, finalInput, condenser.condensedSummary || undefined, relevantLore, npcLedger);
+        const payload = buildPayload(
+            settings,
+            context,
+            messages,
+            finalInput,
+            condenser.condensedSummary || undefined,
+            condenser.condensedUpToIndex,
+            relevantLore,
+            npcLedger
+        );
 
         const executeTurn = async (currentPayload: any[], toolCallCount = 0) => {
             if (toolCallCount === 0) {
-                const userMsg = { id: uid(), role: 'user' as const, content: text, timestamp: Date.now(), debugPayload: payload };
-                addMessage(userMsg);
+                const userMsg = { id: uid(), role: 'user' as const, content: finalInput, displayContent: textToUse, timestamp: Date.now(), debugPayload: payload };
+                useAppStore.getState().addMessage(userMsg);
             }
 
             const assistantMsgId = uid();
-            addMessage({ id: assistantMsgId, role: 'assistant' as const, content: '', timestamp: Date.now() });
+            useAppStore.getState().addMessage({ id: assistantMsgId, role: 'assistant' as const, content: '', timestamp: Date.now() });
             setStreaming(true);
 
             // Limit recursion: only provide tools if we haven't looped too many times
@@ -230,7 +213,7 @@ Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC
 
                         // Save tool response
                         const toolMsgId = uid();
-                        addMessage({
+                        useAppStore.getState().addMessage({
                             id: toolMsgId,
                             role: 'tool' as const,
                             content: toolResult,
@@ -260,7 +243,7 @@ Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC
                     const allMsgs = useAppStore.getState().messages;
                     const lastAssistant = allMsgs[allMsgs.length - 1];
                     if (lastAssistant?.role === 'assistant' && lastAssistant.content) {
-                        appendToArchive(text, lastAssistant.content);
+                        appendToArchive(textToUse, lastAssistant.content);
 
                         // ── NPC Auto-Generation: Parse AI response for character name tags ──
                         // Supports 3 formats:
@@ -302,8 +285,12 @@ Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC
                                 const existingNpc = npcLedger.find(npc => {
                                     if (!npc.name) return false;
                                     const aliasesRaw = npc.aliases || '';
-                                    const allNames = [npc.name.toLowerCase(), ...aliasesRaw.split(',').map(a => a.trim().toLowerCase())];
-                                    return allNames.includes(potentialName.toLowerCase());
+                                    const allNames = [npc.name, ...aliasesRaw.split(',').map(a => a.trim())].filter(Boolean);
+                                    const search = potentialName.toLowerCase();
+                                    return allNames.some(n => {
+                                        const lower = n.toLowerCase();
+                                        return lower === search || lower.startsWith(search + ' ') || lower.endsWith(' ' + search);
+                                    });
                                 });
 
                                 if (!existingNpc) {
@@ -345,7 +332,11 @@ Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            handleSend();
+            if (editingMessageId) {
+                handleEditSubmit();
+            } else {
+                handleSend();
+            }
         }
     };
 
@@ -387,11 +378,55 @@ Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC
         }
     };
 
+    // ─── Edit & Regenerate logic ───
+    const startEditing = (msg: ChatMessage) => {
+        setEditingMessageId(msg.id);
+        setInput(msg.displayContent || msg.content);
+        inputRef.current?.focus();
+    };
+
+    const handleEditSubmit = () => {
+        if (!editingMessageId) return;
+        const msg = messages.find(m => m.id === editingMessageId);
+        if (!msg) return;
+
+        if (msg.role === 'user') {
+            useAppStore.getState().deleteMessagesFrom(msg.id);
+            const textToResend = input.trim();
+            setInput('');
+            setEditingMessageId(null);
+            setTimeout(() => {
+                handleSend(textToResend);
+            }, 50);
+        } else {
+            useAppStore.getState().updateMessageContent(msg.id, input.trim());
+            setInput('');
+            setEditingMessageId(null);
+        }
+    };
+
+    const handleRegenerate = (id: string) => {
+        const msgs = useAppStore.getState().messages;
+        const idx = msgs.findIndex(m => m.id === id);
+        if (idx === -1) return;
+
+        const prevMsgs = msgs.slice(0, idx);
+        const lastUser = [...prevMsgs].reverse().find(m => m.role === 'user');
+
+        if (lastUser) {
+            deleteMessagesFrom(lastUser.id);
+            // Wait 50ms for the state deletion to propagate to Zustand store before passing it into handleSend's buildPayload
+            setTimeout(() => {
+                handleSend(lastUser.displayContent || lastUser.content);
+            }, 50);
+        }
+    };
+
 
     return (
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {/* Transcript */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+            <div className="flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3">
                 {messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-center space-y-3">
@@ -406,19 +441,48 @@ Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC
                     </div>
                 )}
 
-                {messages.filter(msg => msg.role !== 'tool').map((msg) => (
+                {/* Reverse Pagination: Load Older Messages Button */}
+                {messages.length > visibleCount && (
+                    <div className="flex justify-center py-2">
+                        <button
+                            onClick={() => setVisibleCount(prev => prev + 20)}
+                            className="text-xs text-terminal/70 hover:text-terminal bg-terminal/10 hover:bg-terminal/20 px-4 py-2 rounded transition-colors"
+                        >
+                            ↑ Load older messages... ({messages.length - visibleCount} hidden)
+                        </button>
+                    </div>
+                )}
+
+                {messages.slice(-visibleCount).filter(msg => msg.role !== 'tool').map((msg) => (
                     <div
                         key={msg.id}
-                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                        className={`group flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                         <div
-                            className={`max-w-[75%] px-4 py-3 text-sm font-mono leading-relaxed ${msg.role === 'user'
+                            className={`max-w-[95%] md:max-w-[75%] px-3 md:px-4 py-2 md:py-3 text-sm font-mono leading-relaxed relative ${msg.role === 'user'
                                 ? 'bg-terminal/8 border-l-2 border-terminal text-text-primary'
                                 : msg.role === 'system'
                                     ? 'bg-ember/8 border-l-2 border-ember text-ember/80'
                                     : 'bg-void-lighter border-l-2 border-border text-text-primary'
                                 }`}
                         >
+                            {/* Action Bar (opacity-0 group-hover:opacity-100) */}
+                            <div className={`absolute -top-3 ${msg.role === 'user' ? 'left-2' : 'right-2'} flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-void-darker border border-border p-[2px] rounded z-10`}>
+                                {msg.role !== 'system' && (
+                                    <button title="Edit" onClick={() => startEditing(msg)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
+                                        <Edit2 size={10} />
+                                    </button>
+                                )}
+                                {msg.role === 'assistant' && (
+                                    <button title="Regenerate" onClick={() => handleRegenerate(msg.id)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
+                                        <RotateCcw size={10} />
+                                    </button>
+                                )}
+                                <button title="Delete" onClick={() => deleteMessage(msg.id)} className="text-text-dim hover:text-red-400 p-1 bg-void-lighter rounded">
+                                    <Trash2 size={10} />
+                                </button>
+                            </div>
+
                             <div className="flex items-center gap-2 mb-1">
                                 <span
                                     className={`text-[10px] uppercase tracking-widest ${msg.role === 'user'
@@ -441,7 +505,7 @@ Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC
                             </div>
 
                             <div className="gm-prose">
-                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                <ReactMarkdown>{msg.displayContent || msg.content}</ReactMarkdown>
                             </div>
 
                             {settings.debugMode && msg.debugPayload && (
@@ -474,18 +538,18 @@ Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC
             </div>
 
             {/* Macro Bar */}
-            <div className="px-4 pb-1 flex gap-2">
+            <div className="px-2 md:px-4 pb-1 flex gap-2 overflow-x-auto">
                 <button
                     onClick={rollD20}
-                    className="flex items-center gap-1.5 bg-void border border-ember/30 hover:border-ember text-ember text-[11px] uppercase tracking-wider px-3 py-1.5 transition-all hover:bg-ember/5"
+                    className="flex items-center gap-1.5 bg-void border border-ember/30 hover:border-ember text-ember text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-ember/5"
                 >
                     <Dices size={13} />
-                    Roll D20
+                    <span className="hidden xs:inline">Roll</span> D20
                 </button>
                 <button
                     onClick={triggerCondense}
                     disabled={condenser.isCondensing || messages.length < 6}
-                    className="flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[11px] uppercase tracking-wider px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                     {condenser.isCondensing ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
                     {condenser.isCondensing ? 'Condensing...' : 'Condense'}
@@ -493,7 +557,7 @@ Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC
                 <button
                     onClick={openArchive}
                     disabled={!activeCampaignId}
-                    className="flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[11px] uppercase tracking-wider px-3 py-1.5 transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto"
+                    className="flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto"
                 >
                     <Scroll size={13} />
                     Archive
@@ -505,59 +569,73 @@ Interpret the chosen number STRICTLY according to this scale. Do NOT invent a DC
                 )}
             </div>
 
-            {/* Input */}
-            <div className="px-4 pb-4 pt-1">
-                <div className="flex gap-0 border border-border bg-void focus-within:border-terminal transition-colors">
-                    {/* Provider Dropdown */}
-                    <div ref={dropdownRef} className="relative flex-shrink-0">
+            {/* Input Area */}
+            <div className="flex-shrink-0 bg-void border-t border-border">
+                {editingMessageId && (
+                    <div className="bg-terminal/10 border-b border-border px-4 py-2 flex items-center justify-between">
+                        <span className="text-terminal text-[11px] uppercase tracking-wider font-bold flex items-center gap-2">
+                            <Edit2 size={12} /> Editing Message
+                        </span>
                         <button
-                            onClick={() => setDropdownOpen(!dropdownOpen)}
-                            className="flex items-center gap-1 px-3 h-full text-[11px] text-ice uppercase tracking-wider border-r border-border hover:bg-ice/5 transition-colors whitespace-nowrap"
+                            onClick={() => { setEditingMessageId(null); setInput(''); }}
+                            className="text-text-dim hover:text-text-primary flex items-center gap-1 text-[10px] uppercase tracking-wider"
                         >
-                            {activeProvider.label}
-                            <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                            <X size={12} /> Cancel
                         </button>
-
-                        {dropdownOpen && settings.providers.length > 1 && (
-                            <div className="absolute bottom-full left-0 mb-1 bg-surface border border-border min-w-[160px] z-50 shadow-lg">
-                                {settings.providers.map((p) => (
-                                    <button
-                                        key={p.id}
-                                        onClick={() => {
-                                            setActiveProvider(p.id);
-                                            setDropdownOpen(false);
-                                        }}
-                                        className={`w-full text-left px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${p.id === activeProvider.id
-                                            ? 'text-ice bg-ice/10'
-                                            : 'text-text-dim hover:text-text-primary hover:bg-void'
-                                            }`}
-                                    >
-                                        <span className="font-mono">{p.label}</span>
-                                        <span className="block text-[9px] text-text-dim/50 normal-case tracking-normal">
-                                            {p.modelName}
-                                        </span>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
                     </div>
+                )}
+                <div className="px-2 sm:px-4 pb-3 sm:pb-4 pt-3 sm:pt-4">
+                    <div className="flex gap-0 border border-border bg-void focus-within:border-terminal transition-colors">
+                        {/* Provider Dropdown */}
+                        <div ref={dropdownRef} className="relative flex-shrink-0">
+                            <button
+                                onClick={() => setDropdownOpen(!dropdownOpen)}
+                                className="flex items-center gap-1 px-3 h-full text-[11px] text-ice uppercase tracking-wider border-r border-border hover:bg-ice/5 transition-colors whitespace-nowrap"
+                            >
+                                {activeProvider.label}
+                                <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
 
-                    <textarea
-                        ref={inputRef}
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Enter your command..."
-                        rows={2}
-                        className="flex-1 bg-transparent px-3 py-2.5 text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none"
-                    />
-                    <button
-                        onClick={handleSend}
-                        disabled={isStreaming || !input.trim()}
-                        className="px-4 text-terminal hover:bg-terminal/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed border-l border-border"
-                    >
-                        <Send size={16} />
-                    </button>
+                            {dropdownOpen && settings.providers.length > 1 && (
+                                <div className="absolute bottom-full left-0 mb-1 bg-surface border border-border min-w-[160px] z-50 shadow-lg">
+                                    {settings.providers.map((p) => (
+                                        <button
+                                            key={p.id}
+                                            onClick={() => {
+                                                setActiveProvider(p.id);
+                                                setDropdownOpen(false);
+                                            }}
+                                            className={`w-full text-left px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${p.id === activeProvider.id
+                                                ? 'text-ice bg-ice/10'
+                                                : 'text-text-dim hover:text-text-primary hover:bg-void'
+                                                }`}
+                                        >
+                                            <span className="font-mono">{p.label}</span>
+                                            <span className="block text-[9px] text-text-dim/50 normal-case tracking-normal">
+                                                {p.modelName}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <textarea
+                            ref={inputRef}
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder={editingMessageId ? "Edit message..." : "What do you do?"}
+                            className="flex-1 bg-transparent px-3 py-2.5 text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[44px]"
+                        />
+                        <button
+                            onClick={editingMessageId ? handleEditSubmit : () => handleSend()}
+                            disabled={isStreaming || !input.trim()}
+                            className="px-4 text-terminal hover:bg-terminal/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed border-l border-border flex items-center justify-center gap-2"
+                        >
+                            {editingMessageId ? <Check size={16} /> : <Send size={16} />}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

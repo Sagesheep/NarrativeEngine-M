@@ -1,5 +1,4 @@
 import type { AppSettings, ChatMessage, GameContext, LoreChunk, ProviderConfig, NPCEntry } from '../types';
-import { getVerbatimWindow } from './condenser';
 
 type OpenAIMessage = {
     role: 'system' | 'user' | 'assistant' | 'tool';
@@ -24,6 +23,7 @@ export function buildPayload(
     history: ChatMessage[],
     userMessage: string,
     condensedSummary?: string,
+    condensedUpToIndex?: number,
     relevantLore?: LoreChunk[],
     npcLedger?: NPCEntry[]
 ): OpenAIMessage[] {
@@ -34,40 +34,39 @@ export function buildPayload(
     if (context.rulesRaw) systemParts.push(context.rulesRaw);
 
     // Template fields (only when toggled on)
-    if (context.saveFormat1Active && context.saveFormat1) systemParts.push(context.saveFormat1);
-    if (context.saveFormat2Active && context.saveFormat2) systemParts.push(context.saveFormat2);
-    if (context.saveInstructionActive && context.saveInstruction) systemParts.push(context.saveInstruction);
     if (context.canonStateActive && context.canonState) systemParts.push(context.canonState);
     if (context.headerIndexActive && context.headerIndex) systemParts.push(context.headerIndex);
     if (context.starterActive && context.starter) systemParts.push(context.starter);
     if (context.continuePromptActive && context.continuePrompt) systemParts.push(context.continuePrompt);
 
-    // === 2. Inject condensed history into system prompt (if available) ===
+    // === 2. Condensed history — SEPARATE message so static rules are always prefix-cached ===
+    let condensedContent = '';
     if (condensedSummary) {
-        systemParts.push(`[CONDENSED SESSION HISTORY]\n${condensedSummary}\n[END CONDENSED HISTORY]`);
+        condensedContent = `[CONDENSED SESSION HISTORY]\n${condensedSummary}\n[END CONDENSED HISTORY]`;
     }
 
-    // === 3. Inject dynamic RAG Lore at the end of the system prompt ===
+    // === 3. Inject dynamic RAG Lore (DYNAMIC SUFFIX) ===
     // This prevents cache busting for the static rules and templates above.
+    const dynamicSystemParts: string[] = [];
     if (relevantLore !== undefined) {
         // RAG is active for this campaign. 
         if (relevantLore.length > 0) {
             const loreBlock = relevantLore
                 .map((c) => `### ${c.header}\n${c.content}`)
                 .join('\n\n');
-            systemParts.push(`[WORLD LORE — RELEVANT SECTIONS]\n${loreBlock}\n[END WORLD LORE]`);
+            dynamicSystemParts.push(`[WORLD LORE — RELEVANT SECTIONS]\n${loreBlock}\n[END WORLD LORE]`);
         }
     } else if (context.loreRaw) {
         // Legacy fallback: No loreChunks generated yet, just dump the raw text.
-        systemParts.push(context.loreRaw);
+        dynamicSystemParts.push(context.loreRaw);
     }
 
-    // === 3b. Inject active NPCs from the Ledger ===
-    // When not condensed, we look at full history which might be huge, but candidateMessages is filtered below.
-    // Let's do a quick pass over the veribiage that will be sent.
-    const candidateMessagesToScan = condensedSummary
-        ? history.slice(-getVerbatimWindow())
-        : history.slice(-10); // Look at last 10 messages max for NPC presence to save scanning everything
+    // === 3b. Inject active NPCs from the Ledger (DYNAMIC SUFFIX) ===
+    // We only need to scan the recent context for active NPCs to save processing.
+    // Scanning the last 10 messages is enough to catch anyone currently relevant.
+    const candidateMessagesToScan = history.length > 10
+        ? history.slice(-10)
+        : history;
 
     if (npcLedger && npcLedger.length > 0) {
         const allTextForNPC = candidateMessagesToScan.map(m => m.content || '').join(' ') + ' ' + userMessage;
@@ -85,37 +84,29 @@ export function buildPayload(
         });
 
         if (activeNPCs.length > 0) {
-            console.log(`[NPC Ledger] Injected ${activeNPCs.length} active NPC(s) into LLM context:`, activeNPCs.map(n => n.name).join(', '));
-            const npcBlocks = activeNPCs.map(npc => {
-                return `[NPC LEDGER RECORD: ${npc.name.toUpperCase()}]\n` +
-                    `Aliases: ${npc.aliases || 'None'}\n` +
-                    `Status: ${npc.status || 'Alive'}\n` +
-                    `Appearance: ${npc.appearance || 'None'}\n` +
-                    `Disposition: ${npc.disposition || 'None'}\n` +
-                    `Goals: ${npc.goals || 'None'}\n` +
-                    `Axes (1=Low, 10=Extreme):\n` +
-                    `- Nature: ${npc.nature}/10\n` +
-                    `- Training: ${npc.training}/10\n` +
-                    `- Emotion: ${npc.emotion}/10\n` +
-                    `- Social: ${npc.social}/10\n` +
-                    `- Belief: ${npc.belief}/10\n` +
-                    `- Ego: ${npc.ego}/10\n` +
-                    `[END RECORD]`;
+            console.log(`[NPC Ledger] Injected ${activeNPCs.length} active NPC(s):`, activeNPCs.map(n => n.name).join(', '));
+            const npcLines = activeNPCs.map(npc => {
+                const aliases = npc.aliases ? ` (${npc.aliases})` : '';
+                return `[${npc.name.toUpperCase()}${aliases}] ${npc.status || 'Alive'} | ${npc.appearance || '?'} | ${npc.disposition || '?'} | Goals: ${npc.goals || '?'} | N:${npc.nature} T:${npc.training} E:${npc.emotion} S:${npc.social} B:${npc.belief} G:${npc.ego}`;
             });
-            systemParts.push(`[ACTIVE NPC CONTEXT]\n${npcBlocks.join('\\n\\n')}\n[END ACTIVE NPC CONTEXT]`);
+            dynamicSystemParts.push(`[ACTIVE NPC CONTEXT]\n${npcLines.join('\n')}\n[END NPC CONTEXT]`);
         }
     }
 
     const systemContent = systemParts.join('\n\n');
+    const dynamicSystemContent = dynamicSystemParts.join('\n\n');
     const systemTokens = estimateTokens(systemContent);
+    const condensedTokens = estimateTokens(condensedContent);
+    const dynamicSystemTokens = estimateTokens(dynamicSystemContent);
     const userTokens = estimateTokens(userMessage);
-    const budget = settings.contextLimit - systemTokens - userTokens;
+    const budget = settings.contextLimit - systemTokens - condensedTokens - dynamicSystemTokens - userTokens;
 
-    // === 3. Select which history messages to include ===
-    // When condensed: ONLY send the verbatim window (last 5 messages)
-    // When not condensed: walk backwards from full history until budget runs out
-    const candidateMessages = condensedSummary
-        ? history.slice(-getVerbatimWindow())
+    // === 4. Select which history messages to include ===
+    // STRICT PREFIX CACHING: We MUST NOT use a rolling window like slice(-5). 
+    // Dropping the oldest message every turn invalidates the entire history prefix cache.
+    // Instead, we use a static append-only array since the last condense marker.
+    const candidateMessages = (condensedSummary && condensedUpToIndex !== undefined && condensedUpToIndex >= 0)
+        ? history.slice(condensedUpToIndex + 1)
         : history;
 
     const fitted: OpenAIMessage[] = [];
@@ -139,12 +130,18 @@ export function buildPayload(
         used += cost;
     }
 
-    // === 4. Assemble final payload: system → history → user (bottom) ===
+    // === 5. Assemble: Static → Condensed → History → Dynamic(Lore+NPC) → User ===
     const messages: OpenAIMessage[] = [];
     if (systemContent) {
         messages.push({ role: 'system', content: systemContent });
     }
+    if (condensedContent) {
+        messages.push({ role: 'system', content: condensedContent });
+    }
     messages.push(...fitted);
+    if (dynamicSystemContent) {
+        messages.push({ role: 'system', content: dynamicSystemContent });
+    }
     messages.push({ role: 'user', content: userMessage });
 
     return messages;

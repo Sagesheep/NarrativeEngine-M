@@ -1,136 +1,99 @@
-import type { LoreChunk } from '../types';
+import type { LoreChunk, ChatMessage } from '../types';
 
 /**
- * Extract proper nouns and key terms from Canon State, Header Index, and User Message.
- * Returns lowercase tokens for matching.
- */
-function extractKeywords(canonState: string, headerIndex: string, userMessage: string): Set<string> {
-    const keywords = new Set<string>();
-    const combined = canonState + '\n' + headerIndex + '\n' + userMessage;
-
-    // Extract values after known field labels
-    const fieldPatterns = [
-        /LOCATION:\s*(.+)/gi,
-        /ATMOSPHERE:\s*(.+)/gi,
-        /NARRATIVE_MODE:\s*(.+)/gi,
-        /THREAD_TAG[:\s]*\[?(.+?)\]?$/gim,
-        /ACTIVE_THREADS:\s*-\s*\[(.+?)\]/gi,
-        /SCENE_ID:\s*(\S+)/gi,
-        /SESSION_TITLE:\s*(.+)/gi,
-    ];
-
-    for (const pattern of fieldPatterns) {
-        let match;
-        while ((match = pattern.exec(combined)) !== null) {
-            // Split comma-separated values and clean
-            match[1].split(/[,;/]/).forEach((part) => {
-                const clean = part.trim().toLowerCase().replace(/[\[\]()]/g, '');
-                if (clean.length > 2) keywords.add(clean);
-            });
-        }
-    }
-
-    // Extract NPC names from "- Name:" or "Name (alignment)" patterns
-    const npcPatterns = [
-        /^[-•]\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)/gm,
-        /NPC.*?:\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)/gi,
-    ];
-
-    for (const pattern of npcPatterns) {
-        let match;
-        while ((match = pattern.exec(combined)) !== null) {
-            const name = match[1].trim().toLowerCase();
-            if (name.length > 2) keywords.add(name);
-        }
-    }
-
-    // Extract capitalized proper nouns (2+ chars, appear with context)
-    const properNouns = combined.match(/[A-Z][a-z]{2,}(?:\s[A-Z][a-z]{2,})*/g);
-    if (properNouns) {
-        for (const noun of properNouns) {
-            keywords.add(noun.toLowerCase());
-        }
-    }
-
-    // Fallback/enhancement: extract any notable words from user message even if lowercase
-    const stopWords = new Set(['about', 'retrieve', 'information', 'please', 'tell', 'what', 'where', 'when', 'who', 'how', 'why', 'there', 'their', 'they', 'this', 'that', 'from', 'with']);
-    const userWords = userMessage.toLowerCase().split(/\s+/);
-    for (const w of userWords) {
-        const clean = w.replace(/[^a-z]/g, '');
-        if (clean.length > 3 && !stopWords.has(clean)) {
-            keywords.add(clean);
-        }
-    }
-
-    return keywords;
-}
-
-/**
- * Score a lore chunk against extracted keywords.
- * Higher score = more relevant.
- */
-function scoreChunk(chunk: LoreChunk, keywords: Set<string>): number {
-    const searchText = (chunk.header + ' ' + chunk.content).toLowerCase();
-    let score = 0;
-
-    for (const keyword of keywords) {
-        if (searchText.includes(keyword)) {
-            // Header match is worth more
-            if (chunk.header.toLowerCase().includes(keyword)) {
-                score += 3;
-            } else {
-                score += 1;
-            }
-        }
-    }
-
-    return score;
-}
-
-/**
- * Retrieve relevant lore chunks based on Canon State + Header Index keywords.
- * Returns: all alwaysInclude chunks + keyword-matched chunks, sorted by relevance.
+ * Keyword-based World Info retrieval.
+ * Scans the last N messages (per chunk's scanDepth) for exact keyword matches.
+ * Only injects chunks whose trigger keywords appear in recent conversation.
+ * alwaysInclude chunks bypass keyword matching entirely.
+ * Enforces a token budget — ranked by keyword hit count, most relevant first.
  */
 export function retrieveRelevantLore(
     chunks: LoreChunk[],
-    canonState: string,
-    headerIndex: string,
+    _canonState: string,
+    _headerIndex: string,
     userMessage: string,
-    tokenBudget = 1200
+    tokenBudget = 1200,
+    recentMessages?: ChatMessage[]
 ): LoreChunk[] {
     if (chunks.length === 0) return [];
 
-    const keywords = extractKeywords(canonState, headerIndex, userMessage);
     const results: LoreChunk[] = [];
     let usedTokens = 0;
 
-    // Always include flagged chunks first
-    const alwaysOn = chunks.filter((c) => c.alwaysInclude);
-    for (const chunk of alwaysOn) {
-        results.push(chunk);
-        usedTokens += chunk.tokens;
+    // Always-include chunks get priority (deducted from budget)
+    for (const chunk of chunks) {
+        if (chunk.alwaysInclude) {
+            results.push(chunk);
+            usedTokens += chunk.tokens;
+        }
     }
 
-    // Score and sort remaining chunks
-    const dynamic = chunks
-        .filter((c) => !c.alwaysInclude)
-        .map((c) => ({ chunk: c, score: scoreChunk(c, keywords) }))
-        .filter((s) => s.score > 0)
-        .sort((a, b) => b.score - a.score);
+    // Build text corpus from recent messages for keyword scanning
+    const history = recentMessages || [];
+    const defaultDepth = 2;
 
-    // Fill remaining budget
-    for (const { chunk } of dynamic) {
+    // Precompute text at each depth level for efficient scanning
+    const textByDepth = new Map<number, string>();
+    for (const chunk of chunks) {
+        if (chunk.alwaysInclude) continue;
+        const depth = chunk.scanDepth || defaultDepth;
+        if (!textByDepth.has(depth)) {
+            const sliceForDepth = history.length > depth ? history.slice(-depth) : history;
+            const text = sliceForDepth.map(m => (m.content || '').toLowerCase()).join(' ')
+                + ' ' + userMessage.toLowerCase();
+            textByDepth.set(depth, text);
+        }
+    }
+
+    // Ensure default depth scan exists
+    if (!textByDepth.has(defaultDepth)) {
+        const slice = history.length > defaultDepth ? history.slice(-defaultDepth) : history;
+        textByDepth.set(defaultDepth, slice.map(m => (m.content || '').toLowerCase()).join(' ')
+            + ' ' + userMessage.toLowerCase());
+    }
+
+    // Score chunks by how many keywords matched (relevance ranking)
+    const scored: { chunk: LoreChunk; matchCount: number }[] = [];
+
+    for (const chunk of chunks) {
+        if (chunk.alwaysInclude) continue;
+
+        const keywords = chunk.triggerKeywords || [];
+        if (keywords.length === 0) continue;
+
+        const depth = chunk.scanDepth || defaultDepth;
+        const scanText = textByDepth.get(depth) || userMessage.toLowerCase();
+
+        let matchCount = 0;
+        for (const kw of keywords) {
+            const lower = kw.toLowerCase();
+            const regex = new RegExp(`\\b${lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+            if (regex.test(scanText)) matchCount++;
+        }
+
+        if (matchCount > 0) {
+            scored.push({ chunk, matchCount });
+        }
+    }
+
+    // Sort by relevance (most keyword hits first)
+    scored.sort((a, b) => b.matchCount - a.matchCount);
+
+    // Fill to budget
+    for (const { chunk } of scored) {
         if (usedTokens + chunk.tokens > tokenBudget) continue;
         results.push(chunk);
         usedTokens += chunk.tokens;
     }
 
+    console.log(`[Lore Retriever] Injected ${results.length} chunks (${usedTokens}/${tokenBudget} tokens). Dropped ${scored.length - (results.length - results.filter(r => r.alwaysInclude).length)} low-priority chunks.`);
+
     return results;
 }
 
 /**
- * Specifically search lore chunks based on an explicit query string (from LLM tool call).
- * Enforces a strict maximum of 3 results or 1500 tokens.
+ * Search lore chunks based on an explicit query string (from LLM tool call).
+ * Uses keyword scoring against the query. Enforces max 3 results or 1500 tokens.
  */
 export function searchLoreByQuery(
     chunks: LoreChunk[],
@@ -141,30 +104,39 @@ export function searchLoreByQuery(
     if (chunks.length === 0 || !query.trim()) return [];
 
     const stopWords = new Set(['about', 'retrieve', 'information', 'please', 'tell', 'what', 'where', 'when', 'who', 'how', 'why', 'there', 'their', 'they', 'this', 'that', 'from', 'with', 'the', 'and', 'for']);
-    const keywords = new Set<string>();
+    const queryKeywords = new Set<string>();
 
-    // Extract keywords from the explicit query
     const words = query.toLowerCase().split(/\s+/);
     for (const w of words) {
         const clean = w.replace(/[^a-z0-9]/g, '');
         if (clean.length > 2 && !stopWords.has(clean)) {
-            keywords.add(clean);
+            queryKeywords.add(clean);
         }
     }
 
-    // Score all chunks (including alwaysInclude, so we can return the top matches)
-    const scoredChunks = chunks
-        .map((c) => ({ chunk: c, score: scoreChunk(c, keywords) }))
+    // Score chunks by how many query keywords match their content + triggerKeywords
+    const scored = chunks
+        .map((chunk) => {
+            const searchText = (chunk.header + ' ' + chunk.content).toLowerCase();
+            const triggerSet = new Set((chunk.triggerKeywords || []).map(k => k.toLowerCase()));
+            let score = 0;
+
+            for (const kw of queryKeywords) {
+                if (triggerSet.has(kw)) score += 3;        // trigger keyword match = high
+                else if (chunk.header.toLowerCase().includes(kw)) score += 2;  // header match
+                else if (searchText.includes(kw)) score += 1;                  // content match
+            }
+            return { chunk, score };
+        })
         .filter((s) => s.score > 0)
         .sort((a, b) => b.score - a.score);
 
     const results: LoreChunk[] = [];
     let usedTokens = 0;
 
-    for (const { chunk } of scoredChunks) {
+    for (const { chunk } of scored) {
         if (results.length >= maxResults) break;
         if (usedTokens + chunk.tokens > tokenBudget) continue;
-
         results.push(chunk);
         usedTokens += chunk.tokens;
     }

@@ -61,7 +61,7 @@ export function SettingsModal() {
             />
 
             {/* Panel */}
-            <div className="relative bg-surface border border-border w-full max-w-lg mx-4 p-6">
+            <div className="relative bg-surface border border-border w-full h-full sm:h-auto sm:max-w-lg sm:mx-4 p-4 sm:p-6 overflow-y-auto">
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-terminal text-sm font-bold tracking-[0.2em] uppercase glow-green">
                         ⚙ SETTINGS
@@ -253,6 +253,33 @@ export function SettingsModal() {
                                 className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-surface transition-transform ${settings.debugMode ? 'translate-x-4.5' : 'translate-x-0.5'}`}
                             />
                         </button>
+                    </div>
+
+                    {/* Theme */}
+                    <div className="flex items-center justify-between">
+                        <label className="text-[11px] text-text-dim uppercase tracking-wider">
+                            Theme
+                        </label>
+                        <div className="flex border border-border overflow-hidden rounded">
+                            <button
+                                onClick={() => updateSettings({ theme: 'light' })}
+                                className={`px-3 py-1 text-[10px] uppercase tracking-wider transition-colors ${(settings.theme ?? 'light') === 'light'
+                                        ? 'bg-terminal text-surface'
+                                        : 'bg-void text-text-dim hover:text-text-primary'
+                                    }`}
+                            >
+                                ☀ Light
+                            </button>
+                            <button
+                                onClick={() => updateSettings({ theme: 'dark' })}
+                                className={`px-3 py-1 text-[10px] uppercase tracking-wider transition-colors border-l border-border ${settings.theme === 'dark'
+                                        ? 'bg-terminal text-surface'
+                                        : 'bg-void text-text-dim hover:text-text-primary'
+                                    }`}
+                            >
+                                ☽ Dark
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

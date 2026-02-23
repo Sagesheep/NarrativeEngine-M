@@ -6,9 +6,6 @@ export function TokenGauge() {
     const systemParts: string[] = [];
     if (context.loreRaw) systemParts.push(context.loreRaw);
     if (context.rulesRaw) systemParts.push(context.rulesRaw);
-    if (context.saveFormat1Active && context.saveFormat1) systemParts.push(context.saveFormat1);
-    if (context.saveFormat2Active && context.saveFormat2) systemParts.push(context.saveFormat2);
-    if (context.saveInstructionActive && context.saveInstruction) systemParts.push(context.saveInstruction);
     if (context.canonStateActive && context.canonState) systemParts.push(context.canonState);
     if (context.headerIndexActive && context.headerIndex) systemParts.push(context.headerIndex);
     if (context.starterActive && context.starter) systemParts.push(context.starter);

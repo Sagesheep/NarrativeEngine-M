@@ -26,7 +26,7 @@ export function Header() {
     };
 
     return (
-        <header className="h-12 bg-surface border-b border-border flex items-center px-4 gap-2 shrink-0">
+        <header className="h-12 bg-surface border-b border-border flex items-center px-2 sm:px-4 gap-1 sm:gap-2 shrink-0">
             <button
                 onClick={toggleDrawer}
                 className="text-text-dim hover:text-terminal transition-colors p-1"
@@ -35,11 +35,13 @@ export function Header() {
                 {drawerOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
             </button>
 
-            <h1 className="text-terminal text-sm font-bold tracking-[0.3em] uppercase glow-green shrink-0">
+            <h1 className="hidden md:block text-terminal text-sm font-bold tracking-[0.3em] uppercase glow-green shrink-0">
                 AI GM COCKPIT
             </h1>
 
-            <TokenGauge />
+            <div className="hidden md:block flex-1">
+                <TokenGauge />
+            </div>
 
             <button
                 onClick={clearChat}

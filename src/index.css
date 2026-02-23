@@ -3,7 +3,7 @@
 
 @theme {
   /*
-   * Warm Parchment Theme
+   * Warm Parchment Theme (Light — Default)
    * ────────────────────
    * Cream background, dark-brown text, amber accents.
    * Easy on the eyes, readable, RPG-manuscript vibe.
@@ -14,6 +14,8 @@
   /* Slightly deeper cream            */
   --color-void-lighter: #E6DFBA;
   /* Warm tan inset panels            */
+  --color-void-darker: #DDD6B0;
+  /* Deeper cream for contrast bg     */
 
   --color-terminal: #D47E30;
   /* Amber – primary accent           */
@@ -43,7 +45,45 @@
   --color-text-dim: #8B7355;
   /* Muted brown                      */
 
+  --color-overlay: rgba(90, 61, 43, 0.40);
+  /* Backdrop overlay                 */
+  --color-grain: rgba(110, 80, 40, 0.03);
+  /* Parchment grain tint             */
+
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+/*
+ * Dark Theme Overrides
+ * ────────────────────
+ * Deep navy background, warm gold/parchment accents.
+ * High contrast, low glare for long reading sessions.
+ */
+[data-theme="dark"] {
+  --color-void: #1A1A2E;
+  --color-void-light: #16213E;
+  --color-void-lighter: #0F3460;
+  --color-void-darker: #111125;
+
+  --color-terminal: #E2A04F;
+  --color-terminal-dim: #C68A3A;
+
+  --color-ember: #C49A6C;
+  --color-ember-dim: #A07D56;
+
+  --color-ice: #E8D5B7;
+  --color-ice-dim: #B8A080;
+
+  --color-danger: #E74C3C;
+
+  --color-surface: #1E2A45;
+  --color-border: #3A4A6E;
+
+  --color-text-primary: #E6DCC8;
+  --color-text-dim: #8899AA;
+
+  --color-overlay: rgba(0, 0, 0, 0.55);
+  --color-grain: rgba(100, 130, 180, 0.025);
 }
 
 @layer base {
@@ -69,7 +109,7 @@
     flex-direction: column;
   }
 
-  /* Subtle parchment grain overlay */
+  /* Subtle grain overlay — adapts via --color-grain */
   #root::after {
     content: '';
     position: fixed;
@@ -77,8 +117,8 @@
     background: repeating-linear-gradient(0deg,
         transparent,
         transparent 3px,
-        rgba(110, 80, 40, 0.03) 3px,
-        rgba(110, 80, 40, 0.03) 6px);
+        var(--color-grain) 3px,
+        var(--color-grain) 6px);
     pointer-events: none;
     z-index: 9999;
   }
@@ -99,6 +139,13 @@
 
   ::-webkit-scrollbar-thumb:hover {
     background: var(--color-terminal);
+  }
+
+  /* Wider scrollbar on touch devices for easier grabbing */
+  @media (pointer: coarse) {
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
   }
 
   textarea:focus,

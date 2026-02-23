@@ -105,7 +105,7 @@ export function NPCLedgerModal() {
             <div className="bg-surface border border-border flex flex-col sm:flex-row w-full max-w-5xl h-full max-h-[800px] overflow-hidden" onClick={e => e.stopPropagation()}>
 
                 {/* Left Sidebar: List */}
-                <div className="w-full sm:w-1/3 border-b sm:border-b-0 sm:border-r border-border flex flex-col bg-void-lighter">
+                <div className="w-full sm:w-1/3 border-b sm:border-b-0 sm:border-r border-border flex flex-col bg-void-lighter max-h-[40vh] sm:max-h-none">
                     <div className="p-4 border-b border-border flex justify-between items-center bg-void">
                         <div className="flex items-center gap-2 text-terminal font-bold uppercase tracking-widest text-sm">
                             <Users size={16} />
@@ -148,7 +148,7 @@ export function NPCLedgerModal() {
                                 </div>
                                 <button
                                     onClick={(e) => handleDelete(npc.id, e)}
-                                    className="p-1.5 text-text-dim hover:text-danger hover:bg-danger/10 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                    className="p-1.5 text-text-dim hover:text-danger hover:bg-danger/10 rounded transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                                 >
                                     <Trash2 size={12} />
                                 </button>

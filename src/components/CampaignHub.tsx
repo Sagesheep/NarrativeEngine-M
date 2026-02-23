@@ -12,16 +12,10 @@ import type { Campaign } from '../types';
 const DEFAULT_CONTEXT = {
     loreRaw: '',
     rulesRaw: '',
-    saveFormat1: '',
-    saveFormat2: '',
-    saveInstruction: '',
     canonState: '',
     headerIndex: '',
     starter: '',
     continuePrompt: '',
-    saveFormat1Active: false,
-    saveFormat2Active: false,
-    saveInstructionActive: false,
     canonStateActive: false,
     headerIndexActive: false,
     starterActive: false,
@@ -175,17 +169,17 @@ export function CampaignHub() {
     };
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-void p-8">
+        <div className="flex flex-col items-center justify-center min-h-screen bg-void p-4 md:p-8">
             {/* Title */}
-            <h1 className="text-terminal text-2xl font-bold tracking-[0.4em] uppercase glow-green mb-2">
+            <h1 className="text-terminal text-lg sm:text-2xl font-bold tracking-[0.2em] sm:tracking-[0.4em] uppercase glow-green mb-2">
                 AI GM COCKPIT
             </h1>
-            <p className="text-text-dim text-xs tracking-widest uppercase mb-10">
+            <p className="text-text-dim text-xs tracking-widest uppercase mb-6 sm:mb-10">
                 SELECT CAMPAIGN
             </p>
 
             {/* Campaign Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl w-full mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 max-w-4xl w-full mb-6 sm:mb-8">
                 {campaigns.map((c) => (
                     <div
                         key={c.id}
@@ -220,7 +214,7 @@ export function CampaignHub() {
                         {/* Edit button */}
                         <button
                             onClick={(e) => { e.stopPropagation(); openEdit(c); }}
-                            className="absolute top-2 left-2 p-1.5 rounded bg-void/80 text-text-dim hover:text-terminal opacity-0 group-hover:opacity-100 transition-all"
+                            className="absolute top-2 left-2 p-1.5 rounded bg-void/80 text-text-dim hover:text-terminal opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                             title="Edit campaign"
                         >
                             <Pencil size={14} />
@@ -229,7 +223,7 @@ export function CampaignHub() {
                         {/* Delete button */}
                         <button
                             onClick={(e) => { e.stopPropagation(); setConfirmDelete(c.id); }}
-                            className="absolute top-2 right-2 p-1.5 rounded bg-void/80 text-text-dim hover:text-danger opacity-0 group-hover:opacity-100 transition-all"
+                            className="absolute top-2 right-2 p-1.5 rounded bg-void/80 text-text-dim hover:text-danger opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                             title="Delete campaign"
                         >
                             <Trash2 size={14} />

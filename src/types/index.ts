@@ -12,6 +12,7 @@ export type AppSettings = {
     contextLimit: number;
     autoCondenseEnabled: boolean;
     debugMode?: boolean; // Toggles inline payload viewer
+    theme?: 'light' | 'dark'; // UI theme
     // Legacy fields kept for migration only
     endpoint?: string;
     apiKey?: string;
@@ -27,18 +28,12 @@ export type CondenserState = {
 export type GameContext = {
     loreRaw: string;
     rulesRaw: string;
-    saveFormat1: string;
-    saveFormat2: string;
-    saveInstruction: string;
     canonState: string;
     headerIndex: string;
     starter: string;
     continuePrompt: string;
     surpriseDC?: number;
     // Toggles: whether each field is appended to context
-    saveFormat1Active: boolean;
-    saveFormat2Active: boolean;
-    saveInstructionActive: boolean;
     canonStateActive: boolean;
     headerIndexActive: boolean;
     starterActive: boolean;
@@ -49,6 +44,7 @@ export type ChatMessage = {
     id: string;
     role: 'system' | 'user' | 'assistant' | 'tool';
     content: string;
+    displayContent?: string; // Clean text for UI (without dice/surprise blocks)
     timestamp: number;
     debugPayload?: any; // Stores the exact JSON LLM payload
     name?: string;
@@ -74,6 +70,8 @@ export type LoreChunk = {
     content: string;
     tokens: number;
     alwaysInclude: boolean;
+    triggerKeywords: string[];  // exact keywords that activate this chunk
+    scanDepth: number;          // how many recent messages to scan (default: 3)
 };
 
 export type NPCEntry = {
