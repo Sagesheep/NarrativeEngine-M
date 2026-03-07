@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Trash2, Play, Clock, BookOpen, Pencil } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, defaultContext } from '../store/useAppStore';
 import {
     listCampaigns, deleteCampaign, loadCampaignState,
     saveCampaign, saveCampaignState, saveLoreChunks, getLoreChunks,
@@ -8,19 +8,6 @@ import {
 } from '../store/campaignStore';
 import { chunkLoreFile } from '../services/loreChunker';
 import type { Campaign } from '../types';
-
-const DEFAULT_CONTEXT = {
-    loreRaw: '',
-    rulesRaw: '',
-    canonState: '',
-    headerIndex: '',
-    starter: '',
-    continuePrompt: '',
-    canonStateActive: false,
-    headerIndexActive: false,
-    starterActive: false,
-    continuePromptActive: false,
-};
 
 const DEFAULT_CONDENSER = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
 
@@ -118,7 +105,7 @@ export function CampaignHub() {
         if (rulesFile) {
             const rulesRaw = await rulesFile.text();
             const existingState = await loadCampaignState(campaign.id);
-            const ctx = existingState?.context ?? DEFAULT_CONTEXT;
+            const ctx = existingState?.context ?? defaultContext;
             await saveCampaignState(campaign.id, {
                 context: { ...ctx, rulesRaw },
                 messages: existingState?.messages ?? [],
@@ -143,7 +130,7 @@ export function CampaignHub() {
 
         // Batch-set all state at once to avoid partial renders
         useAppStore.setState({
-            context: state?.context ?? DEFAULT_CONTEXT,
+            context: state?.context ?? defaultContext,
             messages: state?.messages ?? [],
             condenser: state?.condenser ?? DEFAULT_CONDENSER,
             loreChunks: chunks,
@@ -172,7 +159,7 @@ export function CampaignHub() {
         <div className="flex flex-col items-center justify-center min-h-screen bg-void p-4 md:p-8">
             {/* Title */}
             <h1 className="text-terminal text-lg sm:text-2xl font-bold tracking-[0.2em] sm:tracking-[0.4em] uppercase glow-green mb-2">
-                AI GM COCKPIT
+                NARRATIVE NEXUS
             </h1>
             <p className="text-text-dim text-xs tracking-widest uppercase mb-6 sm:mb-10">
                 SELECT CAMPAIGN

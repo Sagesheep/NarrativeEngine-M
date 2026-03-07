@@ -1,5 +1,5 @@
 {
-  "name": "ai-gm-cockpit",
+  "name": "narrative-nexus",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,6 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/preferences": "^8.0.1",
     "@tailwindcss/typography": "^0.5.19",
     "cors": "^2.8.6",
     "express": "^5.2.1",

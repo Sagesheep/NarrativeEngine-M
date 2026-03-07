@@ -1,10 +1,11 @@
 import type { AppSettings, ChatMessage, GameContext, LoreChunk, ProviderConfig, NPCEntry } from '../types';
+import { minifyLoreBlock, minifyNPCBlock } from './contextMinifier';
 
-type OpenAIMessage = {
+export type OpenAIMessage = {
     role: 'system' | 'user' | 'assistant' | 'tool';
     content: string | null;
     name?: string;
-    tool_calls?: any[];
+    tool_calls?: Record<string, unknown>[];
     tool_call_id?: string;
 };
 
@@ -51,10 +52,8 @@ export function buildPayload(
     if (relevantLore !== undefined) {
         // RAG is active for this campaign. 
         if (relevantLore.length > 0) {
-            const loreBlock = relevantLore
-                .map((c) => `### ${c.header}\n${c.content}`)
-                .join('\n\n');
-            dynamicSystemParts.push(`[WORLD LORE — RELEVANT SECTIONS]\n${loreBlock}\n[END WORLD LORE]`);
+            // Minify lore chunks: strip markdown, compress field labels → ~72% token savings
+            dynamicSystemParts.push(minifyLoreBlock(relevantLore));
         }
     } else if (context.loreRaw) {
         // Legacy fallback: No loreChunks generated yet, just dump the raw text.
@@ -62,10 +61,10 @@ export function buildPayload(
     }
 
     // === 3b. Inject active NPCs from the Ledger (DYNAMIC SUFFIX) ===
-    // We only need to scan the recent context for active NPCs to save processing.
-    // Scanning the last 10 messages is enough to catch anyone currently relevant.
-    const candidateMessagesToScan = history.length > 10
-        ? history.slice(-10)
+    // Only scan the most recent messages to avoid injecting NPCs from old scenes.
+    // 4 messages ≈ current exchange + 1 prior exchange — tight enough to stay relevant.
+    const candidateMessagesToScan = history.length > 4
+        ? history.slice(-4)
         : history;
 
     if (npcLedger && npcLedger.length > 0) {
@@ -85,12 +84,19 @@ export function buildPayload(
 
         if (activeNPCs.length > 0) {
             console.log(`[NPC Ledger] Injected ${activeNPCs.length} active NPC(s):`, activeNPCs.map(n => n.name).join(', '));
-            const npcLines = activeNPCs.map(npc => {
-                const aliases = npc.aliases ? ` (${npc.aliases})` : '';
-                return `[${npc.name.toUpperCase()}${aliases}] ${npc.status || 'Alive'} | ${npc.appearance || '?'} | ${npc.disposition || '?'} | Goals: ${npc.goals || '?'} | N:${npc.nature} T:${npc.training} E:${npc.emotion} S:${npc.social} B:${npc.belief} G:${npc.ego}`;
-            });
-            dynamicSystemParts.push(`[ACTIVE NPC CONTEXT]\n${npcLines.join('\n')}\n[END NPC CONTEXT]`);
+            // Minify NPC block: drop verbose labels, compact axes format
+            dynamicSystemParts.push(minifyNPCBlock(activeNPCs));
         }
+    }
+
+    // === 3c. Player Inventory & Powers (DYNAMIC SUFFIX) ===
+    // Placed directly before user message so character sheet updates don't kill the history cache
+    if (context.characterProfileActive && context.characterProfile) {
+        dynamicSystemParts.push(`[CHARACTER PROFILE]\n${context.characterProfile}`);
+    }
+
+    if (context.inventoryActive && context.inventory) {
+        dynamicSystemParts.push(`[PLAYER INVENTORY]\n${context.inventory}`);
     }
 
     const systemContent = systemParts.join('\n\n');
@@ -153,7 +159,7 @@ export async function sendMessage(
     onChunk: (text: string) => void,
     onDone: (toolCall?: { id: string, name: string, arguments: string }) => void,
     onError: (err: string) => void,
-    tools?: any[]
+    tools?: Record<string, unknown>[]
 ): Promise<void> {
     const url = `${provider.endpoint.replace(/\/+$/, '')}/chat/completions`;
 
@@ -163,7 +169,7 @@ export async function sendMessage(
     }
 
     try {
-        const payload: any = {
+        const payload: Record<string, unknown> = {
             model: provider.modelName,
             messages,
             stream: true,
@@ -172,13 +178,18 @@ export async function sendMessage(
             payload.tools = tools;
         }
 
+        const controller = new AbortController();
+        let timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds timeout
+
         const res = await fetch(url, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload),
+            signal: controller.signal
         });
 
         if (!res.ok) {
+            clearTimeout(timeoutId);
             const errBody = await res.text();
             onError(`API error ${res.status}: ${errBody}`);
             return;
@@ -186,6 +197,7 @@ export async function sendMessage(
 
         const reader = res.body?.getReader();
         if (!reader) {
+            clearTimeout(timeoutId);
             onError('No readable stream in response');
             return;
         }
@@ -193,6 +205,8 @@ export async function sendMessage(
         const decoder = new TextDecoder();
         let buffer = '';
         let fullText = '';
+        let cacheHitTokens = 0;
+        let cacheMissTokens = 0;
 
         let tcId = '';
         let tcName = '';
@@ -200,7 +214,10 @@ export async function sendMessage(
 
         while (true) {
             const { done, value } = await reader.read();
+            clearTimeout(timeoutId);
             if (done) break;
+
+            timeoutId = setTimeout(() => controller.abort(), 120000); // reset timeout for next chunk
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
@@ -227,6 +244,13 @@ export async function sendMessage(
                         if (tc.function?.name) tcName = tc.function.name;
                         if (tc.function?.arguments) tcArgs += tc.function.arguments;
                     }
+
+                    // Capture DeepSeek cache stats from the final chunk
+                    const usage = parsed.usage || parsed.choices?.[0]?.usage;
+                    if (usage) {
+                        if (usage.prompt_cache_hit_tokens != null) cacheHitTokens = usage.prompt_cache_hit_tokens;
+                        if (usage.prompt_cache_miss_tokens != null) cacheMissTokens = usage.prompt_cache_miss_tokens;
+                    }
                 } catch {
                     // skip malformed chunks
                 }
@@ -246,7 +270,7 @@ export async function sendMessage(
                 // We'll capture both the parameter name and the text content inside the tags.
                 const paramRegex = /<｜DSML｜parameter name="([^"]+)"[^>]*>([\s\S]*?)<\/｜DSML｜parameter>/g;
                 let match;
-                const argsObj: Record<string, any> = {};
+                const argsObj: Record<string, string> = {};
 
                 while ((match = paramRegex.exec(fullText)) !== null) {
                     argsObj[match[1]] = match[2].trim();
@@ -272,6 +296,13 @@ export async function sendMessage(
                 fullText = fullText.split('<｜DSML｜function_calls>')[0].trim();
                 onChunk(fullText); // Push the cleaned text back to UI
             }
+        }
+
+        // Log cache performance for diagnosis
+        if (cacheHitTokens > 0 || cacheMissTokens > 0) {
+            const total = cacheHitTokens + cacheMissTokens;
+            const ratio = total > 0 ? ((cacheHitTokens / total) * 100).toFixed(1) : '0';
+            console.log(`[Cache] Hit: ${cacheHitTokens} | Miss: ${cacheMissTokens} | Ratio: ${ratio}% cached`);
         }
 
         if (tcName) {
@@ -311,8 +342,9 @@ export async function generateNPCProfile(
     try {
         console.log(`[NPC Generator] Initiating background profile generation for: ${npcName}`);
 
-        // Grab recent context (last ~15 messages should give enough flavor)
-        const recentHistory = history.slice(-15).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
+        // Grab recent context — 5 messages is plenty for a character who just appeared.
+        // Reduced from 15 to cut uncacheable token waste (~70% reduction per call)
+        const recentHistory = history.slice(-5).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
 
         const systemPrompt = `You are a background GM assistant running silently.
 The game mentioned a new character named "${npcName}".
@@ -325,7 +357,7 @@ The JSON must perfectly match this structure:
   "name": "String (The primary name)",
   "aliases": "String (Comma separated aliases or titles)",
   "status": "String (Alive, Deceased, Missing, or Unknown)",
-  "appearance": "String (Brief visual description)",
+  "appearance": "String (Square profile prompt: [Facial geometry/Attractiveness archetype], [Detailed hair style/texture], [Expression], [Centering: 'Centered headshot, square composition'], [Lighting/Art style]. Use keywords like: 'symmetrical features' for beauty, 'asymmetrical/pockmarked' for ugly, 'close-up portrait', 'voluminous waves' or 'receding hairline'.)",
   "disposition": "String (Helpful, Hostile, Suspicion, etc)",
   "goals": "String (Core motive)",
   "nature": 5,
@@ -333,9 +365,11 @@ The JSON must perfectly match this structure:
   "emotion": 5,
   "social": 5,
   "belief": 5,
-  "ego": 5
+  "ego": 5,
+  "affinity": 50
 }
-Note: the 6 axes (nature...ego) MUST be integers from 1 to 10.`;
+Note: the 6 axes (nature...ego) MUST be integers from 1 to 10.
+Note: affinity MUST be an integer from 0 to 100 representing how much they like the player (0=Nemesis, 50=Neutral, 100=Ally).`;
 
         const messages: OpenAIMessage[] = [
             { role: 'system', content: systemPrompt },
@@ -354,7 +388,7 @@ Note: the 6 axes (nature...ego) MUST be integers from 1 to 10.`;
 
         if (fullJsonStr) {
             // Strip potential markdown code blocks if the LLM ignored instructions
-            let cleanStr = fullJsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
+            const cleanStr = fullJsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
 
             try {
                 const parsed = JSON.parse(cleanStr);
@@ -374,6 +408,7 @@ Note: the 6 axes (nature...ego) MUST be integers from 1 to 10.`;
                     social: Number(parsed.social) || 5,
                     belief: Number(parsed.belief) || 5,
                     ego: Number(parsed.ego) || 5,
+                    affinity: Number(parsed.affinity) || 50,
                 };
 
                 addNPCToStore(newEntry);
@@ -393,6 +428,75 @@ Note: the 6 axes (nature...ego) MUST be integers from 1 to 10.`;
  * Background auto-update for existing NPCs that were mentioned in the chat.
  * Asks the LLM if any relevant attributes have changed based on recent context.
  */
+/**
+ * AI-powered tag population for Surprise & World engines.
+ * Sends current tags + world lore to the AI, returns 3-12 contextually relevant tags.
+ */
+export async function populateEngineTags(
+    provider: ProviderConfig,
+    worldLore: string,
+    currentTags: string[],
+    field: 'surpriseTypes' | 'surpriseTones' | 'worldWho' | 'worldWhere' | 'worldWhy' | 'worldWhat'
+): Promise<string[]> {
+    const fieldDescriptions: Record<typeof field, string> = {
+        surpriseTypes: 'surprise event TYPES (e.g. ENVIRONMENTAL_HAZARD, NPC_ACTION, BEAST_BEHAVIOR). These are categories of unexpected events that can occur during gameplay.',
+        surpriseTones: 'surprise event TONES (e.g. TERRIFYING, HILARIOUS, MYSTERIOUS). These describe the emotional flavor of the surprise.',
+        worldWho: '"Who" elements for world events — the actors/instigators (e.g. "a rogue splinter group", "a powerful leader").',
+        worldWhere: '"Where" elements for world events — the locations (e.g. "in a neighboring city", "deep underground").',
+        worldWhy: '"Why" elements for world events — the motivations (e.g. "to seize power", "for brutal vengeance").',
+        worldWhat: '"What" elements for world events — the actions taken (e.g. "declared open hostilities", "formed an unexpected alliance").',
+    };
+
+    const prompt = `You are a Campaign Tag Generator. Your job is to analyze the provided WORLD LORE and CURRENT TAGS, then generate contextually appropriate tags that fit this specific campaign's theme, factions, locations, and tone.
+
+[FIELD TO GENERATE]
+${fieldDescriptions[field]}
+
+[CURRENT TAGS — Use as reference for format and style]
+${currentTags.join(', ')}
+
+[WORLD LORE — Use to make tags thematically relevant]
+${worldLore.slice(0, 6000)}
+
+RULES:
+- Generate MINIMUM 3 and MAXIMUM 12 tags.
+- Tags must be thematically appropriate for this specific campaign world.
+- Keep the same format style as the current tags (uppercase for surprise types/tones, descriptive phrases for world engine).
+- Do NOT repeat any current tags verbatim — generate NEW ones inspired by the lore.
+- RESPOND ONLY WITH A VALID JSON ARRAY OF STRINGS. No markdown, no explanation.
+
+Example output: ["TAG_ONE", "TAG_TWO", "TAG_THREE"]`;
+
+    const messages: OpenAIMessage[] = [
+        { role: 'user', content: prompt }
+    ];
+
+    let fullJsonStr = '';
+
+    await sendMessage(
+        provider,
+        messages,
+        (chunk) => { fullJsonStr = chunk; },
+        () => { },
+        (err) => console.error('[Tag Populator] Error:', err)
+    );
+
+    if (fullJsonStr) {
+        const cleanStr = fullJsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
+        try {
+            const parsed = JSON.parse(cleanStr);
+            if (Array.isArray(parsed) && parsed.length >= 3 && parsed.every((t: unknown) => typeof t === 'string')) {
+                console.log(`[Tag Populator] Generated ${parsed.length} tags for ${field}:`, parsed);
+                return parsed.slice(0, 12);
+            }
+        } catch (e) {
+            console.error('[Tag Populator] Failed to parse JSON:', e, '\nRaw:', cleanStr);
+        }
+    }
+
+    return currentTags; // Fallback to current tags if generation fails
+}
+
 export async function updateExistingNPCs(
     provider: ProviderConfig,
     history: ChatMessage[],
@@ -403,17 +507,20 @@ export async function updateExistingNPCs(
 
     console.log(`[NPC Updater] Checking for attribute shifts on ${npcsToCheck.length} existing NPC(s)...`);
 
-    const recentContext = history.slice(-5).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
+    // 3 messages is enough to detect attribute shifts — reduced from 5 to save tokens
+    const recentContext = history.slice(-3).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
 
     const npcDatas = npcsToCheck.map(npc => {
         return `[NPC: ${npc.name}]\n` +
             `Status: ${npc.status || 'Alive'}\n` +
+            `Appearance: ${npc.appearance || 'Unknown'}\n` +
             `Disposition: ${npc.disposition || 'Unknown'}\n` +
             `Goals: ${npc.goals || 'Unknown'}\n` +
+            `Affinity: ${npc.affinity ?? 50}/100\n` +
             `Axes: Nature=${npc.nature}/10, Training=${npc.training}/10, Emotion=${npc.emotion}/10, Social=${npc.social}/10, Belief=${npc.belief}/10, Ego=${npc.ego}/10\n`
     }).join('\n\n');
 
-    const prompt = `You are a background game state analyzer. Your job is to read the RECENT CONTEXT of an RPG session and determine if any of the provided NPCs have undergone a shift in their status, personality axes, goals, or disposition.
+    const prompt = `You are a background game state analyzer. Your job is to read the RECENT CONTEXT of an RPG session and determine if any of the provided NPCs have undergone a shift in their status, appearance, personality axes, goals, or disposition.
 
 [RECENT CONTEXT]
 ${recentContext}
@@ -426,11 +533,13 @@ ${npcDatas}
 If NO changes occurred for ANY of these NPCs, respond EXACTLY with:
 {"updates": []}
 
-If ANY changes occurred, respond with a JSON object containing an "updates" array. Each update must include the basic "name" and ANY attributes that have fundamentally changed (status, disposition, goals, nature, training, emotion, social, belief, ego). DO NOT include attributes that stayed the same.
+If ANY changes occurred, respond with a JSON object containing an "updates" array. Each update must include the basic "name" and ANY attributes that have fundamentally changed (status, appearance, disposition, goals, nature, training, emotion, social, belief, ego, affinity). DO NOT include attributes that stayed the same.
+For "appearance", if it has changed, use this format: String (Square profile prompt: [Facial geometry/Attractiveness archetype], [Detailed hair style/texture], [Expression], [Centering: 'Centered headshot, square composition'], [Lighting/Art style]. Use keywords like: 'symmetrical features' for beauty, 'asymmetrical/pockmarked' for ugly, 'close-up portrait', 'voluminous waves' or 'receding hairline'.)
 Valid statuses: Alive, Deceased, Missing, Unknown.
+Note: "affinity" is a 0-100 scale of how much they like the player (0=Nemesis, 50=Neutral, 100=Ally). Update this if the player did something to gain or lose favor.
 
 Example of an NPC dying and getting angry:
-{"updates": [{"name": "Captain Vorin", "changes": {"status": "Deceased", "emotion": 9}}]}
+{"updates": [{"name": "Captain Vorin", "changes": {"status": "Deceased", "emotion": 9, "affinity": 10}}]}
 
 RESPOND ONLY WITH VALID JSON.`;
 
@@ -450,7 +559,7 @@ RESPOND ONLY WITH VALID JSON.`;
         );
 
         if (fullJsonStr) {
-            let cleanStr = fullJsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
+            const cleanStr = fullJsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
             const parsed = JSON.parse(cleanStr);
 
             if (parsed.updates && Array.isArray(parsed.updates)) {

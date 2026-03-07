@@ -36,7 +36,7 @@ export function Header() {
             </button>
 
             <h1 className="hidden md:block text-terminal text-sm font-bold tracking-[0.3em] uppercase glow-green shrink-0">
-                AI GM COCKPIT
+                NARRATIVE NEXUS
             </h1>
 
             <div className="hidden md:block flex-1">

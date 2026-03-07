@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Dices, Loader2, Zap, ChevronDown, Scroll, Edit2, RotateCcw, Trash2, Check, X } from 'lucide-react';
+import { Send, Save, Loader2, Zap, ChevronDown, Scroll, Edit2, RotateCcw, Trash2, Check, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { useAppStore } from '../store/useAppStore';
-import { buildPayload, sendMessage, generateNPCProfile, updateExistingNPCs } from '../services/chatEngine';
+import { useAppStore, DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES } from '../store/useAppStore';
+import { buildPayload, sendMessage, generateNPCProfile, updateExistingNPCs, type OpenAIMessage } from '../services/chatEngine';
 import type { NPCEntry, ChatMessage } from '../types';
 import { shouldCondense, condenseHistory } from '../services/condenser';
 import { runSaveFilePipeline } from '../services/saveFileEngine';
 import { retrieveRelevantLore, searchLoreByQuery } from '../services/loreRetriever';
+import { generateWorldEventTag, checkWorldEvent } from '../services/worldEngine';
+import { Preferences } from '@capacitor/preferences';
 
 function uid(): string {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -26,6 +28,7 @@ export function ChatArea() {
         setCondensing,
         getActiveProvider,
         setActiveProvider,
+        setActivePreset,
         activeCampaignId,
         deleteMessage,
         deleteMessagesFrom,
@@ -35,16 +38,25 @@ export function ChatArea() {
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [isStreaming, setStreaming] = useState(false); // Moved from store to local state
     const [isCheckingNotes, setIsCheckingNotes] = useState(false);
-    const [visibleCount, setVisibleCount] = useState(20);
+    const [visibleCount, setVisibleCount] = useState(10);
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const turnCountRef = useRef(0); // Throttle NPC background calls
 
     // Auto-scroll only when a NEW message appears, not on every streaming token update.
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages.length]);
+
+    // Auto-resize textarea based on content
+    useEffect(() => {
+        if (inputRef.current) {
+            inputRef.current.style.height = 'auto'; // Reset to auto first to allow shrinking
+            inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 256)}px`;
+        }
+    }, [input]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -63,10 +75,12 @@ export function ChatArea() {
         if (condenser.isCondensing) return;
         setCondensing(true);
         try {
-            const provider = useAppStore.getState().getActiveProvider();
+            const gmProvider = useAppStore.getState().getActiveProvider();
+            const summarizerProvider = useAppStore.getState().getSummarizerProvider();
             // Step 1 & 2: Generate Canon State + Header Index BEFORE condensing
+            // Uses MAIN GM provider — needs intelligence for canon extraction
             const currentCtx = useAppStore.getState().context;
-            const saveResult = await runSaveFilePipeline(provider, messages, currentCtx);
+            const saveResult = await runSaveFilePipeline(gmProvider, messages, currentCtx);
 
             // Auto-populate fields
             if (saveResult.canonSuccess) {
@@ -78,10 +92,10 @@ export function ChatArea() {
 
             console.log(`[SavePipeline] Canon: ${saveResult.canonSuccess ? '✓' : '✗'}, Index: ${saveResult.indexSuccess ? '✓' : '✗'}`);
 
-            // Step 3: Condense history (using fresh context with updated glossary)
+            // Step 3: Condense history — uses SUMMARIZER provider (can be cheap/local)
             const freshCtx = useAppStore.getState().context;
             const result = await condenseHistory(
-                provider,
+                summarizerProvider,
                 messages,
                 freshCtx,
                 condenser.condensedUpToIndex,
@@ -102,47 +116,102 @@ export function ChatArea() {
         if (!overrideText) setInput('');
 
         const provider = useAppStore.getState().getActiveProvider();
+        const currentMessages = useAppStore.getState().messages;
 
         const relevantLore = loreChunks.length > 0
-            ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex, textToUse, 1200, messages)
+            ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex, textToUse, 1200, currentMessages)
             : undefined;
 
-        let newDC = context.surpriseDC ?? 98;
-        const roll = Math.floor(Math.random() * 100) + 1;
-        let finalInput = textToUse;
-
-        if (roll >= newDC) {
-            const slot1 = ["ENVIRONMENTAL_HAZARD", "NPC_ACTION", "WEATHER_CHANGE", "ITEM_COMPLICATION", "SUDDEN_DANGER", "FACTION_INTERVENTION", "STRANGE_DISCOVERY", "MAGIC_ANOMALY", "BEAST_BEHAVIOR", "STRUCTURAL_COLLAPSE", "SUDDEN_ARRIVAL", "LOST_ITEM", "MISUNDERSTANDING", "REVELATION", "TRAP_TRIGGERED", "OPPORTUNITY"];
-            const slot2 = ["GOOD", "BAD", "NEUTRAL", "WEIRD", "HILARIOUS", "TERRIFYING", "AWKWARD", "MYSTERIOUS", "CHAOTIC", "GROTESQUE", "WHOLESOME", "EPIC", "MUNDANE"];
-            const type = slot1[Math.floor(Math.random() * slot1.length)];
-            const tone = slot2[Math.floor(Math.random() * slot2.length)];
-
-            finalInput += `\n[SURPRISE: TYPE=${type}, TONE=${tone}]`;
-            newDC = 98;
-            console.log(`[Surprise Engine] Triggered! Type: ${type}, Tone: ${tone}`);
-        } else {
-            console.log(`[Surprise Engine] Roll: ${roll} < DC: ${newDC}. Decreasing DC.`);
-            newDC = Math.max(5, newDC - 3);
-        }
-        updateContext({ surpriseDC: newDC });
-
-        // <--- DICE FAIRNESS ENGINE ---!>
-        const generatePool = () => {
-            const rolls = [
-                Math.floor(Math.random() * 20) + 1,
-                Math.floor(Math.random() * 20) + 1,
-                Math.floor(Math.random() * 20) + 1
-            ].sort((a, b) => a - b);
-            return `${rolls[0]},${rolls[1]},${rolls[2]}`;
+        const surpriseConfig = context.surpriseConfig || {
+            types: [...DEFAULT_SURPRISE_TYPES],
+            tones: [...DEFAULT_SURPRISE_TONES],
+            initialDC: 98,
+            dcReduction: 3
         };
 
-        finalInput += `\n[DICE: COMBAT=${generatePool()} | PERCEPTION=${generatePool()} | STEALTH=${generatePool()} | SOCIAL=${generatePool()} | MOVEMENT=${generatePool()} | KNOWLEDGE=${generatePool()} | MUNDANE=20,20,20]`;
+        // Enforce safe fallbacks
+        const typesList = surpriseConfig.types.length >= 3 ? surpriseConfig.types : DEFAULT_SURPRISE_TYPES;
+        const tonesList = surpriseConfig.tones.length >= 3 ? surpriseConfig.tones : DEFAULT_SURPRISE_TONES;
+
+        let newDC = context.surpriseDC ?? surpriseConfig.initialDC;
+        let finalInput = textToUse;
+
+        if (context.surpriseEngineActive !== false) {
+            const roll = Math.floor(Math.random() * 100) + 1;
+            if (roll >= newDC) {
+                const type = typesList[Math.floor(Math.random() * typesList.length)];
+                const tone = tonesList[Math.floor(Math.random() * tonesList.length)];
+
+                finalInput += `\n[SURPRISE EVENT: ${type} (${tone})]`;
+                newDC = surpriseConfig.initialDC;
+                console.log(`[Surprise Engine] Triggered! Type: ${type}, Tone: ${tone}. Resetting DC to ${newDC}`);
+            } else {
+                console.log(`[Surprise Engine] Roll: ${roll} < DC: ${newDC}. Decreasing DC by ${surpriseConfig.dcReduction}.`);
+                newDC = Math.max(5, newDC - surpriseConfig.dcReduction);
+            }
+        }
+
+        // <--- WORLD ENGINE ---!>
+        const worldEventConfig = context.worldEventConfig || { initialDC: 198, dcReduction: 3, who: [], where: [], why: [], what: [] };
+        let currentWorldEventDC = context.worldEventDC ?? worldEventConfig.initialDC;
+
+        if (context.worldEngineActive !== false) {
+            const worldEventCheck = checkWorldEvent(currentWorldEventDC, worldEventConfig.initialDC, worldEventConfig.dcReduction);
+            if (worldEventCheck.hit) {
+                const hasCustomTags = worldEventConfig.who && worldEventConfig.who.length >= 3 &&
+                    worldEventConfig.where && worldEventConfig.where.length >= 3 &&
+                    worldEventConfig.why && worldEventConfig.why.length >= 3 &&
+                    worldEventConfig.what && worldEventConfig.what.length >= 3;
+
+                const tag = hasCustomTags
+                    ? `[WORLD_EVENT: ${worldEventConfig.who![Math.floor(Math.random() * worldEventConfig.who!.length)]} ${worldEventConfig.what![Math.floor(Math.random() * worldEventConfig.what!.length)]} ${worldEventConfig.why![Math.floor(Math.random() * worldEventConfig.why!.length)]} ${worldEventConfig.where![Math.floor(Math.random() * worldEventConfig.where!.length)]}]`
+                    : generateWorldEventTag();
+
+                finalInput += `\n${tag}`;
+                console.log(`[World Engine] Roll: ${worldEventCheck.roll} >= DC: ${currentWorldEventDC}. Triggered! Tag: ${tag}`);
+            } else {
+                console.log(`[World Engine] Roll: ${worldEventCheck.roll} < DC: ${currentWorldEventDC}. Missed. New DC: ${worldEventCheck.newDC}`);
+            }
+            currentWorldEventDC = worldEventCheck.newDC;
+        }
+
+        updateContext({ surpriseDC: newDC, worldEventDC: currentWorldEventDC });
+
+        // <--- DICE FAIRNESS ENGINE ---!>
+        if (context.diceFairnessActive !== false) {
+            const getOutcomeWord = (rollResult: number) => {
+                const config = context.diceConfig || {
+                    catastrophe: 2,
+                    failure: 6,
+                    mixedSuccess: 11,
+                    cleanSuccess: 17,
+                    exceptionalSuccess: 19,
+                };
+                if (rollResult <= config.catastrophe) return "Catastrophe";
+                if (rollResult <= config.failure) return "Failure";
+                if (rollResult <= config.mixedSuccess) return "Mixed Success";
+                if (rollResult <= config.cleanSuccess) return "Clean Success";
+                if (rollResult <= config.exceptionalSuccess) return "Exceptional Success";
+                return "Narrative Boon";
+            };
+
+            const generatePool = () => {
+                const rolls = [
+                    Math.floor(Math.random() * 20) + 1,
+                    Math.floor(Math.random() * 20) + 1,
+                    Math.floor(Math.random() * 20) + 1
+                ].sort((a, b) => a - b);
+                return `Disadvantage: ${getOutcomeWord(rolls[0])}, Normal: ${getOutcomeWord(rolls[1])}, Advantage: ${getOutcomeWord(rolls[2])}`;
+            };
+
+            finalInput += `\n[DICE OUTCOMES: COMBAT=(${generatePool()}) | PERCEPTION=(${generatePool()}) | STEALTH=(${generatePool()}) | SOCIAL=(${generatePool()}) | MOVEMENT=(${generatePool()}) | KNOWLEDGE=(${generatePool()}) | MUNDANE=(Narrative Boon)]`;
+        }
         // <----------------------!>
 
         const payload = buildPayload(
             settings,
             context,
-            messages,
+            currentMessages,
             finalInput,
             condenser.condensedSummary || undefined,
             condenser.condensedUpToIndex,
@@ -150,7 +219,7 @@ export function ChatArea() {
             npcLedger
         );
 
-        const executeTurn = async (currentPayload: any[], toolCallCount = 0) => {
+        const executeTurn = async (currentPayload: OpenAIMessage[], toolCallCount = 0, apiRetryCount = 0) => {
             if (toolCallCount === 0) {
                 const userMsg = { id: uid(), role: 'user' as const, content: finalInput, displayContent: textToUse, timestamp: Date.now(), debugPayload: payload };
                 useAppStore.getState().addMessage(userMsg);
@@ -201,7 +270,9 @@ export function ChatArea() {
 
                         // Execute Tool locally
                         let query = '';
-                        try { query = JSON.parse(toolCall.arguments).query || ''; } catch { }
+                        try { query = JSON.parse(toolCall.arguments).query || ''; } catch {
+                            console.warn('[ToolExecution] Failed to parse tool arguments:', toolCall.arguments);
+                        }
 
                         let toolResult = "No relevant lore found.";
                         if (query) {
@@ -243,7 +314,6 @@ export function ChatArea() {
                     const allMsgs = useAppStore.getState().messages;
                     const lastAssistant = allMsgs[allMsgs.length - 1];
                     if (lastAssistant?.role === 'assistant' && lastAssistant.content) {
-                        appendToArchive(textToUse, lastAssistant.content);
 
                         // ── NPC Auto-Generation: Parse AI response for character name tags ──
                         // Supports 3 formats:
@@ -253,21 +323,43 @@ export function ChatArea() {
                         const content = lastAssistant.content;
                         const extractedNames: string[] = [];
 
+                        // Blocklist: common words, pronouns, and scene-header tokens that should NEVER be NPC names
+                        const NPC_NAME_BLOCKLIST = new Set([
+                            'you', 'your', 'your name', 'me', 'i', 'we', 'they', 'them', 'he', 'she', 'it',
+                            'the', 'a', 'an', 'this', 'that', 'here', 'there', 'who', 'what', 'where', 'when',
+                            'scene', 'end', 'start', 'continue', 'note', 'notes', 'action', 'roll', 'dice',
+                            'combat', 'perception', 'stealth', 'social', 'movement', 'knowledge', 'mundane',
+                            'surprise', 'system', 'gm', 'dm', 'player', 'pc', 'npc', 'lore', 'world',
+                            'alive', 'dead', 'deceased', 'missing', 'unknown', 'active', 'inactive',
+                            'view raw payload', 'condensed', 'archive', 'edit', 'cancel',
+                        ]);
+
+                        // Pattern to exclude generic roles like "Guard A" or "Scout 1"
+                        const GENERIC_ROLE_PATTERN = /^(guard|scout|merchant|soldier|bandit|thug|villager|citizen|patron|cultist|goblin|orc|skeleton|zombie|enemy|monster|creature)\s+[a-z0-9]$/i;
+
                         // Pattern 1 & 2: [Name] or [**Name**] — no colons allowed inside (filters out [SYSTEM: ...])
-                        const bracketMatches = Array.from(content.matchAll(/\[\*{0,2}([A-Za-z][A-Za-z0-9 _'-]*[A-Za-z0-9])\*{0,2}\]/g));
+                        // Now allows periods for honorifics like Mr. / Mrs. / Dr.
+                        const bracketMatches = Array.from(content.matchAll(/\[\*{0,2}([A-Za-z][A-Za-z0-9 _.'-]*[A-Za-z0-9.])\*{0,2}\]/g));
                         for (const m of bracketMatches) {
                             const raw = m[1].trim();
                             // Skip if it contains a colon (system tags) or is too short
                             if (raw.includes(':') || raw.length < 2) continue;
                             // Skip multi-word ALL-CAPS tags like "END RECORD" or "ACTIVE NPC CONTEXT"
                             if (raw.includes(' ') && raw === raw.toUpperCase()) continue;
+                            // Skip blocklisted words
+                            if (NPC_NAME_BLOCKLIST.has(raw.toLowerCase())) continue;
+                            // Skip generic roles
+                            if (GENERIC_ROLE_PATTERN.test(raw)) continue;
                             extractedNames.push(raw);
                         }
 
                         // Pattern 3: [SYSTEM: NPC_ENTRY - NAME]
                         const entryMatches = Array.from(content.matchAll(/\[SYSTEM:\s*NPC_ENTRY\s*[-–—]\s*([A-Za-z][A-Za-z0-9 _'-]*)\]/gi));
                         for (const m of entryMatches) {
-                            extractedNames.push(m[1].trim());
+                            const raw = m[1].trim();
+                            if (NPC_NAME_BLOCKLIST.has(raw.toLowerCase())) continue;
+                            if (GENERIC_ROLE_PATTERN.test(raw)) continue;
+                            extractedNames.push(raw);
                         }
 
                         if (extractedNames.length > 0) {
@@ -279,6 +371,7 @@ export function ChatArea() {
                             const uniqueNames = Array.from(new Set(normalized));
 
                             const existingNpcsToUpdate: NPCEntry[] = [];
+                            const newNpcsToGenerate: string[] = [];
 
                             for (const potentialName of uniqueNames) {
                                 // Check if already in ledger (case-insensitive against name + aliases)
@@ -294,22 +387,38 @@ export function ChatArea() {
                                 });
 
                                 if (!existingNpc) {
-                                    console.log(`[NPC Auto-Gen] New character detected: "${potentialName}" — spawning background profile generation...`);
-                                    const provider = settings.providers.find(p => p.id === settings.activeProviderId);
-                                    if (provider) {
-                                        generateNPCProfile(provider, allMsgs, potentialName, addNPC);
-                                    }
+                                    newNpcsToGenerate.push(potentialName);
                                 } else {
                                     existingNpcsToUpdate.push(existingNpc);
                                 }
                             }
 
-                            // Trigger batched background update for existing NPCs
-                            if (existingNpcsToUpdate.length > 0) {
+                            // ── CACHE OPTIMIZATION: Throttle NPC background API calls ──
+                            // NPC generation/update calls use unique prompts that NEVER cache.
+                            // Firing them every turn wastes ~7-9K uncacheable tokens per turn.
+                            // New NPCs: generate immediately (important for continuity)
+                            // Existing NPC updates: only every 3rd turn (attributes rarely shift turn-to-turn)
+                            turnCountRef.current += 1;
+                            const shouldRunNPCUpdates = turnCountRef.current % 3 === 0;
+
+                            if (newNpcsToGenerate.length > 0) {
                                 const provider = settings.providers.find(p => p.id === settings.activeProviderId);
                                 if (provider) {
+                                    for (const potentialName of newNpcsToGenerate) {
+                                        console.log(`[NPC Auto-Gen] New character detected: "${potentialName}" — spawning background profile generation...`);
+                                        generateNPCProfile(provider, allMsgs, potentialName, addNPC);
+                                    }
+                                }
+                            }
+
+                            if (shouldRunNPCUpdates && existingNpcsToUpdate.length > 0) {
+                                const provider = settings.providers.find(p => p.id === settings.activeProviderId);
+                                if (provider) {
+                                    console.log(`[NPC Updater] Turn ${turnCountRef.current} — running batched update for ${existingNpcsToUpdate.length} NPC(s)`);
                                     updateExistingNPCs(provider, allMsgs, existingNpcsToUpdate, updateNPC);
                                 }
+                            } else if (existingNpcsToUpdate.length > 0) {
+                                console.log(`[NPC Updater] Turn ${turnCountRef.current} — skipping update (throttled, next on turn ${Math.ceil(turnCountRef.current / 3) * 3})`);
                             }
                         }
                     }
@@ -318,9 +427,17 @@ export function ChatArea() {
                     }
                 },
                 (err) => {
-                    updateLastAssistant(`⚠ Error: ${err}`);
-                    setStreaming(false);
-                    setIsCheckingNotes(false);
+                    if (apiRetryCount === 0) {
+                        updateLastAssistant(`⚠ Error: ${err}. Retrying...`);
+                        setTimeout(() => executeTurn(currentPayload, toolCallCount, 1), 2000);
+                    } else if (apiRetryCount === 1) {
+                        updateLastAssistant(`⚠ Error: ${err}. Retrying without tools...`);
+                        setTimeout(() => executeTurn(currentPayload, 999, 2), 2000);
+                    } else {
+                        updateLastAssistant(`⚠ Error: ${err}`);
+                        setStreaming(false);
+                        setIsCheckingNotes(false);
+                    }
                 },
                 tools
             );
@@ -340,41 +457,38 @@ export function ChatArea() {
         }
     };
 
-    const insertMacro = (text: string) => {
-        setInput((prev) => prev + text);
-        inputRef.current?.focus();
-    };
+    const [isSaving, setIsSaving] = useState(false);
 
-    const rollD20 = () => {
-        const result = Math.floor(Math.random() * 20) + 1;
-        insertMacro(`[SYSTEM: User rolled D20: ${result}]`);
+    const handleForceSave = async () => {
+        setIsSaving(true);
+        const state = useAppStore.getState();
+        if (state.activeCampaignId) {
+            try {
+                await Promise.all([
+                    Preferences.set({ key: 'app_settings', value: JSON.stringify({ settings: state.settings, activeCampaignId: state.activeCampaignId }) }),
+                    Preferences.set({ key: `campaign_state_${state.activeCampaignId}`, value: JSON.stringify({ context: state.context, messages: state.messages, condenser: state.condenser }) }),
+                    Preferences.set({ key: `campaign_npcs_${state.activeCampaignId}`, value: JSON.stringify(state.npcLedger) })
+                ]);
+            } catch (e) {
+                console.error("[Save] Failed to force save to Preferences:", e);
+            }
+        }
+        setTimeout(() => setIsSaving(false), 2000);
     };
 
     // ─── Archive helpers ───
-    const appendToArchive = async (userText: string, assistantText: string) => {
-        const campaignId = useAppStore.getState().activeCampaignId;
-        if (!campaignId) return;
-        try {
-            await fetch(`/api/campaigns/${campaignId}/archive`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userContent: userText, assistantContent: assistantText }),
-            });
-        } catch (err) {
-            console.warn('[Archive] Failed to append:', err);
-        }
-    };
-
-    const openArchive = async () => {
+    const handleOpenArchive = async () => {
         if (!activeCampaignId) return;
         try {
-            const res = await fetch(`/api/campaigns/${activeCampaignId}/archive/open`);
-            if (!res.ok) {
-                const data = await res.json();
-                console.warn('[Archive]', data.error || 'Failed to open');
+            const { value } = await Preferences.get({ key: `campaign_archive_log_${activeCampaignId}` });
+            if (value && navigator.clipboard) {
+                await navigator.clipboard.writeText(value);
+                alert('Archive log copied to clipboard!');
+            } else {
+                alert('No archive found, or clipboard unavailable.');
             }
-        } catch (err) {
-            console.warn('[Archive] Failed to open:', err);
+        } catch (e) {
+            console.error('Failed to open archive', e);
         }
     };
 
@@ -445,7 +559,7 @@ export function ChatArea() {
                 {messages.length > visibleCount && (
                     <div className="flex justify-center py-2">
                         <button
-                            onClick={() => setVisibleCount(prev => prev + 20)}
+                            onClick={() => setVisibleCount(prev => prev + 10)}
                             className="text-xs text-terminal/70 hover:text-terminal bg-terminal/10 hover:bg-terminal/20 px-4 py-2 rounded transition-colors"
                         >
                             ↑ Load older messages... ({messages.length - visibleCount} hidden)
@@ -540,11 +654,13 @@ export function ChatArea() {
             {/* Macro Bar */}
             <div className="px-2 md:px-4 pb-1 flex gap-2 overflow-x-auto">
                 <button
-                    onClick={rollD20}
-                    className="flex items-center gap-1.5 bg-void border border-ember/30 hover:border-ember text-ember text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-ember/5"
+                    onClick={handleForceSave}
+                    disabled={isSaving}
+                    className="flex items-center gap-1.5 bg-void border border-emerald-500/30 hover:border-emerald-500 text-emerald-500 text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-emerald-500/5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    <Dices size={13} />
-                    <span className="hidden xs:inline">Roll</span> D20
+                    {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    <span className="hidden xs:inline">{isSaving ? 'SAVING...' : 'SAVE CAMPAIGN'}</span>
+                    {!isSaving && <span className="inline xs:hidden">SAVE</span>}
                 </button>
                 <button
                     onClick={triggerCondense}
@@ -555,7 +671,7 @@ export function ChatArea() {
                     {condenser.isCondensing ? 'Condensing...' : 'Condense'}
                 </button>
                 <button
-                    onClick={openArchive}
+                    onClick={handleOpenArchive}
                     disabled={!activeCampaignId}
                     className="flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto"
                 >
@@ -586,36 +702,70 @@ export function ChatArea() {
                 )}
                 <div className="px-2 sm:px-4 pb-3 sm:pb-4 pt-3 sm:pt-4">
                     <div className="flex gap-0 border border-border bg-void focus-within:border-terminal transition-colors">
-                        {/* Provider Dropdown */}
+                        {/* Provider / Preset Dropdown */}
                         <div ref={dropdownRef} className="relative flex-shrink-0">
                             <button
                                 onClick={() => setDropdownOpen(!dropdownOpen)}
                                 className="flex items-center gap-1 px-3 h-full text-[11px] text-ice uppercase tracking-wider border-r border-border hover:bg-ice/5 transition-colors whitespace-nowrap"
                             >
-                                {activeProvider.label}
+                                {settings.presets && settings.presets.length > 0
+                                    ? (settings.presets.find(p => p.id === settings.activePresetId)?.label || activeProvider.label)
+                                    : activeProvider.label
+                                }
                                 <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
 
-                            {dropdownOpen && settings.providers.length > 1 && (
-                                <div className="absolute bottom-full left-0 mb-1 bg-surface border border-border min-w-[160px] z-50 shadow-lg">
-                                    {settings.providers.map((p) => (
-                                        <button
-                                            key={p.id}
-                                            onClick={() => {
-                                                setActiveProvider(p.id);
-                                                setDropdownOpen(false);
-                                            }}
-                                            className={`w-full text-left px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${p.id === activeProvider.id
-                                                ? 'text-ice bg-ice/10'
-                                                : 'text-text-dim hover:text-text-primary hover:bg-void'
-                                                }`}
-                                        >
-                                            <span className="font-mono">{p.label}</span>
-                                            <span className="block text-[9px] text-text-dim/50 normal-case tracking-normal">
-                                                {p.modelName}
-                                            </span>
-                                        </button>
-                                    ))}
+                            {dropdownOpen && (
+                                <div className="absolute bottom-full left-0 mb-1 bg-surface border border-border min-w-[180px] z-50 shadow-lg">
+                                    {/* Show presets if any exist */}
+                                    {settings.presets && settings.presets.length > 0 ? (
+                                        <>
+                                            <div className="px-3 py-1.5 text-[9px] text-text-dim/50 uppercase tracking-wider border-b border-border">
+                                                Presets
+                                            </div>
+                                            {settings.presets.map((preset) => {
+                                                const gmProv = settings.providers.find(p => p.id === preset.gmProviderId);
+                                                return (
+                                                    <button
+                                                        key={preset.id}
+                                                        onClick={() => {
+                                                            setActivePreset(preset.id);
+                                                            setDropdownOpen(false);
+                                                        }}
+                                                        className={`w-full text-left px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${preset.id === settings.activePresetId
+                                                            ? 'text-ice bg-ice/10'
+                                                            : 'text-text-dim hover:text-text-primary hover:bg-void'
+                                                            }`}
+                                                    >
+                                                        <span className="font-mono">{preset.label}</span>
+                                                        <span className="block text-[9px] text-text-dim/50 normal-case tracking-normal">
+                                                            GM: {gmProv?.modelName || '?'}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </>
+                                    ) : (
+                                        /* Fallback: raw provider list (no presets configured) */
+                                        settings.providers.length > 1 && settings.providers.map((p) => (
+                                            <button
+                                                key={p.id}
+                                                onClick={() => {
+                                                    setActiveProvider(p.id);
+                                                    setDropdownOpen(false);
+                                                }}
+                                                className={`w-full text-left px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${p.id === activeProvider.id
+                                                    ? 'text-ice bg-ice/10'
+                                                    : 'text-text-dim hover:text-text-primary hover:bg-void'
+                                                    }`}
+                                            >
+                                                <span className="font-mono">{p.label}</span>
+                                                <span className="block text-[9px] text-text-dim/50 normal-case tracking-normal">
+                                                    {p.modelName}
+                                                </span>
+                                            </button>
+                                        ))
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -626,7 +776,8 @@ export function ChatArea() {
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder={editingMessageId ? "Edit message..." : "What do you do?"}
-                            className="flex-1 bg-transparent px-3 py-2.5 text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[44px]"
+                            className="flex-1 bg-transparent px-3 py-2.5 text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[44px] max-h-64 overflow-y-auto"
+                            rows={1}
                         />
                         <button
                             onClick={editingMessageId ? handleEditSubmit : () => handleSend()}

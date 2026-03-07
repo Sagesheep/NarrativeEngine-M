@@ -1,7 +1,6 @@
 import { create } from 'zustand';
-import type { AppSettings, GameContext, ChatMessage, CondenserState, LoreChunk, ProviderConfig, NPCEntry } from '../types';
-
-const API = '/api';
+import { Preferences } from '@capacitor/preferences';
+import type { AppSettings, GameContext, ChatMessage, CondenserState, LoreChunk, ProviderConfig, ProviderPreset, NPCEntry } from '../types';
 
 function uid(): string {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -14,6 +13,42 @@ const defaultProvider: ProviderConfig = {
     apiKey: '',
     modelName: 'llama3',
 };
+
+export const DEFAULT_SURPRISE_TYPES = [
+    "ENVIRONMENTAL_HAZARD", "NPC_ACTION", "WEATHER_CHANGE", "ITEM_COMPLICATION",
+    "SUDDEN_DANGER", "FACTION_INTERVENTION", "STRANGE_DISCOVERY", "MAGIC_ANOMALY",
+    "BEAST_BEHAVIOR", "STRUCTURAL_COLLAPSE", "SUDDEN_ARRIVAL", "LOST_ITEM",
+    "MISUNDERSTANDING", "REVELATION", "TRAP_TRIGGERED", "OPPORTUNITY"
+];
+
+export const DEFAULT_SURPRISE_TONES = [
+    "GOOD", "BAD", "NEUTRAL", "WEIRD", "HILARIOUS", "TERRIFYING", "AWKWARD",
+    "MYSTERIOUS", "CHAOTIC", "GROTESQUE", "WHOLESOME", "EPIC", "MUNDANE"
+];
+
+export const DEFAULT_WORLD_WHO = [
+    "a major faction/organization", "a rogue splinter group", "a powerful leader/executive",
+    "a dangerous anomaly", "a fanatic cult/extremist group", "a prominent conglomerate/merchant guild",
+    "a desperate individual", "a completely random nobody", "an ancient/forgotten entity", "a chaotic force of nature"
+];
+
+export const DEFAULT_WORLD_WHERE = [
+    "in a neighboring city/sector", "across the nearest border", "deep underground/in the lower levels",
+    "in a remote outpost/village", "in the capital/central hub", "in a forgotten ruin/abandoned zone",
+    "along a main trade/travel route", "in an uncharted area", "in a highly secure/restricted area", "in the wilderness/wasteland"
+];
+
+export const DEFAULT_WORLD_WHY = [
+    "to seize power/control", "for brutal vengeance", "to protect a dangerous secret",
+    "driven by a radical ideology/prophecy", "for untold wealth/resources", "due to an escalating misunderstanding",
+    "out of pure desperation", "because someone dumb got lucky and found a legendary asset", "acting on an old grudge", "to reclaim lost glory/territory"
+];
+
+export const DEFAULT_WORLD_WHAT = [
+    "declared open hostilities/war", "formed an unexpected alliance", "destroyed an important landmark/facility",
+    "discovered a game-changing asset/relic", "assassinated/eliminated a key figure", "triggered a massive disaster",
+    "monopolized a critical resource", "initiated a complete blockade/lockdown", "caused a mass exodus/evacuation", "staged a violent coup/takeover"
+];
 
 type AppState = {
     // Settings
@@ -28,6 +63,13 @@ type AppState = {
     removeProvider: (id: string) => void;
     setActiveProvider: (id: string) => void;
     getActiveProvider: () => ProviderConfig;
+    getSummarizerProvider: () => ProviderConfig;
+
+    // Presets
+    addPreset: (preset: ProviderPreset) => void;
+    updatePreset: (id: string, patch: Partial<ProviderPreset>) => void;
+    removePreset: (id: string) => void;
+    setActivePreset: (id: string) => void;
 
     // Campaign
     activeCampaignId: string | null;
@@ -38,8 +80,10 @@ type AppState = {
     npcLedger: NPCEntry[];
     setNPCLedger: (npcs: NPCEntry[]) => void;
     addNPC: (npc: NPCEntry) => void;
+    addNPCs: (npcs: NPCEntry[]) => void;
     updateNPC: (id: string, patch: Partial<NPCEntry>) => void;
     removeNPC: (id: string) => void;
+    removeNPCs: (ids: string[]) => void;
 
     // Context
     context: GameContext;
@@ -72,16 +116,18 @@ type AppState = {
     toggleNPCLedger: () => void;
 };
 
+
 // Debounced save to avoid hammering the API on rapid changes
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function debouncedSaveSettings(settings: AppSettings, activeCampaignId: string | null) {
     if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-        fetch(`${API}/settings`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ settings, activeCampaignId }),
-        }).catch(console.error);
+    saveTimer = setTimeout(async () => {
+        try {
+            await Preferences.set({
+                key: 'app_settings',
+                value: JSON.stringify({ settings, activeCampaignId })
+            });
+        } catch (e) { console.error('Failed to save settings to Preferences', e); }
     }, 500);
 }
 
@@ -90,12 +136,13 @@ let stateTimer: ReturnType<typeof setTimeout> | null = null;
 function debouncedSaveCampaignState(campaignId: string | null, state: { context: GameContext; messages: ChatMessage[]; condenser: CondenserState }) {
     if (!campaignId) return;
     if (stateTimer) clearTimeout(stateTimer);
-    stateTimer = setTimeout(() => {
-        fetch(`${API}/campaigns/${campaignId}/state`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(state),
-        }).catch(console.error);
+    stateTimer = setTimeout(async () => {
+        try {
+            await Preferences.set({
+                key: `campaign_state_${campaignId}`,
+                value: JSON.stringify(state)
+            });
+        } catch (e) { console.error('Failed to save campaign state', e); }
     }, 1000);
 }
 
@@ -104,12 +151,13 @@ let npcTimer: ReturnType<typeof setTimeout> | null = null;
 function debouncedSaveNPCLedger(campaignId: string | null, npcs: NPCEntry[]) {
     if (!campaignId) return;
     if (npcTimer) clearTimeout(npcTimer);
-    npcTimer = setTimeout(() => {
-        fetch(`${API}/campaigns/${campaignId}/npcs`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(npcs),
-        }).catch(console.error);
+    npcTimer = setTimeout(async () => {
+        try {
+            await Preferences.set({
+                key: `campaign_npcs_${campaignId}`,
+                value: JSON.stringify(npcs)
+            });
+        } catch (e) { console.error('Failed to save NPC ledger', e); }
     }, 1000);
 }
 
@@ -173,28 +221,61 @@ function dedupeNPCLedger(ledger: NPCEntry[]): NPCEntry[] {
 const defaultSettings: AppSettings = {
     providers: [defaultProvider],
     activeProviderId: defaultProvider.id,
+    presets: [],
     contextLimit: 4096,
     autoCondenseEnabled: true,
     debugMode: false,
     theme: 'light',
+    imageApiEndpoint: '',
+    imageApiKey: '',
+    imageApiModel: '',
 };
 
 function applyTheme(theme: 'light' | 'dark') {
     document.documentElement.setAttribute('data-theme', theme);
 }
 
-const defaultContext: GameContext = {
+export const defaultContext: GameContext = {
     loreRaw: '',
     rulesRaw: '',
     canonState: '',
     headerIndex: '',
     starter: '',
     continuePrompt: '',
+    inventory: '',
+    characterProfile: '',
     surpriseDC: 95,
+    worldEventDC: 198,
     canonStateActive: false,
     headerIndexActive: false,
     starterActive: false,
     continuePromptActive: false,
+    inventoryActive: false,
+    characterProfileActive: false,
+    surpriseEngineActive: true,
+    worldEngineActive: true,
+    diceFairnessActive: true,
+    diceConfig: {
+        catastrophe: 2,
+        failure: 6,
+        mixedSuccess: 11,
+        cleanSuccess: 17,
+        exceptionalSuccess: 19,
+    },
+    surpriseConfig: {
+        types: [...DEFAULT_SURPRISE_TYPES],
+        tones: [...DEFAULT_SURPRISE_TONES],
+        initialDC: 98,
+        dcReduction: 3,
+    },
+    worldEventConfig: {
+        initialDC: 198,
+        dcReduction: 3,
+        who: [...DEFAULT_WORLD_WHO],
+        where: [...DEFAULT_WORLD_WHERE],
+        why: [...DEFAULT_WORLD_WHY],
+        what: [...DEFAULT_WORLD_WHAT],
+    },
 };
 
 /** Migrate old single-provider settings to providers[] format */
@@ -206,10 +287,16 @@ function migrateSettings(data: Record<string, unknown>): AppSettings {
         return {
             providers: raw.providers as ProviderConfig[],
             activeProviderId: (raw.activeProviderId as string) || (raw.providers as ProviderConfig[])[0].id,
+            summarizerProviderId: (raw.summarizerProviderId as string) || undefined,
+            presets: (raw.presets as ProviderPreset[]) || [],
+            activePresetId: (raw.activePresetId as string) || undefined,
             contextLimit: (raw.contextLimit as number) ?? 4096,
             autoCondenseEnabled: (raw.autoCondenseEnabled as boolean) ?? true,
             debugMode: (raw.debugMode as boolean) ?? false,
             theme: (raw.theme as 'light' | 'dark') ?? 'light',
+            imageApiEndpoint: (raw.imageApiEndpoint as string) || '',
+            imageApiKey: (raw.imageApiKey as string) || '',
+            imageApiModel: (raw.imageApiModel as string) || '',
         };
     }
 
@@ -226,10 +313,14 @@ function migrateSettings(data: Record<string, unknown>): AppSettings {
     return {
         providers: [migratedProvider],
         activeProviderId: legacyId,
+        presets: [],
         contextLimit: (raw.contextLimit as number) ?? 4096,
         autoCondenseEnabled: (raw.autoCondenseEnabled as boolean) ?? true,
         debugMode: (raw.debugMode as boolean) ?? false,
         theme: (raw.theme as 'light' | 'dark') ?? 'light',
+        imageApiEndpoint: (raw.imageApiEndpoint as string) || '',
+        imageApiKey: (raw.imageApiKey as string) || '',
+        imageApiModel: (raw.imageApiModel as string) || '',
     };
 }
 
@@ -240,23 +331,45 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
     loadSettings: async () => {
         try {
-            const res = await fetch(`${API}/settings`);
-            if (res.ok) {
-                const data = await res.json();
+            const { value } = await Preferences.get({ key: 'app_settings' });
+            if (value) {
+                const data = JSON.parse(value);
                 const migrated = migrateSettings(data);
-                set({
-                    settings: migrated,
-                    activeCampaignId: data.activeCampaignId ?? null,
-                    settingsLoaded: true,
-                });
+                const activeId = data.activeCampaignId ?? null;
+
+                if (activeId) {
+                    try {
+                        const store = await import('../store/campaignStore');
+                        const state = await store.loadCampaignState(activeId);
+                        const chunks = await store.getLoreChunks(activeId);
+                        const npcs = await store.getNPCLedger(activeId);
+
+                        set({
+                            settings: migrated,
+                            activeCampaignId: activeId,
+                            context: state?.context ?? defaultContext,
+                            messages: state?.messages ?? [],
+                            condenser: state?.condenser ?? { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false },
+                            loreChunks: chunks,
+                            npcLedger: npcs,
+                            settingsLoaded: true,
+                        });
+                    } catch (err) {
+                        console.error('Failed to hydrate existing campaign', err);
+                        set({ settings: migrated, activeCampaignId: null, settingsLoaded: true });
+                    }
+                } else {
+                    set({ settings: migrated, activeCampaignId: null, settingsLoaded: true });
+                }
+
                 // Apply persisted theme
                 applyTheme(migrated.theme ?? 'light');
                 // Persist migrated format
-                debouncedSaveSettings(migrated, data.activeCampaignId ?? null);
+                debouncedSaveSettings(migrated, activeId);
                 return;
             }
         } catch (e) {
-            console.warn('Failed to load settings from API, using defaults', e);
+            console.warn('Failed to load settings from Preferences, using defaults', e);
         }
         set({ settingsLoaded: true });
     },
@@ -322,6 +435,58 @@ export const useAppStore = create<AppState>()((set, get) => ({
         return s.settings.providers.find((p) => p.id === s.settings.activeProviderId) || s.settings.providers[0];
     },
 
+    getSummarizerProvider: () => {
+        const s = get();
+        if (s.settings.summarizerProviderId) {
+            const found = s.settings.providers.find(p => p.id === s.settings.summarizerProviderId);
+            if (found) return found;
+        }
+        return get().getActiveProvider();
+    },
+
+    // Preset management
+    addPreset: (preset) => {
+        set((s) => {
+            const newSettings = { ...s.settings, presets: [...(s.settings.presets || []), preset] };
+            debouncedSaveSettings(newSettings, s.activeCampaignId);
+            return { settings: newSettings };
+        });
+    },
+
+    updatePreset: (id, patch) => {
+        set((s) => {
+            const newPresets = (s.settings.presets || []).map(p => p.id === id ? { ...p, ...patch } : p);
+            const newSettings = { ...s.settings, presets: newPresets };
+            debouncedSaveSettings(newSettings, s.activeCampaignId);
+            return { settings: newSettings };
+        });
+    },
+
+    removePreset: (id) => {
+        set((s) => {
+            const newPresets = (s.settings.presets || []).filter(p => p.id !== id);
+            const activePresetId = s.settings.activePresetId === id ? undefined : s.settings.activePresetId;
+            const newSettings = { ...s.settings, presets: newPresets, activePresetId };
+            debouncedSaveSettings(newSettings, s.activeCampaignId);
+            return { settings: newSettings };
+        });
+    },
+
+    setActivePreset: (id) => {
+        set((s) => {
+            const preset = (s.settings.presets || []).find(p => p.id === id);
+            if (!preset) return {};
+            const newSettings = {
+                ...s.settings,
+                activePresetId: id,
+                activeProviderId: preset.gmProviderId,
+                summarizerProviderId: preset.summarizerProviderId || undefined,
+            };
+            debouncedSaveSettings(newSettings, s.activeCampaignId);
+            return { settings: newSettings };
+        });
+    },
+
     // Campaign defaults
     activeCampaignId: null,
     setActiveCampaign: (id) => {
@@ -346,6 +511,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
         debouncedSaveNPCLedger(s.activeCampaignId, deduped);
         return { npcLedger: deduped };
     }),
+    addNPCs: (npcs) => set((s) => {
+        const withNew = [...s.npcLedger, ...npcs];
+        const deduped = dedupeNPCLedger(withNew);
+        debouncedSaveNPCLedger(s.activeCampaignId, deduped);
+        return { npcLedger: deduped };
+    }),
     updateNPC: (id, patch) => set((s) => {
         const newLedger = s.npcLedger.map(n => n.id === id ? { ...n, ...patch } : n);
         debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
@@ -353,6 +524,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }),
     removeNPC: (id) => set((s) => {
         const newLedger = s.npcLedger.filter(n => n.id !== id);
+        debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
+        return { npcLedger: newLedger };
+    }),
+    removeNPCs: (ids) => set((s) => {
+        const newLedger = s.npcLedger.filter(n => !ids.includes(n.id));
         debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
         return { npcLedger: newLedger };
     }),

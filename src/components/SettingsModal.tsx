@@ -198,6 +198,47 @@ export function SettingsModal() {
                     </div>
                 )}
 
+                {/* ─── Image AI Settings ─── */}
+                <div className="mt-6 pt-4 border-t border-border space-y-4">
+                    <h3 className="text-[11px] text-ice uppercase tracking-wider font-bold">◆ Image AI Settings</h3>
+                    <div>
+                        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
+                            API Endpoint
+                        </label>
+                        <input
+                            type="text"
+                            value={settings.imageApiEndpoint || ''}
+                            onChange={(e) => updateSettings({ imageApiEndpoint: e.target.value })}
+                            placeholder="e.g. https://api.wavespeed.ai/v1/images/generations"
+                            className="w-full bg-void border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 font-mono"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
+                            API Key
+                        </label>
+                        <input
+                            type="password"
+                            value={settings.imageApiKey || ''}
+                            onChange={(e) => updateSettings({ imageApiKey: e.target.value })}
+                            placeholder="sk-..."
+                            className="w-full bg-void border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 font-mono"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
+                            Image Model <span className="text-text-dim/60">(optional)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={settings.imageApiModel || ''}
+                            onChange={(e) => updateSettings({ imageApiModel: e.target.value })}
+                            placeholder="e.g. dall-e-3, sd-xl..."
+                            className="w-full bg-void border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 font-mono"
+                        />
+                    </div>
+                </div>
+
                 {/* ─── Global Settings ─── */}
                 <div className="mt-6 pt-4 border-t border-border space-y-4">
                     {/* Context Limit */}
@@ -264,8 +305,8 @@ export function SettingsModal() {
                             <button
                                 onClick={() => updateSettings({ theme: 'light' })}
                                 className={`px-3 py-1 text-[10px] uppercase tracking-wider transition-colors ${(settings.theme ?? 'light') === 'light'
-                                        ? 'bg-terminal text-surface'
-                                        : 'bg-void text-text-dim hover:text-text-primary'
+                                    ? 'bg-terminal text-surface'
+                                    : 'bg-void text-text-dim hover:text-text-primary'
                                     }`}
                             >
                                 ☀ Light
@@ -273,8 +314,8 @@ export function SettingsModal() {
                             <button
                                 onClick={() => updateSettings({ theme: 'dark' })}
                                 className={`px-3 py-1 text-[10px] uppercase tracking-wider transition-colors border-l border-border ${settings.theme === 'dark'
-                                        ? 'bg-terminal text-surface'
-                                        : 'bg-void text-text-dim hover:text-text-primary'
+                                    ? 'bg-terminal text-surface'
+                                    : 'bg-void text-text-dim hover:text-text-primary'
                                     }`}
                             >
                                 ☽ Dark
