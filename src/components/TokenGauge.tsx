@@ -1,21 +1,34 @@
+import { useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
+import { countTokens } from '../services/tokenizer';
 
 export function TokenGauge() {
     const { context, messages, settings, condenser } = useAppStore();
 
-    const systemParts: string[] = [];
-    if (context.loreRaw) systemParts.push(context.loreRaw);
-    if (context.rulesRaw) systemParts.push(context.rulesRaw);
-    if (context.canonStateActive && context.canonState) systemParts.push(context.canonState);
-    if (context.headerIndexActive && context.headerIndex) systemParts.push(context.headerIndex);
-    if (context.starterActive && context.starter) systemParts.push(context.starter);
-    if (context.continuePromptActive && context.continuePrompt) systemParts.push(context.continuePrompt);
-    if (condenser.condensedSummary) systemParts.push(condenser.condensedSummary);
-    const systemText = systemParts.join('\n\n');
-    const systemTokens = Math.ceil(systemText.length / 4);
+    const systemText = useMemo(() => {
+        const parts: string[] = [];
+        if (context.loreRaw) parts.push(context.loreRaw);
+        if (context.rulesRaw) parts.push(context.rulesRaw);
+        if (context.canonStateActive && context.canonState) parts.push(context.canonState);
+        if (context.headerIndexActive && context.headerIndex) parts.push(context.headerIndex);
+        if (context.starterActive && context.starter) parts.push(context.starter);
+        if (context.continuePromptActive && context.continuePrompt) parts.push(context.continuePrompt);
+        if (context.characterProfileActive && context.characterProfile) parts.push(`[CHARACTER PROFILE]\n${context.characterProfile}`);
+        if (context.inventoryActive && context.inventory) parts.push(`[PLAYER INVENTORY]\n${context.inventory}`);
+        if (condenser.condensedSummary) parts.push(condenser.condensedSummary);
+        return parts.join('\n\n');
+    }, [context.loreRaw, context.rulesRaw, context.canonState, context.canonStateActive, context.headerIndex, context.headerIndexActive, context.starter, context.starterActive, context.continuePrompt, context.continuePromptActive, context.characterProfile, context.characterProfileActive, context.inventory, context.inventoryActive, condenser.condensedSummary]);
 
-    const historyText = messages.map((m) => m.content).join('');
-    const historyTokens = Math.ceil(historyText.length / 4);
+    const systemTokens = useMemo(() => countTokens(systemText), [systemText]);
+
+    const historyText = useMemo(() => {
+        const activeMessages = (condenser.condensedUpToIndex !== undefined && condenser.condensedUpToIndex >= 0)
+            ? messages.slice(condenser.condensedUpToIndex + 1)
+            : messages;
+        return activeMessages.map((m) => m.content || '').join('');
+    }, [messages, condenser.condensedUpToIndex]);
+
+    const historyTokens = useMemo(() => countTokens(historyText), [historyText]);
 
     const total = settings.contextLimit;
     const remaining = Math.max(0, total - systemTokens - historyTokens);
@@ -53,3 +66,4 @@ export function TokenGauge() {
         </div>
     );
 }
+

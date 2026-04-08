@@ -1,13 +1,57 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Play, Clock, BookOpen, Pencil } from 'lucide-react';
-import { useAppStore, defaultContext } from '../store/useAppStore';
+import { Plus, Trash2, Play, Clock, BookOpen, Pencil, Settings } from 'lucide-react';
+import { useAppStore } from '../store/useAppStore';
 import {
     listCampaigns, deleteCampaign, loadCampaignState,
     saveCampaign, saveCampaignState, saveLoreChunks, getLoreChunks,
-    getNPCLedger
+    getNPCLedger, saveNPCLedger, loadArchiveIndex, loadChapters, loadSemanticFacts
 } from '../store/campaignStore';
 import { chunkLoreFile } from '../services/loreChunker';
+import { extractEngineSeeds } from '../services/loreEngineSeeder';
+import { parseNPCsFromLore } from '../services/loreNPCParser';
+import { dedupeNPCLedger } from '../store/slices/campaignSlice';
+import { api } from '../services/apiClient';
 import type { Campaign } from '../types';
+
+const DEFAULT_CONTEXT = {
+    loreRaw: '',
+    rulesRaw: '',
+    canonState: '',
+    headerIndex: '',
+    starter: '',
+    continuePrompt: '',
+    inventory: '',
+    characterProfile: '',
+    surpriseDC: 95,
+    encounterDC: 198,
+    worldEventDC: 498,
+    canonStateActive: false,
+    headerIndexActive: false,
+    starterActive: false,
+    continuePromptActive: false,
+    inventoryActive: false,
+    characterProfileActive: false,
+    surpriseEngineActive: true,
+    encounterEngineActive: true,
+    worldEngineActive: true,
+    diceFairnessActive: true,
+    sceneNote: '',
+    sceneNoteActive: false,
+    sceneNoteDepth: 3,
+    // --- AI Players (Enemy, Neutral, Ally) ---
+    worldVibe: 'High fantasy, high stakes.',
+    enemyPlayerActive: false,
+    neutralPlayerActive: false,
+    allyPlayerActive: false,
+    enemyPlayerPrompt: '',
+    neutralPlayerPrompt: '',
+    allyPlayerPrompt: '',
+    interventionChance: 20,
+    enemyCooldown: 5,
+    neutralCooldown: 5,
+    allyCooldown: 5,
+    interventionQueue: [] as ('enemy' | 'neutral' | 'ally')[],
+};
 
 const DEFAULT_CONDENSER = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
 
@@ -34,7 +78,11 @@ export function CampaignHub() {
         setCampaigns(list);
     }, []);
 
-    useEffect(() => { refresh(); }, [refresh]);
+    useEffect(() => {
+        let mounted = true;
+        listCampaigns().then(list => { if (mounted) setCampaigns(list); });
+        return () => { mounted = false; };
+    }, []);
 
     const resetForm = () => {
         setName('');
@@ -85,27 +133,67 @@ export function CampaignHub() {
                 lastPlayedAt: Date.now(),
             };
 
-        // Update cover if changed
         if (coverFile) {
             campaign.coverImage = coverPreview;
         } else if (isEdit) {
-            campaign.coverImage = coverPreview; // Keep existing or cleared
+            campaign.coverImage = coverPreview;
         }
 
         await saveCampaign(campaign);
 
-        // Process lore file if uploaded
         if (loreFile) {
             const loreText = await loreFile.text();
             const chunks = chunkLoreFile(loreText);
             await saveLoreChunks(campaign.id, chunks);
+
+            const seeds = extractEngineSeeds(chunks);
+            if (seeds) {
+                const existingState = await loadCampaignState(campaign.id);
+                const ctx = { ...DEFAULT_CONTEXT, ...(existingState?.context ?? {}) };
+                await saveCampaignState(campaign.id, {
+                    context: {
+                        ...ctx,
+                        surpriseConfig: {
+                            initialDC: ctx.surpriseConfig?.initialDC ?? 95,
+                            dcReduction: ctx.surpriseConfig?.dcReduction ?? 3,
+                            types: seeds.surpriseTypes.length > 0 ? seeds.surpriseTypes : (ctx.surpriseConfig?.types ?? []),
+                            tones: seeds.surpriseTones.length > 0 ? seeds.surpriseTones : (ctx.surpriseConfig?.tones ?? []),
+                        },
+                        encounterConfig: {
+                            initialDC: ctx.encounterConfig?.initialDC ?? 198,
+                            dcReduction: ctx.encounterConfig?.dcReduction ?? 2,
+                            types: seeds.encounterTypes.length > 0 ? seeds.encounterTypes : (ctx.encounterConfig?.types ?? []),
+                            tones: seeds.encounterTones.length > 0 ? seeds.encounterTones : (ctx.encounterConfig?.tones ?? []),
+                        },
+                        worldEventConfig: {
+                            initialDC: ctx.worldEventConfig?.initialDC ?? 498,
+                            dcReduction: ctx.worldEventConfig?.dcReduction ?? 2,
+                            who: seeds.worldWho.length > 0 ? seeds.worldWho : (ctx.worldEventConfig?.who ?? []),
+                            where: seeds.worldWhere.length > 0 ? seeds.worldWhere : (ctx.worldEventConfig?.where ?? []),
+                            why: seeds.worldWhy.length > 0 ? seeds.worldWhy : (ctx.worldEventConfig?.why ?? []),
+                            what: seeds.worldWhat.length > 0 ? seeds.worldWhat : (ctx.worldEventConfig?.what ?? []),
+                        },
+                    },
+                    messages: existingState?.messages ?? [],
+                    condenser: existingState?.condenser ?? DEFAULT_CONDENSER,
+                });
+            }
+
+            const loreNPCs = parseNPCsFromLore(chunks);
+            if (loreNPCs.length > 0) {
+                const existingNpcs = await getNPCLedger(campaign.id);
+                const merged = dedupeNPCLedger([...existingNpcs, ...loreNPCs]);
+                await saveNPCLedger(campaign.id, merged);
+            }
         }
 
-        // Process rules file if uploaded (update campaign state)
+        // Only write campaign state when a new rules file is actually provided.
+        // Never fall back to DEFAULT_CONTEXT — that would silently erase real data
+        // if the modal opens before IndexedDB has finished loading.
         if (rulesFile) {
             const rulesRaw = await rulesFile.text();
             const existingState = await loadCampaignState(campaign.id);
-            const ctx = existingState?.context ?? defaultContext;
+            const ctx = { ...DEFAULT_CONTEXT, ...(existingState?.context ?? {}) };
             await saveCampaignState(campaign.id, {
                 context: { ...ctx, rulesRaw },
                 messages: existingState?.messages ?? [],
@@ -116,37 +204,51 @@ export function CampaignHub() {
         setModalOpen(false);
         resetForm();
         refresh();
+
+        // 🟢 FIX: Actually execute "Enter" if we just created a new campaign
+        if (!isEdit) {
+            handleSelectCampaign(campaign);
+        }
     };
 
     const handleSelectCampaign = async (campaign: Campaign) => {
-        // Update last played
-        campaign.lastPlayedAt = Date.now();
-        await saveCampaign(campaign);
+        const now = new Date().getTime();
+        const updatedCampaign = { ...campaign, lastPlayedAt: now };
+        await saveCampaign(updatedCampaign);
 
-        // Load campaign state and flush into Zustand
         const state = await loadCampaignState(campaign.id);
         const chunks = await getLoreChunks(campaign.id);
         const npcs = await getNPCLedger(campaign.id);
+        const archiveIndex = await loadArchiveIndex(campaign.id);
+        const [facts, chaps] = await Promise.all([
+            loadSemanticFacts(campaign.id).catch(() => []),
+            loadChapters(campaign.id).catch(() => []),
+        ]);
 
-        // Batch-set all state at once to avoid partial renders
         useAppStore.setState({
-            context: state?.context ?? defaultContext,
+            context: { ...DEFAULT_CONTEXT, ...(state?.context ?? {}) },
             messages: state?.messages ?? [],
-            condenser: state?.condenser ?? DEFAULT_CONDENSER,
+            condenser: { ...(state?.condenser ?? DEFAULT_CONDENSER), isCondensing: false },
             loreChunks: chunks,
             npcLedger: npcs,
+            archiveIndex,
+            semanticFacts: facts,
+            chapters: chaps,
             activeCampaignId: campaign.id,
         });
     };
 
     const handleDelete = async (id: string) => {
+        await api.backup.create(id, { trigger: 'pre-delete', isAuto: true }).catch(() => {});
         await deleteCampaign(id);
         setConfirmDelete(null);
         refresh();
     };
 
-    const timeAgo = (ts: number) => {
-        const diff = Date.now() - ts;
+    const timeAgo = (ts: number | undefined) => {
+        if (!ts) return 'Never played';
+        const now = new Date().getTime();
+        const diff = now - ts;
         const mins = Math.floor(diff / 60000);
         if (mins < 60) return `${mins}m ago`;
         const hrs = Math.floor(mins / 60);
@@ -156,18 +258,26 @@ export function CampaignHub() {
     };
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-void p-4 md:p-8">
+        <div className="flex flex-col items-center justify-center min-h-screen bg-void p-4 md:p-8 relative">
+            <button
+                onClick={() => useAppStore.getState().toggleSettings()}
+                className="absolute top-4 right-4 sm:top-8 sm:right-8 p-3 text-text-dim hover:text-terminal transition-colors bg-surface border border-border rounded-full hover:border-terminal z-50"
+                title="Global Settings"
+            >
+                <Settings size={20} />
+            </button>
+
             {/* Title */}
             <h1 className="text-terminal text-lg sm:text-2xl font-bold tracking-[0.2em] sm:tracking-[0.4em] uppercase glow-green mb-2">
-                NARRATIVE NEXUS
+                Narrative Engine
             </h1>
             <p className="text-text-dim text-xs tracking-widest uppercase mb-6 sm:mb-10">
                 SELECT CAMPAIGN
             </p>
 
             {/* Campaign Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 max-w-4xl w-full mb-6 sm:mb-8">
-                {campaigns.map((c) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl w-full mb-8">
+                {campaigns.filter(c => c && c.id && c.name && c.id !== 'undefined').map((c) => (
                     <div
                         key={c.id}
                         className="group relative bg-surface border border-border rounded-lg overflow-hidden hover:border-terminal transition-all duration-300 cursor-pointer"
@@ -201,19 +311,19 @@ export function CampaignHub() {
                         {/* Edit button */}
                         <button
                             onClick={(e) => { e.stopPropagation(); openEdit(c); }}
-                            className="absolute top-2 left-2 p-1.5 rounded bg-void/80 text-text-dim hover:text-terminal opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                            className="absolute top-2 left-2 p-2 rounded bg-void/90 text-text-dim hover:text-terminal touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                             title="Edit campaign"
                         >
-                            <Pencil size={14} />
+                            <Pencil size={16} />
                         </button>
 
                         {/* Delete button */}
                         <button
                             onClick={(e) => { e.stopPropagation(); setConfirmDelete(c.id); }}
-                            className="absolute top-2 right-2 p-1.5 rounded bg-void/80 text-text-dim hover:text-danger opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                            className="absolute top-2 right-2 p-2 rounded bg-void/90 text-text-dim hover:text-danger touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                             title="Delete campaign"
                         >
-                            <Trash2 size={14} />
+                            <Trash2 size={16} />
                         </button>
                     </div>
                 ))}
@@ -221,10 +331,10 @@ export function CampaignHub() {
                 {/* New Campaign Card */}
                 <button
                     onClick={openCreate}
-                    className="bg-surface border border-dashed border-border rounded-lg h-56 flex flex-col items-center justify-center gap-3 hover:border-terminal hover:bg-void-lighter transition-all duration-300 group"
+                    className="bg-surface border border-dashed border-border rounded-lg min-h-[140px] md:h-56 flex flex-col items-center justify-center gap-3 hover:border-terminal hover:bg-void-lighter transition-all duration-300 group"
                 >
-                    <Plus size={28} className="text-text-dim group-hover:text-terminal transition-colors" />
-                    <span className="text-text-dim text-xs uppercase tracking-widest group-hover:text-terminal transition-colors">
+                    <Plus size={32} className="text-text-dim group-hover:text-terminal transition-colors" />
+                    <span className="text-text-dim text-xs uppercase tracking-widest group-hover:text-terminal transition-colors font-bold">
                         New Campaign
                     </span>
                 </button>
@@ -262,7 +372,7 @@ export function CampaignHub() {
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="e.g. Fantasy — Ash's Story"
-                            className="w-full bg-void border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/50 mb-4"
+                            className="w-full bg-void border border-border rounded px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 mb-4"
                             autoFocus
                         />
 
@@ -289,8 +399,8 @@ export function CampaignHub() {
                         <label className="block text-text-dim text-xs uppercase tracking-wider mb-1">
                             World Lore (.md) {editingCampaign && <span className="text-text-dim/50 normal-case">— re-upload to replace</span>}
                         </label>
-                        <label className="flex items-center gap-2 px-3 py-2 bg-void border border-border rounded cursor-pointer hover:border-terminal transition-colors mb-1">
-                            <BookOpen size={14} className="text-text-dim" />
+                        <label className="flex items-center gap-2 px-3 py-3 md:py-2 bg-void border border-border rounded cursor-pointer hover:border-terminal transition-colors mb-1">
+                            <BookOpen size={16} className="text-text-dim" />
                             <span className="text-sm text-text-dim">{loreName || 'Choose file...'}</span>
                             <input type="file" accept=".md,.txt" className="hidden" onChange={(e) => {
                                 const f = e.target.files?.[0];
@@ -303,8 +413,8 @@ export function CampaignHub() {
                         <label className="block text-text-dim text-xs uppercase tracking-wider mb-1">
                             Rules (.md) {editingCampaign && <span className="text-text-dim/50 normal-case">— re-upload to replace</span>}
                         </label>
-                        <label className="flex items-center gap-2 px-3 py-2 bg-void border border-border rounded cursor-pointer hover:border-terminal transition-colors mb-6">
-                            <BookOpen size={14} className="text-text-dim" />
+                        <label className="flex items-center gap-2 px-3 py-3 md:py-2 bg-void border border-border rounded cursor-pointer hover:border-terminal transition-colors mb-8">
+                            <BookOpen size={16} className="text-text-dim" />
                             <span className="text-sm text-text-dim">{rulesName || 'Choose file...'}</span>
                             <input type="file" accept=".md,.txt" className="hidden" onChange={(e) => {
                                 const f = e.target.files?.[0];
@@ -314,13 +424,13 @@ export function CampaignHub() {
 
                         {/* Actions */}
                         <div className="flex gap-3 justify-end">
-                            <button onClick={() => { setModalOpen(false); resetForm(); }} className="px-4 py-2 text-xs text-text-dim hover:text-text-primary border border-border rounded transition-colors">
+                            <button onClick={() => { setModalOpen(false); resetForm(); }} className="px-6 py-3 md:py-2 text-xs text-text-dim hover:text-text-primary border border-border rounded transition-colors min-h-[48px] md:min-h-0">
                                 Cancel
                             </button>
                             <button
                                 onClick={handleSave}
                                 disabled={!name.trim()}
-                                className="px-4 py-2 text-xs text-void bg-terminal rounded font-bold hover:brightness-110 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                className="px-6 py-3 md:py-2 text-xs text-void bg-terminal rounded font-bold hover:brightness-110 transition-colors disabled:opacity-30 disabled:cursor-not-allowed min-h-[48px] md:min-h-0"
                             >
                                 {editingCampaign ? 'Save Changes' : 'Create & Enter'}
                             </button>
@@ -331,3 +441,5 @@ export function CampaignHub() {
         </div>
     );
 }
+
+

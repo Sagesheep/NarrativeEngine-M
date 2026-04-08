@@ -1,6 +1,6 @@
-import type { ChatMessage, ProviderConfig } from '../types';
+import type { ChatMessage, ProviderConfig, EndpointConfig } from '../types';
 
-async function callLLM(provider: ProviderConfig, prompt: string): Promise<string> {
+async function callLLM(provider: ProviderConfig | EndpointConfig, prompt: string): Promise<string> {
     const url = `${provider.endpoint.replace(/\/+$/, '')}/chat/completions`;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (provider.apiKey) {
@@ -27,7 +27,7 @@ async function callLLM(provider: ProviderConfig, prompt: string): Promise<string
 }
 
 export async function scanCharacterProfile(
-    provider: ProviderConfig,
+    provider: ProviderConfig | EndpointConfig,
     messages: ChatMessage[],
     currentProfile: string
 ): Promise<string> {

@@ -1,18 +1,18 @@
-import { useState, useRef, useEffect } from 'react';
-import { Send, Save, Loader2, Zap, ChevronDown, Scroll, Edit2, RotateCcw, Trash2, Check, X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+    Send, Save, Loader2, Zap, Scroll, Edit2, RotateCcw, Trash2, Check, X, Square, 
+    Terminal, Dice5, ChevronDown, ChevronUp, FileText
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { useAppStore, DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES } from '../store/useAppStore';
-import { buildPayload, sendMessage, generateNPCProfile, updateExistingNPCs, type OpenAIMessage } from '../services/chatEngine';
-import type { NPCEntry, ChatMessage } from '../types';
-import { shouldCondense, condenseHistory } from '../services/condenser';
-import { runSaveFilePipeline } from '../services/saveFileEngine';
-import { retrieveRelevantLore, searchLoreByQuery } from '../services/loreRetriever';
-import { generateWorldEventTag, checkWorldEvent } from '../services/worldEngine';
-import { Preferences } from '@capacitor/preferences';
-
-function uid(): string {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
+import { useAppStore } from '../store/useAppStore';
+import type { ChatMessage, EndpointConfig, ProviderConfig } from '../types';
+import { condenseHistory } from '../services/condenser';
+import { runSaveFilePipeline, generateChapterSummary } from '../services/saveFileEngine';
+import { runTurn } from '../services/turnOrchestrator';
+import { shouldAutoSeal, sealChapter as sealChapterEngine } from '../services/archiveChapterEngine';
+import { api } from '../services/apiClient';
+import { set } from 'idb-keyval';
+import { toast } from './Toast';
 
 export function ChatArea() {
     const {
@@ -22,477 +22,292 @@ export function ChatArea() {
         condenser,
         loreChunks,
         npcLedger,
+        archiveIndex,
+        setArchiveIndex,
+        setChapters,
+        setSemanticFacts,
+        clearArchive,
         updateLastAssistant,
         updateContext,
         setCondensed,
         setCondensing,
-        getActiveProvider,
-        setActiveProvider,
-        setActivePreset,
+        resetCondenser,
         activeCampaignId,
         deleteMessage,
         deleteMessagesFrom,
+        getActiveStoryEndpoint,
+        getActiveUtilityEndpoint,
+        addMessage,
+        updateNPC,
+        addNPC,
+        updateLastMessage,
     } = useAppStore();
 
     const [input, setInput] = useState('');
-    const [dropdownOpen, setDropdownOpen] = useState(false);
-    const [isStreaming, setStreaming] = useState(false); // Moved from store to local state
+    const [isStreaming, setStreaming] = useState(false);
     const [isCheckingNotes, setIsCheckingNotes] = useState(false);
-    const [visibleCount, setVisibleCount] = useState(10);
+    const [visibleCount, setVisibleCount] = useState(20);
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
+    const [forcedAIs, setForcedAIs] = useState<('enemy' | 'neutral' | 'ally')[]>([]);
+    const [showScrollFab, setShowScrollFab] = useState(false);
+    const [showCondensedPanel, setShowCondensedPanel] = useState(false);
+    const [editingSummary, setEditingSummary] = useState(false);
+    const [summaryDraft, setSummaryDraft] = useState('');
+    const condenseAbortRef = useRef<AbortController | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-    const turnCountRef = useRef(0); // Throttle NPC background calls
+    const abortControllerRef = useRef<AbortController | null>(null);
 
-    // Auto-scroll only when a NEW message appears, not on every streaming token update.
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages.length]);
 
-    // Auto-resize textarea based on content
     useEffect(() => {
-        if (inputRef.current) {
-            inputRef.current.style.height = 'auto'; // Reset to auto first to allow shrinking
-            inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 256)}px`;
-        }
-    }, [input]);
-
-    // Close dropdown on outside click
-    useEffect(() => {
-        const handleClick = (e: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-                setDropdownOpen(false);
-            }
+        const el = scrollContainerRef.current;
+        if (!el) return;
+        const handleScroll = () => {
+            const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            setShowScrollFab(distFromBottom > 400);
         };
-        document.addEventListener('mousedown', handleClick);
-        return () => document.removeEventListener('mousedown', handleClick);
+        el.addEventListener('scroll', handleScroll, { passive: true });
+        return () => el.removeEventListener('scroll', handleScroll);
     }, []);
-
-    const activeProvider = getActiveProvider();
 
     const triggerCondense = async () => {
         if (condenser.isCondensing) return;
         setCondensing(true);
+        condenseAbortRef.current = new AbortController();
         try {
-            const gmProvider = useAppStore.getState().getActiveProvider();
-            const summarizerProvider = useAppStore.getState().getSummarizerProvider();
-            // Step 1 & 2: Generate Canon State + Header Index BEFORE condensing
-            // Uses MAIN GM provider — needs intelligence for canon extraction
+            const provider = useAppStore.getState().getActiveStoryEndpoint();
+            if (!provider) return;
             const currentCtx = useAppStore.getState().context;
-            const saveResult = await runSaveFilePipeline(gmProvider, messages, currentCtx);
+            const uncondensed = messages.slice(condenser.condensedUpToIndex + 1);
+            const saveResult = await runSaveFilePipeline(provider as EndpointConfig | ProviderConfig, uncondensed, currentCtx);
 
-            // Auto-populate fields
-            if (saveResult.canonSuccess) {
-                updateContext({ canonState: saveResult.canonState });
-            }
-            if (saveResult.indexSuccess) {
-                updateContext({ headerIndex: saveResult.headerIndex });
-            }
+            if (saveResult.canonSuccess) updateContext({ canonState: saveResult.canonState });
+            if (saveResult.indexSuccess) updateContext({ headerIndex: saveResult.headerIndex });
 
-            console.log(`[SavePipeline] Canon: ${saveResult.canonSuccess ? '✓' : '✗'}, Index: ${saveResult.indexSuccess ? '✓' : '✗'}`);
-
-            // Step 3: Condense history — uses SUMMARIZER provider (can be cheap/local)
             const freshCtx = useAppStore.getState().context;
             const result = await condenseHistory(
-                summarizerProvider,
+                provider,
                 messages,
                 freshCtx,
                 condenser.condensedUpToIndex,
-                condenser.condensedSummary
+                condenser.condensedSummary,
+                activeCampaignId || '',
+                npcLedger.map(n => n.name),
+                settings.contextLimit,
+                condenseAbortRef.current.signal
             );
             setCondensed(result.summary, result.upToIndex);
+
+            if (activeCampaignId) {
+                const fresh = await api.archive.getIndex(activeCampaignId);
+                setArchiveIndex(fresh);
+                const freshFacts = await api.facts.get(activeCampaignId).catch(() => []);
+                setSemanticFacts(freshFacts);
+            }
         } catch (err) {
-            console.error('[Condenser]', err);
+            if ((err as Error).name !== 'AbortError') {
+                console.error('[Condenser]', err);
+                toast.error('Condenser failed');
+            }
         } finally {
             setCondensing(false);
+            condenseAbortRef.current = null;
         }
+    };
+
+    const handleStop = () => {
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = null;
+        setStreaming(false);
+        setIsCheckingNotes(false);
+    };
+
+    const resetTextareaHeight = () => {
+        if (inputRef.current) inputRef.current.style.height = '40px';
     };
 
     const handleSend = async (overrideText?: string) => {
         const textToUse = overrideText || input.trim();
         if (!textToUse || isStreaming) return;
 
-        if (!overrideText) setInput('');
-
-        const provider = useAppStore.getState().getActiveProvider();
-        const currentMessages = useAppStore.getState().messages;
-
-        const relevantLore = loreChunks.length > 0
-            ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex, textToUse, 1200, currentMessages)
-            : undefined;
-
-        const surpriseConfig = context.surpriseConfig || {
-            types: [...DEFAULT_SURPRISE_TYPES],
-            tones: [...DEFAULT_SURPRISE_TONES],
-            initialDC: 98,
-            dcReduction: 3
-        };
-
-        // Enforce safe fallbacks
-        const typesList = surpriseConfig.types.length >= 3 ? surpriseConfig.types : DEFAULT_SURPRISE_TYPES;
-        const tonesList = surpriseConfig.tones.length >= 3 ? surpriseConfig.tones : DEFAULT_SURPRISE_TONES;
-
-        let newDC = context.surpriseDC ?? surpriseConfig.initialDC;
-        let finalInput = textToUse;
-
-        if (context.surpriseEngineActive !== false) {
-            const roll = Math.floor(Math.random() * 100) + 1;
-            if (roll >= newDC) {
-                const type = typesList[Math.floor(Math.random() * typesList.length)];
-                const tone = tonesList[Math.floor(Math.random() * tonesList.length)];
-
-                finalInput += `\n[SURPRISE EVENT: ${type} (${tone})]`;
-                newDC = surpriseConfig.initialDC;
-                console.log(`[Surprise Engine] Triggered! Type: ${type}, Tone: ${tone}. Resetting DC to ${newDC}`);
-            } else {
-                console.log(`[Surprise Engine] Roll: ${roll} < DC: ${newDC}. Decreasing DC by ${surpriseConfig.dcReduction}.`);
-                newDC = Math.max(5, newDC - surpriseConfig.dcReduction);
-            }
+        if (!overrideText) {
+            setInput('');
+            resetTextareaHeight();
         }
 
-        // <--- WORLD ENGINE ---!>
-        const worldEventConfig = context.worldEventConfig || { initialDC: 198, dcReduction: 3, who: [], where: [], why: [], what: [] };
-        let currentWorldEventDC = context.worldEventDC ?? worldEventConfig.initialDC;
+        abortControllerRef.current = new AbortController();
 
-        if (context.worldEngineActive !== false) {
-            const worldEventCheck = checkWorldEvent(currentWorldEventDC, worldEventConfig.initialDC, worldEventConfig.dcReduction);
-            if (worldEventCheck.hit) {
-                const hasCustomTags = worldEventConfig.who && worldEventConfig.who.length >= 3 &&
-                    worldEventConfig.where && worldEventConfig.where.length >= 3 &&
-                    worldEventConfig.why && worldEventConfig.why.length >= 3 &&
-                    worldEventConfig.what && worldEventConfig.what.length >= 3;
-
-                const tag = hasCustomTags
-                    ? `[WORLD_EVENT: ${worldEventConfig.who![Math.floor(Math.random() * worldEventConfig.who!.length)]} ${worldEventConfig.what![Math.floor(Math.random() * worldEventConfig.what!.length)]} ${worldEventConfig.why![Math.floor(Math.random() * worldEventConfig.why!.length)]} ${worldEventConfig.where![Math.floor(Math.random() * worldEventConfig.where!.length)]}]`
-                    : generateWorldEventTag();
-
-                finalInput += `\n${tag}`;
-                console.log(`[World Engine] Roll: ${worldEventCheck.roll} >= DC: ${currentWorldEventDC}. Triggered! Tag: ${tag}`);
-            } else {
-                console.log(`[World Engine] Roll: ${worldEventCheck.roll} < DC: ${currentWorldEventDC}. Missed. New DC: ${worldEventCheck.newDC}`);
-            }
-            currentWorldEventDC = worldEventCheck.newDC;
-        }
-
-        updateContext({ surpriseDC: newDC, worldEventDC: currentWorldEventDC });
-
-        // <--- DICE FAIRNESS ENGINE ---!>
-        if (context.diceFairnessActive !== false) {
-            const getOutcomeWord = (rollResult: number) => {
-                const config = context.diceConfig || {
-                    catastrophe: 2,
-                    failure: 6,
-                    mixedSuccess: 11,
-                    cleanSuccess: 17,
-                    exceptionalSuccess: 19,
-                };
-                if (rollResult <= config.catastrophe) return "Catastrophe";
-                if (rollResult <= config.failure) return "Failure";
-                if (rollResult <= config.mixedSuccess) return "Mixed Success";
-                if (rollResult <= config.cleanSuccess) return "Clean Success";
-                if (rollResult <= config.exceptionalSuccess) return "Exceptional Success";
-                return "Narrative Boon";
-            };
-
-            const generatePool = () => {
-                const rolls = [
-                    Math.floor(Math.random() * 20) + 1,
-                    Math.floor(Math.random() * 20) + 1,
-                    Math.floor(Math.random() * 20) + 1
-                ].sort((a, b) => a - b);
-                return `Disadvantage: ${getOutcomeWord(rolls[0])}, Normal: ${getOutcomeWord(rolls[1])}, Advantage: ${getOutcomeWord(rolls[2])}`;
-            };
-
-            finalInput += `\n[DICE OUTCOMES: COMBAT=(${generatePool()}) | PERCEPTION=(${generatePool()}) | STEALTH=(${generatePool()}) | SOCIAL=(${generatePool()}) | MOVEMENT=(${generatePool()}) | KNOWLEDGE=(${generatePool()}) | MUNDANE=(Narrative Boon)]`;
-        }
-        // <----------------------!>
-
-        const payload = buildPayload(
+        await runTurn({
+            input: textToUse,
+            displayInput: textToUse,
             settings,
             context,
-            currentMessages,
-            finalInput,
-            condenser.condensedSummary || undefined,
-            condenser.condensedUpToIndex,
-            relevantLore,
-            npcLedger
-        );
+            messages: useAppStore.getState().messages,
+            condenser,
+            loreChunks,
+            npcLedger,
+            archiveIndex,
+            semanticFacts: useAppStore.getState().semanticFacts,
+            chapters: useAppStore.getState().chapters,
+            activeCampaignId,
+            provider: getActiveStoryEndpoint(),
+            getMessages: () => useAppStore.getState().messages,
+            getFreshProvider: () => getActiveStoryEndpoint(),
+            getUtilityEndpoint: () => getActiveUtilityEndpoint(),
+            forcedInterventions: forcedAIs,
+        }, {
+            onCheckingNotes: setIsCheckingNotes,
+            addMessage,
+            updateLastAssistant,
+            updateLastMessage: (patch) => {
+                if (messages.length > 0) updateLastMessage(patch);
+            },
+            updateContext,
+            setArchiveIndex,
+            updateNPC,
+            addNPC,
+            setCondensed,
+            setCondensing,
+            setStreaming,
+            setLoadingStatus,
+            setLastPayloadTrace: useAppStore.getState().setLastPayloadTrace
+        }, abortControllerRef.current!);
 
-        const executeTurn = async (currentPayload: OpenAIMessage[], toolCallCount = 0, apiRetryCount = 0) => {
-            if (toolCallCount === 0) {
-                const userMsg = { id: uid(), role: 'user' as const, content: finalInput, displayContent: textToUse, timestamp: Date.now(), debugPayload: payload };
-                useAppStore.getState().addMessage(userMsg);
+        setForcedAIs([]);
+        setLoadingStatus(null);
+
+        if (activeCampaignId) {
+            const currentState = useAppStore.getState();
+            if (currentState.chapters.length > 0) {
+                const autoSealResult = shouldAutoSeal(currentState.chapters, currentState.context.headerIndex);
+                if (autoSealResult.shouldSeal) {
+                    handleSealChapter();
+                }
             }
+        }
+    };
 
-            const assistantMsgId = uid();
-            useAppStore.getState().addMessage({ id: assistantMsgId, role: 'assistant' as const, content: '', timestamp: Date.now() });
-            setStreaming(true);
+    const handleSealChapter = async () => {
+        if (!activeCampaignId) return;
+        try {
+            const currentChapters = useAppStore.getState().chapters;
+            const result = sealChapterEngine(currentChapters);
+            const sealed = { ...result.sealedChapter, sealedAt: Date.now() };
+            await api.chapters.update(activeCampaignId, sealed.chapterId, sealed);
+            await api.chapters.create(activeCampaignId);
 
-            // Limit recursion: only provide tools if we haven't looped too many times
-            const tools = toolCallCount < 2 ? [{
-                type: 'function',
-                function: {
-                    name: 'query_campaign_lore',
-                    description: 'Search the Game Master notes for specific lore, rules, characters, or locations. Do NOT call this sequentially or spam it. If no relevant lore is found, immediately proceed with the narrative response. IMPORTANT: You MUST use the standard JSON tool call format. NEVER output raw XML <|DSML|> tags in your response text.',
-                    parameters: {
-                        type: 'object',
-                        properties: { query: { type: 'string', description: 'The specific search query' } },
-                        required: ['query']
+            const provider = useAppStore.getState().getActiveStoryEndpoint();
+            if (provider) {
+                const allScenes = await api.archive.getIndex(activeCampaignId);
+                const chapterScenes = allScenes.filter(s => {
+                    const sn = parseInt(s.sceneId);
+                    return sn >= parseInt(sealed.sceneRange[0]) && sn <= parseInt(sealed.sceneRange[1]);
+                });
+                if (chapterScenes.length > 0) {
+                    const scenesContent = chapterScenes.map(s => ({ sceneId: s.sceneId, content: s.userSnippet || '' }));
+                    const summary = await generateChapterSummary(provider, scenesContent, sealed.title);
+                    if (summary) {
+                        await api.chapters.update(activeCampaignId, sealed.chapterId, {
+                            title: summary.title,
+                            summary: summary.summary,
+                            keywords: summary.keywords,
+                            npcs: summary.npcs,
+                            majorEvents: summary.majorEvents,
+                            unresolvedThreads: summary.unresolvedThreads,
+                            tone: summary.tone,
+                            themes: summary.themes,
+                        });
                     }
                 }
-            }] : undefined;
+            }
 
-            await sendMessage(
-                provider,
-                currentPayload,
-                (fullText) => updateLastAssistant(fullText),
-                async (toolCall) => {
-                    if (toolCall && toolCall.name === 'query_campaign_lore') {
-                        setIsCheckingNotes(true);
-                        setStreaming(false);
+            const updated = await api.chapters.list(activeCampaignId);
+            setChapters(updated);
+            toast.success('Chapter sealed');
+        } catch (err) {
+            toast.error('Failed to seal chapter');
+        }
+    };
 
-                        // Save tool call block to assistant message
-                        const { updateLastMessage } = useAppStore.getState();
-                        updateLastMessage({
-                            tool_calls: [{
-                                id: toolCall.id,
-                                type: 'function' as const,
-                                function: { name: toolCall.name, arguments: toolCall.arguments }
-                            }]
-                        });
-
-                        currentPayload.push({
-                            role: 'assistant',
-                            content: null,
-                            tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                        });
-
-                        // Execute Tool locally
-                        let query = '';
-                        try { query = JSON.parse(toolCall.arguments).query || ''; } catch {
-                            console.warn('[ToolExecution] Failed to parse tool arguments:', toolCall.arguments);
-                        }
-
-                        let toolResult = "No relevant lore found.";
-                        if (query) {
-                            const found = searchLoreByQuery(loreChunks, query);
-                            if (found.length > 0) {
-                                toolResult = found.map(c => `### ${c.header}\n${c.content}`).join('\n\n');
-                            }
-                        }
-
-                        // Save tool response
-                        const toolMsgId = uid();
-                        useAppStore.getState().addMessage({
-                            id: toolMsgId,
-                            role: 'tool' as const,
-                            content: toolResult,
-                            timestamp: Date.now(),
-                            name: toolCall.name,
-                            tool_call_id: toolCall.id
-                        });
-
-                        currentPayload.push({
-                            role: 'tool',
-                            content: toolResult,
-                            name: toolCall.name,
-                            tool_call_id: toolCall.id
-                        });
-
-                        // Loop back to LLM after short visual delay
-                        setTimeout(() => {
-                            setIsCheckingNotes(false);
-                            executeTurn(currentPayload, toolCallCount + 1);
-                        }, 800);
-                        return;
-                    }
-
-                    // Normal Completion
-                    setStreaming(false);
-                    setIsCheckingNotes(false);
-                    const allMsgs = useAppStore.getState().messages;
-                    const lastAssistant = allMsgs[allMsgs.length - 1];
-                    if (lastAssistant?.role === 'assistant' && lastAssistant.content) {
-
-                        // ── NPC Auto-Generation: Parse AI response for character name tags ──
-                        // Supports 3 formats:
-                        //   1. [Name]        — plain brackets
-                        //   2. [**Name**]    — bold brackets
-                        //   3. [SYSTEM: NPC_ENTRY - NAME] — explicit system tag
-                        const content = lastAssistant.content;
-                        const extractedNames: string[] = [];
-
-                        // Blocklist: common words, pronouns, and scene-header tokens that should NEVER be NPC names
-                        const NPC_NAME_BLOCKLIST = new Set([
-                            'you', 'your', 'your name', 'me', 'i', 'we', 'they', 'them', 'he', 'she', 'it',
-                            'the', 'a', 'an', 'this', 'that', 'here', 'there', 'who', 'what', 'where', 'when',
-                            'scene', 'end', 'start', 'continue', 'note', 'notes', 'action', 'roll', 'dice',
-                            'combat', 'perception', 'stealth', 'social', 'movement', 'knowledge', 'mundane',
-                            'surprise', 'system', 'gm', 'dm', 'player', 'pc', 'npc', 'lore', 'world',
-                            'alive', 'dead', 'deceased', 'missing', 'unknown', 'active', 'inactive',
-                            'view raw payload', 'condensed', 'archive', 'edit', 'cancel',
-                        ]);
-
-                        // Pattern to exclude generic roles like "Guard A" or "Scout 1"
-                        const GENERIC_ROLE_PATTERN = /^(guard|scout|merchant|soldier|bandit|thug|villager|citizen|patron|cultist|goblin|orc|skeleton|zombie|enemy|monster|creature)\s+[a-z0-9]$/i;
-
-                        // Pattern 1 & 2: [Name] or [**Name**] — no colons allowed inside (filters out [SYSTEM: ...])
-                        // Now allows periods for honorifics like Mr. / Mrs. / Dr.
-                        const bracketMatches = Array.from(content.matchAll(/\[\*{0,2}([A-Za-z][A-Za-z0-9 _.'-]*[A-Za-z0-9.])\*{0,2}\]/g));
-                        for (const m of bracketMatches) {
-                            const raw = m[1].trim();
-                            // Skip if it contains a colon (system tags) or is too short
-                            if (raw.includes(':') || raw.length < 2) continue;
-                            // Skip multi-word ALL-CAPS tags like "END RECORD" or "ACTIVE NPC CONTEXT"
-                            if (raw.includes(' ') && raw === raw.toUpperCase()) continue;
-                            // Skip blocklisted words
-                            if (NPC_NAME_BLOCKLIST.has(raw.toLowerCase())) continue;
-                            // Skip generic roles
-                            if (GENERIC_ROLE_PATTERN.test(raw)) continue;
-                            extractedNames.push(raw);
-                        }
-
-                        // Pattern 3: [SYSTEM: NPC_ENTRY - NAME]
-                        const entryMatches = Array.from(content.matchAll(/\[SYSTEM:\s*NPC_ENTRY\s*[-–—]\s*([A-Za-z][A-Za-z0-9 _'-]*)\]/gi));
-                        for (const m of entryMatches) {
-                            const raw = m[1].trim();
-                            if (NPC_NAME_BLOCKLIST.has(raw.toLowerCase())) continue;
-                            if (GENERIC_ROLE_PATTERN.test(raw)) continue;
-                            extractedNames.push(raw);
-                        }
-
-                        if (extractedNames.length > 0) {
-                            const { npcLedger, addNPC, updateNPC } = useAppStore.getState();
-                            // Normalize: title-case all-caps single words (e.g., ORIN -> Orin)
-                            const normalized = extractedNames.map(n =>
-                                n === n.toUpperCase() ? n.charAt(0).toUpperCase() + n.slice(1).toLowerCase() : n
-                            );
-                            const uniqueNames = Array.from(new Set(normalized));
-
-                            const existingNpcsToUpdate: NPCEntry[] = [];
-                            const newNpcsToGenerate: string[] = [];
-
-                            for (const potentialName of uniqueNames) {
-                                // Check if already in ledger (case-insensitive against name + aliases)
-                                const existingNpc = npcLedger.find(npc => {
-                                    if (!npc.name) return false;
-                                    const aliasesRaw = npc.aliases || '';
-                                    const allNames = [npc.name, ...aliasesRaw.split(',').map(a => a.trim())].filter(Boolean);
-                                    const search = potentialName.toLowerCase();
-                                    return allNames.some(n => {
-                                        const lower = n.toLowerCase();
-                                        return lower === search || lower.startsWith(search + ' ') || lower.endsWith(' ' + search);
-                                    });
-                                });
-
-                                if (!existingNpc) {
-                                    newNpcsToGenerate.push(potentialName);
-                                } else {
-                                    existingNpcsToUpdate.push(existingNpc);
-                                }
-                            }
-
-                            // ── CACHE OPTIMIZATION: Throttle NPC background API calls ──
-                            // NPC generation/update calls use unique prompts that NEVER cache.
-                            // Firing them every turn wastes ~7-9K uncacheable tokens per turn.
-                            // New NPCs: generate immediately (important for continuity)
-                            // Existing NPC updates: only every 3rd turn (attributes rarely shift turn-to-turn)
-                            turnCountRef.current += 1;
-                            const shouldRunNPCUpdates = turnCountRef.current % 3 === 0;
-
-                            if (newNpcsToGenerate.length > 0) {
-                                const provider = settings.providers.find(p => p.id === settings.activeProviderId);
-                                if (provider) {
-                                    for (const potentialName of newNpcsToGenerate) {
-                                        console.log(`[NPC Auto-Gen] New character detected: "${potentialName}" — spawning background profile generation...`);
-                                        generateNPCProfile(provider, allMsgs, potentialName, addNPC);
-                                    }
-                                }
-                            }
-
-                            if (shouldRunNPCUpdates && existingNpcsToUpdate.length > 0) {
-                                const provider = settings.providers.find(p => p.id === settings.activeProviderId);
-                                if (provider) {
-                                    console.log(`[NPC Updater] Turn ${turnCountRef.current} — running batched update for ${existingNpcsToUpdate.length} NPC(s)`);
-                                    updateExistingNPCs(provider, allMsgs, existingNpcsToUpdate, updateNPC);
-                                }
-                            } else if (existingNpcsToUpdate.length > 0) {
-                                console.log(`[NPC Updater] Turn ${turnCountRef.current} — skipping update (throttled, next on turn ${Math.ceil(turnCountRef.current / 3) * 3})`);
-                            }
-                        }
-                    }
-                    if (settings.autoCondenseEnabled && shouldCondense(allMsgs, settings.contextLimit, condenser.condensedUpToIndex)) {
-                        triggerCondense();
-                    }
-                },
-                (err) => {
-                    if (apiRetryCount === 0) {
-                        updateLastAssistant(`⚠ Error: ${err}. Retrying...`);
-                        setTimeout(() => executeTurn(currentPayload, toolCallCount, 1), 2000);
-                    } else if (apiRetryCount === 1) {
-                        updateLastAssistant(`⚠ Error: ${err}. Retrying without tools...`);
-                        setTimeout(() => executeTurn(currentPayload, 999, 2), 2000);
-                    } else {
-                        updateLastAssistant(`⚠ Error: ${err}`);
-                        setStreaming(false);
-                        setIsCheckingNotes(false);
-                    }
-                },
-                tools
-            );
+    const handleRetcon = () => {
+        if (!confirm('Retcon: Delete all messages and keep only the summary?')) return;
+        const sysMsg: ChatMessage = {
+            id: Date.now().toString(36),
+            role: 'system',
+            content: condenser.condensedSummary,
+            timestamp: Date.now(),
         };
+        useAppStore.setState({ messages: [sysMsg] });
+        setCondensed('', 0);
+        setEditingSummary(false);
+    };
 
-        await executeTurn(payload);
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setInput(e.target.value);
+        if (inputRef.current) {
+            inputRef.current.style.height = '40px';
+            const newHeight = Math.min(inputRef.current.scrollHeight, 240);
+            inputRef.current.style.height = `${newHeight}px`;
+        }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            if (editingMessageId) {
-                handleEditSubmit();
-            } else {
-                handleSend();
-            }
+            editingMessageId ? handleEditSubmit() : handleSend();
         }
     };
 
     const [isSaving, setIsSaving] = useState(false);
 
-    const handleForceSave = async () => {
+    const handleForceSave = () => {
         setIsSaving(true);
         const state = useAppStore.getState();
         if (state.activeCampaignId) {
             try {
-                await Promise.all([
-                    Preferences.set({ key: 'app_settings', value: JSON.stringify({ settings: state.settings, activeCampaignId: state.activeCampaignId }) }),
-                    Preferences.set({ key: `campaign_state_${state.activeCampaignId}`, value: JSON.stringify({ context: state.context, messages: state.messages, condenser: state.condenser }) }),
-                    Preferences.set({ key: `campaign_npcs_${state.activeCampaignId}`, value: JSON.stringify(state.npcLedger) })
-                ]);
+                set(`nn_settings`, { settings: state.settings, activeCampaignId: state.activeCampaignId });
+                set(`nn_campaign_${state.activeCampaignId}_state`, { context: state.context, messages: state.messages, condenser: state.condenser });
+                set(`nn_campaign_${state.activeCampaignId}_npcs`, state.npcLedger);
+                toast.success('Campaign saved');
             } catch (e) {
-                console.error("[Save] Failed to force save to Preferences:", e);
+                toast.error('Save failed');
             }
         }
         setTimeout(() => setIsSaving(false), 2000);
     };
 
-    // ─── Archive helpers ───
-    const handleOpenArchive = async () => {
+    const rollbackArchiveFrom = async (fromTimestamp: number) => {
         if (!activeCampaignId) return;
+        const sorted = [...archiveIndex].sort((a, b) => parseInt(a.sceneId) - parseInt(b.sceneId));
+        const target = sorted.find(e => e.timestamp >= fromTimestamp);
+        if (!target) return;
         try {
-            const { value } = await Preferences.get({ key: `campaign_archive_log_${activeCampaignId}` });
-            if (value && navigator.clipboard) {
-                await navigator.clipboard.writeText(value);
-                alert('Archive log copied to clipboard!');
-            } else {
-                alert('No archive found, or clipboard unavailable.');
-            }
-        } catch (e) {
-            console.error('Failed to open archive', e);
+            await api.backup.create(activeCampaignId, { trigger: 'pre-rollback', isAuto: true }).catch(() => {});
+            await api.archive.deleteFrom(activeCampaignId, target.sceneId);
+            const freshIndex = await api.archive.getIndex(activeCampaignId);
+            setArchiveIndex(freshIndex);
+            const updatedChapters = await api.chapters.list(activeCampaignId).catch(() => []);
+            setChapters(updatedChapters);
+        } catch (err) {
+            toast.warning('Archive rollback failed');
         }
     };
 
-    // ─── Edit & Regenerate logic ───
+    const handleClearArchive = async () => {
+        if (!activeCampaignId || !window.confirm('Delete archive?')) return;
+        try {
+            await api.archive.clear(activeCampaignId);
+            clearArchive();
+        } catch (err) {
+            toast.error('Failed to clear archive');
+        }
+    };
+
     const startEditing = (msg: ChatMessage) => {
         setEditingMessageId(msg.id);
         setInput(msg.displayContent || msg.content);
@@ -505,16 +320,17 @@ export function ChatArea() {
         if (!msg) return;
 
         if (msg.role === 'user') {
-            useAppStore.getState().deleteMessagesFrom(msg.id);
+            rollbackArchiveFrom(msg.timestamp);
+            deleteMessagesFrom(msg.id);
             const textToResend = input.trim();
             setInput('');
+            resetTextareaHeight();
             setEditingMessageId(null);
-            setTimeout(() => {
-                handleSend(textToResend);
-            }, 50);
+            setTimeout(() => handleSend(textToResend), 50);
         } else {
             useAppStore.getState().updateMessageContent(msg.id, input.trim());
             setInput('');
+            resetTextareaHeight();
             setEditingMessageId(null);
         }
     };
@@ -523,24 +339,74 @@ export function ChatArea() {
         const msgs = useAppStore.getState().messages;
         const idx = msgs.findIndex(m => m.id === id);
         if (idx === -1) return;
-
         const prevMsgs = msgs.slice(0, idx);
         const lastUser = [...prevMsgs].reverse().find(m => m.role === 'user');
-
         if (lastUser) {
+            rollbackArchiveFrom(lastUser.timestamp);
             deleteMessagesFrom(lastUser.id);
-            // Wait 50ms for the state deletion to propagate to Zustand store before passing it into handleSend's buildPayload
-            setTimeout(() => {
-                handleSend(lastUser.displayContent || lastUser.content);
-            }, 50);
+            setTimeout(() => handleSend(lastUser.displayContent || lastUser.content), 50);
         }
     };
 
+    const renderContentWithChips = (content: string) => {
+        const parts = content.split(/(\[[\s\S]*?\])/g);
+        return parts.map((part, i) => {
+            if (part.startsWith('[') && part.endsWith(']')) {
+                const tag = part.slice(1, -1);
+                const isDice = tag.includes('D20:') || tag.includes('DICE OUTCOMES:');
+                const isEvent = tag.includes('EVENT:') || tag.includes('SURPRISE') || tag.includes('ENCOUNTER');
+                const isWorld = tag.includes('WORLD_EVENT');
+
+                return (
+                    <span 
+                        key={i} 
+                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 my-0.5 rounded border text-[10px] font-black uppercase tracking-widest leading-none align-middle shadow-sm transition-all hover:scale-105 active:scale-95 cursor-default select-none ${
+                            isDice ? 'bg-terminal/10 border-terminal/30 text-terminal shadow-[0_0_10px_rgba(71,243,183,0.1)]' :
+                            isEvent ? 'bg-amber-500/10 border-amber-500/30 text-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.1)]' :
+                            isWorld ? 'bg-red-500/10 border-red-500/30 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]' :
+                            'bg-ice/10 border-ice/30 text-ice'
+                        }`}
+                    >
+                        {isDice ? <Dice5 size={10} strokeWidth={3} /> : <Terminal size={10} strokeWidth={3} />}
+                        {tag}
+                    </span>
+                );
+            }
+            return (
+                <span key={i} className="inline text-text-primary/90 prose-invert leading-relaxed">
+                    <ReactMarkdown 
+                        components={{
+                            p: ({children}) => <>{children}</>,
+                            strong: ({children}) => <strong className="text-terminal font-black shadow-[0_0_8px_rgba(71,243,183,0.2)]">{children}</strong>,
+                            em: ({children}) => <em className="text-ice italic opacity-90">{children}</em>
+                        }}
+                    >
+                        {part}
+                    </ReactMarkdown>
+                </span>
+            );
+        });
+    };
 
     return (
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            {/* Transcript */}
-            <div className="flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative md:pb-0">
+            {context.sceneNoteActive && (
+                <div className="absolute top-0 left-0 right-0 z-20 px-4 py-1.5 bg-amber/90 backdrop-blur-sm border-b border-amber/40 flex items-center justify-between text-[10px] text-void-dark font-bold uppercase tracking-widest animate-in slide-in-from-top duration-300">
+                    <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-void-dark animate-pulse" />
+                        Active Scene Note: {context.sceneNote.slice(0, 50)}{context.sceneNote.length > 50 ? '...' : ''}
+                    </div>
+                    <button
+                        onClick={() => updateContext({ sceneNoteActive: false })}
+                        className="hover:opacity-60 transition-opacity"
+                        title="Dismiss banner"
+                    >
+                        <X size={12} strokeWidth={3} />
+                    </button>
+                </div>
+            )}
+
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3 nav-clearance">
                 {messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-center space-y-3">
@@ -548,247 +414,219 @@ export function ChatArea() {
                             <p className="text-text-dim text-xs uppercase tracking-widest">
                                 Awaiting transmission...
                             </p>
-                            <p className="text-text-dim/50 text-[11px]">
-                                Paste your lore in the context drawer, configure your LLM, and begin.
-                            </p>
                         </div>
                     </div>
                 )}
 
-                {/* Reverse Pagination: Load Older Messages Button */}
                 {messages.length > visibleCount && (
                     <div className="flex justify-center py-2">
                         <button
-                            onClick={() => setVisibleCount(prev => prev + 10)}
-                            className="text-xs text-terminal/70 hover:text-terminal bg-terminal/10 hover:bg-terminal/20 px-4 py-2 rounded transition-colors"
+                            onClick={() => setVisibleCount(p => p + 20)}
+                            className="text-xs text-terminal/70 hover:text-terminal bg-terminal/10 hover:bg-terminal/20 px-4 py-2 rounded transition-colors border border-terminal/10"
                         >
                             ↑ Load older messages... ({messages.length - visibleCount} hidden)
                         </button>
                     </div>
                 )}
 
-                {messages.slice(-visibleCount).filter(msg => msg.role !== 'tool').map((msg) => (
-                    <div
-                        key={msg.id}
-                        className={`group flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                        <div
-                            className={`max-w-[95%] md:max-w-[75%] px-3 md:px-4 py-2 md:py-3 text-sm font-mono leading-relaxed relative ${msg.role === 'user'
-                                ? 'bg-terminal/8 border-l-2 border-terminal text-text-primary'
-                                : msg.role === 'system'
-                                    ? 'bg-ember/8 border-l-2 border-ember text-ember/80'
-                                    : 'bg-void-lighter border-l-2 border-border text-text-primary'
-                                }`}
-                        >
-                            {/* Action Bar (opacity-0 group-hover:opacity-100) */}
-                            <div className={`absolute -top-3 ${msg.role === 'user' ? 'left-2' : 'right-2'} flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-void-darker border border-border p-[2px] rounded z-10`}>
-                                {msg.role !== 'system' && (
-                                    <button title="Edit" onClick={() => startEditing(msg)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
-                                        <Edit2 size={10} />
-                                    </button>
-                                )}
-                                {msg.role === 'assistant' && (
-                                    <button title="Regenerate" onClick={() => handleRegenerate(msg.id)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
-                                        <RotateCcw size={10} />
-                                    </button>
-                                )}
-                                <button title="Delete" onClick={() => deleteMessage(msg.id)} className="text-text-dim hover:text-red-400 p-1 bg-void-lighter rounded">
-                                    <Trash2 size={10} />
-                                </button>
-                            </div>
+                {messages.slice(-visibleCount).filter(msg => msg.role !== 'tool').map((msg) => {
+                    const markdownContent = typeof msg.displayContent === 'string' ? msg.displayContent : (typeof msg.content === 'string' ? msg.content : '');
+                    let thinkingBlock = '';
+                    const thinkMatch = markdownContent.match(/<think>([\s\S]*?)<\/think>/i);
+                    const cleanContent = thinkMatch ? markdownContent.replace(/<think>[\s\S]*?<\/think>/gi, '').trim() : markdownContent;
+                    if (thinkMatch) thinkingBlock = thinkMatch[1].trim();
 
-                            <div className="flex items-center gap-2 mb-1">
-                                <span
-                                    className={`text-[10px] uppercase tracking-widest ${msg.role === 'user'
-                                        ? 'text-terminal'
-                                        : msg.role === 'system'
-                                            ? 'text-ember'
-                                            : 'text-ice'
-                                        }`}
-                                >
-                                    {msg.role === 'user' ? '► YOU' : msg.role === 'tool' ? '◈ TOOL' : msg.role === 'system' ? '◆ SYS' : '◇ GM'}
-                                </span>
-                                {msg.role === 'tool' && msg.name && (
-                                    <span className="text-[9px] text-terminal font-bold tracking-wider opacity-80">
-                                        [{msg.name}]
+                    const isEnemy = msg.name === 'AI_ENEMY';
+                    const isNeutral = msg.name === 'AI_NEUTRAL';
+                    const isAlly = msg.name === 'AI_ALLY';
+
+                    return (
+                        <div key={msg.id} className={`group flex animate-[msg-in_0.2s_ease-out] ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[95%] md:max-w-[75%] px-3 md:px-4 py-2 md:py-3 text-sm font-mono leading-relaxed relative ${
+                                msg.role === 'user' ? 'bg-terminal/8 border-l-2 border-terminal text-text-primary' :
+                                msg.role === 'system' ? 'bg-ember/8 border-l-2 border-ember text-ember/80' :
+                                isEnemy ? 'bg-red-500/5 border-l-2 border-red-500 text-text-primary shadow-[0_0_15px_rgba(239,68,68,0.05)]' :
+                                isNeutral ? 'bg-amber-500/5 border-l-2 border-amber-500 text-text-primary shadow-[0_0_15px_rgba(245,158,11,0.05)]' :
+                                isAlly ? 'bg-emerald-500/5 border-l-2 border-emerald-500 text-text-primary shadow-[0_0_15px_rgba(16,185,129,0.05)]' :
+                                'bg-void-lighter border-l-2 border-border text-text-primary'
+                            }`}>
+                                <div className={`absolute -top-3 ${msg.role === 'user' ? 'left-2' : 'right-2'} flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-void-darker border border-border p-[2px] rounded z-10`}>
+                                    {msg.role !== 'system' && (
+                                        <button title="Edit" onClick={() => startEditing(msg)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
+                                            <Edit2 size={10} />
+                                        </button>
+                                    )}
+                                    {msg.role === 'assistant' && (
+                                        <button title="Regenerate" onClick={() => handleRegenerate(msg.id)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
+                                            <RotateCcw size={10} />
+                                        </button>
+                                    )}
+                                    <button title="Delete" onClick={() => deleteMessage(msg.id)} className="text-text-dim hover:text-red-400 p-1 bg-void-lighter rounded">
+                                        <Trash2 size={10} />
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className={`text-[10px] uppercase tracking-widest ${msg.role === 'user' ? 'text-terminal' : msg.role === 'system' ? 'text-ember' : 'text-ice'}`}>
+                                        {msg.role === 'user' ? '► YOU' : msg.role === 'system' ? '◆ SYS' : isEnemy ? '◇ [ENEMY]' : isNeutral ? '◇ [NEUTRAL]' : isAlly ? '◇ [ALLY]' : '◇ GM'}
                                     </span>
+                                    <span className="text-[9px] text-text-dim">{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                                </div>
+
+                                <div className="gm-prose prose-sm leading-relaxed overflow-hidden">
+                                    {thinkingBlock && settings.showReasoning && (
+                                        <details className="mb-3 bg-void-darker border border-terminal/20 rounded overflow-hidden group/think">
+                                            <summary className="cursor-pointer p-2 text-[10px] text-terminal/60 uppercase tracking-widest flex items-center gap-2 bg-terminal/5">
+                                                <Loader2 size={10} className={isStreaming && msg.id === messages[messages.length - 1].id ? "animate-spin" : ""} />
+                                                Cognitive Process
+                                            </summary>
+                                            <div className="p-3 text-[11px] text-text-dim/80 italic border-t border-terminal/10 bg-void-darker/50">
+                                                {thinkingBlock}
+                                            </div>
+                                        </details>
+                                    )}
+                                    {renderContentWithChips(cleanContent)}
+                                </div>
+
+                                {(msg as any).parsedArgs?.summary && Array.isArray((msg as any).parsedArgs.summary) && (
+                                    <div className="mt-4 bg-terminal/5 border border-terminal/20 rounded p-3 relative overflow-hidden group/summary animate-in fade-in zoom-in duration-300">
+                                        <div className="absolute top-0 right-0 p-1.5 opacity-20"><Terminal size={12} className="text-terminal" /></div>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <div className="w-1 h-3 bg-terminal animate-pulse shadow-[0_0_8px_rgba(71,243,183,0.5)]" />
+                                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-terminal/80">System Analysis Result</span>
+                                        </div>
+                                        <ul className="space-y-2">
+                                            {((msg as any).parsedArgs.summary as any[]).map((s, i) => (
+                                                <li key={i} className="text-[11px] text-text-dim/90 flex gap-2 leading-snug">
+                                                    <span className="text-terminal opacity-50 font-mono mt-0.5">▸</span>
+                                                    <span>{typeof s === 'string' ? s : String(s)}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
                                 )}
-                                <span className="text-[9px] text-text-dim">
-                                    {new Date(msg.timestamp).toLocaleTimeString()}
-                                </span>
-                            </div>
 
-                            <div className="gm-prose">
-                                <ReactMarkdown>{msg.displayContent || msg.content}</ReactMarkdown>
+                                {settings.debugMode && msg.debugPayload && (
+                                    <details className="mt-3 border-t border-border/10 pt-3 group/debug">
+                                        <summary className="cursor-pointer text-[9px] text-text-dim/30 hover:text-terminal transition-colors uppercase tracking-[0.3em] list-none flex items-center gap-1.5">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+                                            Engine Trace Data
+                                        </summary>
+                                        <pre className="mt-2 bg-void p-2 text-[9px] font-mono text-terminal/60 overflow-x-auto rounded border border-terminal/5 whitespace-pre-wrap break-all">{JSON.stringify(msg.debugPayload, null, 2)}</pre>
+                                    </details>
+                                )}
                             </div>
-
-                            {settings.debugMode && msg.debugPayload && (
-                                <details className="mt-2 border-t border-border/50 pt-2 text-[10px]">
-                                    <summary className="cursor-pointer text-terminal/60 hover:text-terminal transition-colors select-none">
-                                        [View Raw Payload]
-                                    </summary>
-                                    <pre className="mt-2 bg-void p-2 overflow-x-auto text-text-dim text-[9px] font-mono leading-tight whitespace-pre-wrap break-all">
-                                        {JSON.stringify(msg.debugPayload, null, 2)}
-                                    </pre>
-                                </details>
-                            )}
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
 
-                {isCheckingNotes ? (
-                    <div className="flex items-center gap-2 text-terminal/80 text-xs px-4">
+                {isCheckingNotes || isStreaming ? (
+                    <div className="flex items-center gap-2 text-terminal/80 text-[10px] uppercase tracking-widest px-4 py-2 bg-terminal/5 rounded-sm border border-terminal/10 mb-4 mx-2">
                         <Loader2 size={12} className="animate-spin" />
-                        <span className="animate-pulse-slow">The GM is checking their notes...</span>
+                        <span className="animate-pulse">{isCheckingNotes ? 'GM is checking archives...' : 'Transmission in progress...'}</span>
                     </div>
-                ) : isStreaming && (
-                    <div className="flex items-center gap-2 text-terminal text-xs px-4">
-                        <Loader2 size={12} className="animate-spin" />
-                        <span className="animate-pulse-slow">Generating...</span>
-                    </div>
-                )}
-
+                ) : null}
                 <div ref={bottomRef} />
             </div>
 
-            {/* Macro Bar */}
-            <div className="px-2 md:px-4 pb-1 flex gap-2 overflow-x-auto">
-                <button
-                    onClick={handleForceSave}
-                    disabled={isSaving}
-                    className="flex items-center gap-1.5 bg-void border border-emerald-500/30 hover:border-emerald-500 text-emerald-500 text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-emerald-500/5 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                    <span className="hidden xs:inline">{isSaving ? 'SAVING...' : 'SAVE CAMPAIGN'}</span>
-                    {!isSaving && <span className="inline xs:hidden">SAVE</span>}
+            <div className="px-2 md:px-4 pb-1 flex gap-2 overflow-x-auto no-scrollbar">
+                <button onClick={handleForceSave} disabled={isSaving} className="flex items-center gap-1.5 bg-void border border-emerald-500/30 text-emerald-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
+                    {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} SAVE
                 </button>
-                <button
-                    onClick={triggerCondense}
-                    disabled={condenser.isCondensing || messages.length < 6}
-                    className="flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                    {condenser.isCondensing ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-                    {condenser.isCondensing ? 'Condensing...' : 'Condense'}
-                </button>
-                <button
-                    onClick={handleOpenArchive}
-                    disabled={!activeCampaignId}
-                    className="flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto"
-                >
-                    <Scroll size={13} />
-                    Archive
-                </button>
-                {condenser.condensedSummary && (
-                    <span className="text-[9px] text-terminal/60 self-center ml-1">
-                        ● condensed
-                    </span>
+                {condenser.isCondensing ? (
+                    <button onClick={() => condenseAbortRef.current?.abort()} className="flex items-center gap-1.5 bg-void border border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
+                        <Square size={13} /> STOP
+                    </button>
+                ) : (
+                    <button onClick={triggerCondense} disabled={messages.length < 6} className="flex items-center gap-1.5 bg-void border border-terminal/30 text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
+                        <Zap size={13} /> CONDENSE
+                    </button>
                 )}
+                <button onClick={() => setShowCondensedPanel(p => !p)} className={`flex items-center gap-1.5 bg-void border ${showCondensedPanel ? 'border-terminal text-terminal' : 'border-ice/30 text-ice'} text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all`}>
+                    {showCondensedPanel ? <ChevronUp size={13} /> : <ChevronDown size={13} />} MEMORY
+                </button>
+                <button onClick={handleSealChapter} disabled={!activeCampaignId} className="flex items-center gap-1.5 bg-void border border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-amber-500/5">
+                    <FileText size={13} /> SEAL
+                </button>
+                <button onClick={() => api.archive.open(activeCampaignId || '')} className="flex items-center gap-1.5 bg-void border border-ice/30 text-ice text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded ml-auto transition-all hover:bg-ice/5"><Scroll size={13} /> ARCHIVE</button>
+                <button onClick={handleClearArchive} disabled={!activeCampaignId} className="flex items-center gap-1.5 bg-void border border-red-500/20 text-red-500/60 hover:text-red-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-red-500/5 hover:border-red-500/40"><Trash2 size={13} /> CLEAR</button>
             </div>
 
-            {/* Input Area */}
+            {showCondensedPanel && (
+                <div className="px-2 md:px-4 pb-1">
+                    <div className="bg-void-lighter border border-terminal/20 rounded p-3">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] text-terminal uppercase tracking-widest font-bold">Condensed Memory</span>
+                            <div className="flex items-center gap-1">
+                                {editingSummary ? (
+                                    <>
+                                        <button onClick={() => { setCondensed(summaryDraft, condenser.condensedUpToIndex); setEditingSummary(false); }} className="text-[9px] text-terminal hover:underline px-1">Save</button>
+                                        <button onClick={() => setEditingSummary(false)} className="text-[9px] text-text-dim hover:underline px-1">Cancel</button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button onClick={() => { setSummaryDraft(condenser.condensedSummary); setEditingSummary(true); }} className="text-[9px] text-terminal hover:underline px-1">Edit</button>
+                                        <button onClick={handleRetcon} className="text-[9px] text-amber-500 hover:underline px-1">Retcon</button>
+                                        <button onClick={() => { resetCondenser(); setEditingSummary(false); }} className="text-[9px] text-red-400 hover:underline px-1">Reset</button>
+                                        <button onClick={() => { setShowCondensedPanel(false); setEditingSummary(false); }} className="text-[9px] text-text-dim hover:underline px-1"><X size={10} /></button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                        {editingSummary ? (
+                            <textarea value={summaryDraft} onChange={e => setSummaryDraft(e.target.value)} className="w-full bg-void border border-border rounded px-2 py-1 text-xs text-text-primary font-mono resize-y min-h-[60px] max-h-[200px]" />
+                        ) : (
+                            <div className="text-[11px] text-text-dim/80 font-mono whitespace-pre-wrap max-h-[200px] overflow-y-auto">
+                                {condenser.condensedSummary || <span className="italic opacity-50">No condensed summary yet</span>}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             <div className="flex-shrink-0 bg-void border-t border-border">
-                {editingMessageId && (
-                    <div className="bg-terminal/10 border-b border-border px-4 py-2 flex items-center justify-between">
-                        <span className="text-terminal text-[11px] uppercase tracking-wider font-bold flex items-center gap-2">
-                            <Edit2 size={12} /> Editing Message
-                        </span>
-                        <button
-                            onClick={() => { setEditingMessageId(null); setInput(''); }}
-                            className="text-text-dim hover:text-text-primary flex items-center gap-1 text-[10px] uppercase tracking-wider"
-                        >
-                            <X size={12} /> Cancel
-                        </button>
+                {editingMessageId && <div className="bg-terminal/10 border-b border-border px-4 py-2 flex items-center justify-between text-terminal text-[11px] font-bold uppercase"><Edit2 size={12}/> Editing <button onClick={() => { setEditingMessageId(null); setInput(''); }}><X size={12}/></button></div>}
+                
+                {loadingStatus && (
+                    <div className="py-1.5 px-4 bg-terminal/10 border-b border-terminal/20 flex items-center gap-2 animate-pulse">
+                        <Loader2 size={10} className="animate-spin text-terminal" />
+                        <span className="text-[9px] uppercase tracking-widest text-terminal font-bold">{loadingStatus}</span>
                     </div>
                 )}
-                <div className="px-2 sm:px-4 pb-3 sm:pb-4 pt-3 sm:pt-4">
-                    <div className="flex gap-0 border border-border bg-void focus-within:border-terminal transition-colors">
-                        {/* Provider / Preset Dropdown */}
-                        <div ref={dropdownRef} className="relative flex-shrink-0">
-                            <button
-                                onClick={() => setDropdownOpen(!dropdownOpen)}
-                                className="flex items-center gap-1 px-3 h-full text-[11px] text-ice uppercase tracking-wider border-r border-border hover:bg-ice/5 transition-colors whitespace-nowrap"
-                            >
-                                {settings.presets && settings.presets.length > 0
-                                    ? (settings.presets.find(p => p.id === settings.activePresetId)?.label || activeProvider.label)
-                                    : activeProvider.label
-                                }
-                                <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
 
-                            {dropdownOpen && (
-                                <div className="absolute bottom-full left-0 mb-1 bg-surface border border-border min-w-[180px] z-50 shadow-lg">
-                                    {/* Show presets if any exist */}
-                                    {settings.presets && settings.presets.length > 0 ? (
-                                        <>
-                                            <div className="px-3 py-1.5 text-[9px] text-text-dim/50 uppercase tracking-wider border-b border-border">
-                                                Presets
-                                            </div>
-                                            {settings.presets.map((preset) => {
-                                                const gmProv = settings.providers.find(p => p.id === preset.gmProviderId);
-                                                return (
-                                                    <button
-                                                        key={preset.id}
-                                                        onClick={() => {
-                                                            setActivePreset(preset.id);
-                                                            setDropdownOpen(false);
-                                                        }}
-                                                        className={`w-full text-left px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${preset.id === settings.activePresetId
-                                                            ? 'text-ice bg-ice/10'
-                                                            : 'text-text-dim hover:text-text-primary hover:bg-void'
-                                                            }`}
-                                                    >
-                                                        <span className="font-mono">{preset.label}</span>
-                                                        <span className="block text-[9px] text-text-dim/50 normal-case tracking-normal">
-                                                            GM: {gmProv?.modelName || '?'}
-                                                        </span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </>
-                                    ) : (
-                                        /* Fallback: raw provider list (no presets configured) */
-                                        settings.providers.length > 1 && settings.providers.map((p) => (
-                                            <button
-                                                key={p.id}
-                                                onClick={() => {
-                                                    setActiveProvider(p.id);
-                                                    setDropdownOpen(false);
-                                                }}
-                                                className={`w-full text-left px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${p.id === activeProvider.id
-                                                    ? 'text-ice bg-ice/10'
-                                                    : 'text-text-dim hover:text-text-primary hover:bg-void'
-                                                    }`}
-                                            >
-                                                <span className="font-mono">{p.label}</span>
-                                                <span className="block text-[9px] text-text-dim/50 normal-case tracking-normal">
-                                                    {p.modelName}
-                                                </span>
-                                            </button>
-                                        ))
-                                    )}
-                                </div>
-                            )}
+                <div className="px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar">
+                    {['enemy', 'neutral', 'ally'].map(id => (
+                        <button key={id} onClick={() => setForcedAIs(p => p.includes(id as any) ? p.filter(t => t !== id) : [...p, id as any])} 
+                            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[10px] font-black uppercase border transition-all ${forcedAIs.includes(id as any) 
+                                ? (id === 'enemy' ? 'border-red-500 bg-red-500/20 text-red-500 shadow-[0_0_20px_rgba(239,68,68,0.3)] animate-pulse-slow' : id === 'neutral' ? 'border-amber-500 bg-amber-500/20 text-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.3)] animate-pulse-slow' : 'border-emerald-500 bg-emerald-500/20 text-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] animate-pulse-slow')
+                                : 'border-border bg-surface text-text-dim'}`}>
+                            {id}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="px-2 sm:px-4 pb-3 sm:pb-4 pt-1 sm:pt-2">
+                    <div className="flex gap-1 border border-border bg-void focus-within:border-terminal items-end p-1 rounded-sm">
+                        <div className="relative shrink-0 mb-[4px] ml-1">
+                            <select value={settings.activePresetId} onChange={(e) => useAppStore.getState().setActivePreset(e.target.value)} 
+                                className="h-[32px] bg-surface border border-border text-text-dim pl-2 pr-6 text-[10px] font-bold uppercase transition-colors appearance-none rounded focus:border-terminal overflow-hidden max-w-[100px]">
+                                {settings.presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                            <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-text-dim pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                         </div>
-
-                        <textarea
-                            ref={inputRef}
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder={editingMessageId ? "Edit message..." : "What do you do?"}
-                            className="flex-1 bg-transparent px-3 py-2.5 text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[44px] max-h-64 overflow-y-auto"
-                            rows={1}
-                        />
-                        <button
-                            onClick={editingMessageId ? handleEditSubmit : () => handleSend()}
-                            disabled={isStreaming || !input.trim()}
-                            className="px-4 text-terminal hover:bg-terminal/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed border-l border-border flex items-center justify-center gap-2"
-                        >
-                            {editingMessageId ? <Check size={16} /> : <Send size={16} />}
+                        <textarea ref={inputRef} value={input} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder={editingMessageId ? "Edit..." : "What do you do?"} 
+                            className="flex-1 bg-transparent px-2 py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[40px] leading-5" />
+                        <button onClick={isStreaming ? handleStop : (editingMessageId ? handleEditSubmit : () => handleSend())} disabled={!isStreaming && !input.trim()}
+                            className={`h-[32px] w-[40px] mb-[4px] rounded transition-all flex items-center justify-center shrink-0 ${isStreaming ? 'text-amber-500 hover:bg-amber-500/10' : 'text-terminal hover:bg-terminal/10'}`}>
+                            {isStreaming ? <Square size={16} fill="currentColor" /> : (editingMessageId ? <Check size={16} /> : <Send size={16} />)}
                         </button>
                     </div>
                 </div>
             </div>
+
+            {showScrollFab && (
+                <button onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })} className="fixed bottom-[calc(160px+env(safe-area-inset-bottom))] right-4 z-50 w-10 h-10 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"><ChevronDown size={20} /></button>
+            )}
         </div>
     );
 }

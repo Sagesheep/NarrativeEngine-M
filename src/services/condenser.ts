@@ -1,12 +1,10 @@
-import type { ChatMessage, GameContext, ProviderConfig } from '../types';
+import type { ChatMessage, GameContext, EndpointConfig, ProviderConfig } from '../types';
 
-const VERBATIM_WINDOW = 5;
-const CONDENSE_BUDGET_RATIO = 0.4;
-const META_SUMMARY_THRESHOLD = 1600; // ~100-130 bullet points, ~6 hours of play
+import { countTokens } from './tokenizer';
 
-function estimateTokens(text: string): number {
-    return Math.ceil(text.length / 4);
-}
+const VERBATIM_WINDOW = 8;
+const CONDENSE_BUDGET_RATIO = 0.75;
+const META_SUMMARY_THRESHOLD = 6000;
 
 export function shouldCondense(
     messages: ChatMessage[],
@@ -16,7 +14,7 @@ export function shouldCondense(
     const uncondensedMessages = messages.slice(condensedUpToIndex + 1);
     if (uncondensedMessages.length <= VERBATIM_WINDOW) return false;
 
-    const historyTokens = estimateTokens(
+    const historyTokens = countTokens(
         uncondensedMessages.map((m) => m.content).join('')
     );
     return historyTokens > contextLimit * CONDENSE_BUDGET_RATIO;
@@ -26,18 +24,15 @@ export function getVerbatimWindow(): number {
     return VERBATIM_WINDOW;
 }
 
-/**
- * Incremental condensation prompt — only summarizes NEW messages into bullet points.
- * Does NOT re-read the existing summary. Output is appended locally.
- */
-function buildIncrementalPrompt(
-    newMessages: ChatMessage[],
+function buildCondenserPrompt(
+    oldMessages: ChatMessage[],
     canonState: string,
-    headerIndex: string
+    headerIndex: string,
+    existingSummary: string
 ): string {
     const canonBlock = [canonState, headerIndex].filter(Boolean).join('\n\n');
 
-    const turns = newMessages
+    const turns = oldMessages
         .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
         .join('\n\n');
 
@@ -48,15 +43,18 @@ function buildIncrementalPrompt(
         '1. Preserve ALL dice rolls, damage numbers, HP/MP changes exactly',
         '2. Preserve ALL item names, NPC names, location names EXACTLY as written',
         '3. Use the Canonical Terms below — DO NOT paraphrase, rename, or synonym-swap any proper nouns',
-        '4. Keep quest/objective updates',
-        '5. Drop flavour text and generic narration',
+        '4. Drop flavour text and generic narration',
+        '5. EXCEPTION: Tag any memorable/dramatic moments (epic quotes, confessions, dramatic reveals, promises) with [MEMORABLE: "exact quote or moment"]. These survive future compression.',
         '6. Output format: bullet points grouped by scene/event',
         '7. Be extremely concise — aim for 70% compression',
-        '8. Output ONLY the bullet points for these turns. Do NOT include any previous history.',
     ];
 
     if (canonBlock) {
         parts.push('', 'CANONICAL TERMS (use these exact strings):', canonBlock);
+    }
+
+    if (existingSummary) {
+        parts.push('', 'PREVIOUS CONDENSED SUMMARY (incorporate and update):', existingSummary);
     }
 
     parts.push('', 'TURNS TO SUMMARIZE:', turns);
@@ -64,46 +62,96 @@ function buildIncrementalPrompt(
     return parts.join('\n');
 }
 
-/**
- * Meta-summary prompt — compresses an existing bullet-point summary into broader story arcs.
- * Used when the summary exceeds META_SUMMARY_THRESHOLD tokens.
- */
-function buildMetaSummaryPrompt(
+export async function condenseHistory(
+    provider: EndpointConfig | ProviderConfig,
+    messages: ChatMessage[],
+    context: GameContext,
+    condensedUpToIndex: number,
     existingSummary: string,
-    canonState: string,
-    headerIndex: string
-): string {
-    const canonBlock = [canonState, headerIndex].filter(Boolean).join('\n\n');
+    _campaignId: string,
+    _npcNames: string[],
+    contextLimit: number,
+    signal?: AbortSignal
+): Promise<{ summary: string; upToIndex: number }> {
+    const uncondensed = messages.slice(condensedUpToIndex + 1);
+    const candidateToCondense = uncondensed.slice(0, -VERBATIM_WINDOW);
 
-    const parts: string[] = [
-        'You are a TTRPG campaign historian. The following is a bullet-point log of events from a roleplay session.',
-        'Your task is to compress this into a shorter narrative summary grouped by story arc or chapter.',
-        '',
-        'RULES:',
-        '1. Preserve ALL proper nouns (character names, locations, items) EXACTLY',
-        '2. Preserve ALL mechanical state changes (HP, status effects, deaths, quest completions)',
-        '3. Merge related bullet points into paragraph-level summaries',
-        '4. Group by story arc or major scene transition',
-        '5. Target 50% compression — cut redundancy, not facts',
-        '6. Output format: short paragraphs with arc headers',
-    ];
-
-    if (canonBlock) {
-        parts.push('', 'CANONICAL TERMS (use these exact strings):', canonBlock);
+    if (candidateToCondense.length === 0) {
+        return { summary: existingSummary, upToIndex: condensedUpToIndex };
     }
 
-    parts.push('', 'BULLET-POINT LOG TO COMPRESS:', existingSummary);
-
-    return parts.join('\n');
-}
-
-/** Send a non-streaming LLM request for condensation / meta-summary */
-async function callLLM(provider: ProviderConfig, prompt: string): Promise<string> {
+    let finalExistingSummary = existingSummary;
     const url = `${provider.endpoint.replace(/\/+$/, '')}/chat/completions`;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (provider.apiKey) {
-        headers['Authorization'] = `Bearer ${provider.apiKey}`;
+    if (provider.apiKey) headers['Authorization'] = `Bearer ${provider.apiKey}`;
+
+    // --- Phase 4: T3 → T4 Promotion ---
+    if (finalExistingSummary && countTokens(finalExistingSummary) > META_SUMMARY_THRESHOLD) {
+        console.log('[Archive Memory] Promoting T3 summary to meta-summary...', { tokens: countTokens(finalExistingSummary) });
+        const metaPrompt = `You are a TTRPG session scribe. Compress the following older session summary into a highly condensed story-arc level summary (max 3 paragraphs). Preserve major character deaths, epic loot, and unresolved plot hooks.\n\nOLDER SUMMARY:\n${finalExistingSummary}`;
+
+        console.log('[Condenser] Sending T3 meta-summary request...', { promptTokens: countTokens(metaPrompt) });
+
+        const metaRes = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                model: provider.modelName,
+                messages: [{ role: 'user', content: metaPrompt }],
+                stream: false,
+            }),
+            signal,
+        });
+
+        if (metaRes.ok) {
+            const metaData = await metaRes.json();
+            finalExistingSummary = metaData.choices?.[0]?.message?.content ?? '';
+            console.log('[Archive Memory] T3 successfully meta-summarized.');
+        } else {
+            console.error('[Archive Memory] Meta-summary API failed, retaining old T3 summary.');
+        }
     }
+
+    // --- Standard Condensation with Budgeting ---
+    const budgetLimit = Math.floor(contextLimit * CONDENSE_BUDGET_RATIO);
+
+    // Calculate invariant prompt overhead (rules + canon + existing summary)
+    const basePromptPart = buildCondenserPrompt([], context.canonState, context.headerIndex, finalExistingSummary);
+    const baseTokens = countTokens(basePromptPart);
+
+    let toCondense: ChatMessage[] = [];
+    let usedTokens = baseTokens;
+    let lastMsgInChunk: ChatMessage | null = null;
+
+    for (const msg of candidateToCondense) {
+        const turnText = `\n\n[${msg.role.toUpperCase()}]: ${msg.content}`;
+        const cost = countTokens(turnText);
+
+        if (usedTokens + cost > budgetLimit && toCondense.length > 0) {
+            console.log(`[Condenser] Budget limit reached. Condensing chunk of ${toCondense.length} turns.`, {
+                totalTokens: usedTokens,
+                limit: budgetLimit
+            });
+            break;
+        }
+
+        toCondense.push(msg);
+        usedTokens += cost;
+        lastMsgInChunk = msg;
+    }
+
+    const prompt = buildCondenserPrompt(
+        toCondense,
+        context.canonState,
+        context.headerIndex,
+        finalExistingSummary
+    );
+
+    console.log('[Condenser] Sending condensation request...', {
+        turns: toCondense.length,
+        promptTokens: countTokens(prompt),
+        budgetLimit
+    });
 
     const res = await fetch(url, {
         method: 'POST',
@@ -113,6 +161,7 @@ async function callLLM(provider: ProviderConfig, prompt: string): Promise<string
             messages: [{ role: 'user', content: prompt }],
             stream: false,
         }),
+        signal,
     });
 
     if (!res.ok) {
@@ -121,58 +170,12 @@ async function callLLM(provider: ProviderConfig, prompt: string): Promise<string
     }
 
     const data = await res.json();
-    return data.choices?.[0]?.message?.content ?? '';
-}
+    const summary = data.choices?.[0]?.message?.content ?? existingSummary;
 
-/**
- * Main condensation pipeline:
- *   1. If existing summary exceeds META_SUMMARY_THRESHOLD → meta-summarize it first
- *   2. Summarize only the NEW messages into bullet points (incremental)
- *   3. Append new bullet points to existing summary
- */
-export async function condenseHistory(
-    provider: ProviderConfig,
-    messages: ChatMessage[],
-    context: GameContext,
-    condensedUpToIndex: number,
-    existingSummary: string
-): Promise<{ summary: string; upToIndex: number }> {
-    const uncondensed = messages.slice(condensedUpToIndex + 1);
-    const toCondense = uncondensed.slice(0, -VERBATIM_WINDOW);
+    // Use the last message that was actually included in the chunk for correct index alignment
+    const newUpToIndex = lastMsgInChunk ? messages.indexOf(lastMsgInChunk) : condensedUpToIndex;
 
-    if (toCondense.length === 0) {
-        return { summary: existingSummary, upToIndex: condensedUpToIndex };
-    }
+    console.log(`[Condenser] Extraction complete. Markers advanced to index: ${newUpToIndex}`);
 
-    let currentSummary = existingSummary;
-
-    // Step 1: Meta-summary if existing summary is too long
-    if (currentSummary && estimateTokens(currentSummary) > META_SUMMARY_THRESHOLD) {
-        console.log(`[Condenser] Summary exceeded ${META_SUMMARY_THRESHOLD} tokens — running meta-summary compression...`);
-        const metaPrompt = buildMetaSummaryPrompt(currentSummary, context.canonState, context.headerIndex);
-        const compressed = await callLLM(provider, metaPrompt);
-        if (compressed) {
-            const before = estimateTokens(currentSummary);
-            const after = estimateTokens(compressed);
-            console.log(`[Condenser] Meta-summary: ${before} → ${after} tokens (${Math.round((1 - after / before) * 100)}% compression)`);
-            currentSummary = compressed;
-        }
-    }
-
-    // Step 2: Incremental — only summarize NEW messages
-    console.log(`[Condenser] Summarizing ${toCondense.length} new message(s) incrementally...`);
-    const incrementalPrompt = buildIncrementalPrompt(toCondense, context.canonState, context.headerIndex);
-    const newBullets = await callLLM(provider, incrementalPrompt);
-
-    // Step 3: Append new bullets to existing summary
-    const combined = currentSummary
-        ? currentSummary + '\n\n' + newBullets
-        : newBullets;
-
-    const lastCondensedMsg = toCondense[toCondense.length - 1];
-    const newUpToIndex = messages.indexOf(lastCondensedMsg);
-
-    console.log(`[Condenser] Done. Total summary: ~${estimateTokens(combined)} tokens. Condensed up to message index ${newUpToIndex}.`);
-
-    return { summary: combined, upToIndex: newUpToIndex };
+    return { summary, upToIndex: newUpToIndex };
 }

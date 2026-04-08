@@ -1,5 +1,5 @@
-import { Preferences } from '@capacitor/preferences';
-import type { Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry } from '../types';
+import { get, set, del } from 'idb-keyval';
+import type { Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, ArchiveChapter, SemanticFact } from '../types';
 
 export type CampaignState = {
     context: GameContext;
@@ -7,87 +7,88 @@ export type CampaignState = {
     condenser: CondenserState;
 };
 
-// ─── Helpers ───
-
-async function getKeysByPrefix(prefix: string): Promise<string[]> {
-    const { keys } = await Preferences.keys();
-    return keys.filter(k => k.startsWith(prefix));
-}
-
 // ─── Campaign CRUD ───
 
 export async function listCampaigns(): Promise<Campaign[]> {
-    const keys = await getKeysByPrefix('campaign_meta_');
-    const campaigns: Campaign[] = [];
-    for (const key of keys) {
-        const { value } = await Preferences.get({ key });
-        if (value) campaigns.push(JSON.parse(value));
-    }
-    // Sort by last played
+    const campaigns: Campaign[] = await get('campaigns') || [];
     return campaigns.sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
 }
 
 export async function getCampaign(id: string): Promise<Campaign | undefined> {
-    const { value } = await Preferences.get({ key: `campaign_meta_${id}` });
-    return value ? JSON.parse(value) : undefined;
+    const campaigns: Campaign[] = await get('campaigns') || [];
+    return campaigns.find(c => c.id === id);
 }
 
 export async function saveCampaign(campaign: Campaign): Promise<void> {
-    await Preferences.set({
-        key: `campaign_meta_${campaign.id}`,
-        value: JSON.stringify(campaign)
-    });
+    const campaigns: Campaign[] = await get('campaigns') || [];
+    const idx = campaigns.findIndex(c => c.id === campaign.id);
+    if (idx >= 0) {
+        campaigns[idx] = campaign;
+    } else {
+        campaigns.push(campaign);
+    }
+    await set('campaigns', campaigns);
 }
 
 export async function deleteCampaign(id: string): Promise<void> {
-    await Preferences.remove({ key: `campaign_meta_${id}` });
-    await Preferences.remove({ key: `campaign_state_${id}` });
-    await Preferences.remove({ key: `campaign_lore_${id}` });
-    await Preferences.remove({ key: `campaign_npcs_${id}` });
+    const campaigns: Campaign[] = await get('campaigns') || [];
+    await set('campaigns', campaigns.filter(c => c.id !== id));
+    await del(`state_${id}`);
+    await del(`lore_${id}`);
+    await del(`npcs_${id}`);
+    await del(`archive_index_${id}`);
 }
 
 // ─── Campaign State ───
 
 export async function saveCampaignState(campaignId: string, state: CampaignState): Promise<void> {
-    await Preferences.set({
-        key: `campaign_state_${campaignId}`,
-        value: JSON.stringify(state)
-    });
+    await set(`state_${campaignId}`, state);
 }
 
 export async function loadCampaignState(campaignId: string): Promise<CampaignState | null> {
-    const { value } = await Preferences.get({ key: `campaign_state_${campaignId}` });
-    if (!value) return null;
-    const record = JSON.parse(value);
-    const { context, messages, condenser } = record;
-    return { context, messages, condenser };
+    const state = await get(`state_${campaignId}`);
+    return state || null;
 }
 
 // ─── Lore Chunks ───
 
 export async function saveLoreChunks(campaignId: string, chunks: LoreChunk[]): Promise<void> {
-    await Preferences.set({
-        key: `campaign_lore_${campaignId}`,
-        value: JSON.stringify(chunks)
-    });
+    await set(`lore_${campaignId}`, chunks);
 }
 
 export async function getLoreChunks(campaignId: string): Promise<LoreChunk[]> {
-    const { value } = await Preferences.get({ key: `campaign_lore_${campaignId}` });
-    return value ? JSON.parse(value) : [];
+    const chunks = await get(`lore_${campaignId}`);
+    return chunks || [];
 }
 
 // ─── NPC Ledger ───
 
 export async function saveNPCLedger(campaignId: string, npcs: NPCEntry[]): Promise<void> {
-    await Preferences.set({
-        key: `campaign_npcs_${campaignId}`,
-        value: JSON.stringify(npcs)
-    });
+    await set(`npcs_${campaignId}`, npcs);
 }
 
 export async function getNPCLedger(campaignId: string): Promise<NPCEntry[]> {
-    const { value } = await Preferences.get({ key: `campaign_npcs_${campaignId}` });
-    return value ? JSON.parse(value) : [];
+    const npcs = await get(`npcs_${campaignId}`);
+    return npcs || [];
 }
 
+// ─── Archive Index (Tier 4) ───
+
+export async function loadArchiveIndex(campaignId: string): Promise<ArchiveIndexEntry[]> {
+    const archive = await get(`archive_index_${campaignId}`);
+    return archive || [];
+}
+
+// ─── Semantic Facts ───
+
+export async function loadSemanticFacts(campaignId: string): Promise<SemanticFact[]> {
+    const { api } = await import('../services/apiClient');
+    return api.facts.get(campaignId);
+}
+
+// ─── Chapters ───
+
+export async function loadChapters(campaignId: string): Promise<ArchiveChapter[]> {
+    const { api } = await import('../services/apiClient');
+    return api.chapters.list(campaignId);
+}

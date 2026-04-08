@@ -1,329 +1,351 @@
 import { useState } from 'react';
-import { X, Loader2, CheckCircle, XCircle, Plus, Trash2 } from 'lucide-react';
+import { X, Loader2, CheckCircle, XCircle, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { testConnection } from '../services/chatEngine';
-import type { ProviderConfig } from '../types';
+import type { AIPreset, EndpointConfig } from '../types';
+import { toast } from './Toast';
 
 function uid(): string {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
 export function SettingsModal() {
-    const { settings, updateSettings, settingsOpen, toggleSettings, addProvider, updateProvider, removeProvider } = useAppStore();
-    const [activeTab, setActiveTab] = useState(settings.providers[0]?.id || '');
-    const [testing, setTesting] = useState(false);
-    const [testResult, setTestResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const { settings, updateSettings, settingsOpen, toggleSettings, addPreset, updatePreset, removePreset, setMobileView } = useAppStore();
+  const [activeTab, setActiveTab] = useState(settings.presets[0]?.id || '');
+  const [testingSection, setTestingSection] = useState<'storyAI' | 'imageAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI' | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; detail: string } | null>>({});
 
-    if (!settingsOpen) return null;
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    storyAI: true,
+    imageAI: false,
+    summarizerAI: false,
+    utilityAI: false,
+    enemyAI: false,
+    neutralAI: false,
+    allyAI: false,
+  });
 
-    const activeProviderConfig = settings.providers.find((p) => p.id === activeTab) || settings.providers[0];
+  const handleClose = () => {
+    toggleSettings();
+    setMobileView('chat');
+  };
 
-    const handleTest = async () => {
-        if (!activeProviderConfig) return;
-        setTesting(true);
-        setTestResult(null);
-        const result = await testConnection(activeProviderConfig);
-        setTestResult(result);
-        setTesting(false);
+  if (!settingsOpen) return null;
+
+  const activePreset = settings.presets.find((p) => p.id === activeTab) || settings.presets[0];
+
+  const handleTest = async (section: 'storyAI' | 'imageAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI') => {
+    if (!activePreset) return;
+    const config = activePreset[section];
+    if (!config || !config.endpoint) return;
+
+    setTestingSection(section);
+    setTestResults(prev => ({ ...prev, [section]: null }));
+    const result = await testConnection(config);
+    setTestResults(prev => ({ ...prev, [section]: result }));
+    setTestingSection(null);
+    if (result.ok) {
+      toast.success(`${section} connection successful`);
+    } else {
+      toast.error(`${section} connection failed: ${result.detail}`);
+    }
+  };
+
+  const handleAddPreset = () => {
+    const newPreset: AIPreset = {
+      id: uid(),
+      name: `Preset ${settings.presets.length + 1}`,
+      storyAI: { endpoint: 'http://localhost:11434/v1', apiKey: '', modelName: 'llama3' },
+      imageAI: { endpoint: '', apiKey: '', modelName: '' },
+      summarizerAI: { endpoint: 'http://localhost:11434/v1', apiKey: '', modelName: 'llama3' },
+      utilityAI: { endpoint: '', apiKey: '', modelName: '' },
+      enemyAI: { endpoint: '', apiKey: '', modelName: '' },
+      neutralAI: { endpoint: '', apiKey: '', modelName: '' },
+      allyAI: { endpoint: '', apiKey: '', modelName: '' }
     };
+    addPreset(newPreset);
+    setActiveTab(newPreset.id);
+    setTestResults({});
+  };
 
-    const handleAddProvider = () => {
-        const newProvider: ProviderConfig = {
-            id: uid(),
-            label: `Provider ${settings.providers.length + 1}`,
-            endpoint: 'http://localhost:11434/v1',
-            apiKey: '',
-            modelName: 'llama3',
-        };
-        addProvider(newProvider);
-        setActiveTab(newProvider.id);
-        setTestResult(null);
-    };
+  const handleRemovePreset = (id: string) => {
+    if (settings.presets.length <= 1) return;
+    removePreset(id);
+    setActiveTab(settings.presets[0]?.id || '');
+    setTestResults({});
+  };
 
-    const handleRemoveProvider = (id: string) => {
-        if (settings.providers.length <= 1) return;
-        removeProvider(id);
-        setActiveTab(settings.providers[0]?.id || '');
-        setTestResult(null);
-    };
+  const handleUpdatePresetName = (name: string) => {
+    if (!activePreset) return;
+    updatePreset(activePreset.id, { name });
+  };
 
-    const handleUpdateField = (field: keyof ProviderConfig, value: string) => {
-        if (!activeProviderConfig) return;
-        updateProvider(activeProviderConfig.id, { [field]: value });
-    };
+  const handleUpdateEndpoint = (section: 'storyAI' | 'imageAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', field: keyof EndpointConfig, value: string) => {
+    if (!activePreset) return;
+    const updatedConfig = { ...activePreset[section], [field]: value };
+    updatePreset(activePreset.id, { [section]: updatedConfig });
+  };
+
+  const toggleSection = (section: string) => {
+    setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const renderEndpointConfig = (section: 'storyAI' | 'imageAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', title: string) => {
+    const config = activePreset[section] ?? { endpoint: '', apiKey: '', modelName: '' };
+    const isExpanded = expanded[section];
+    const isTesting = testingSection === section;
+    const result = testResults[section];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-            {/* Backdrop */}
-            <div
-                className="absolute inset-0 bg-ember/40 backdrop-blur-sm"
-                onClick={toggleSettings}
-            />
+      <div className="border border-border rounded mb-3 bg-void-lighter overflow-hidden">
+        <button
+          onClick={() => toggleSection(section)}
+          className="w-full flex items-center justify-between p-3 bg-void hover:bg-surface transition-colors min-h-[48px]"
+        >
+          <div className="flex items-center gap-2 text-sm font-bold text-text-primary uppercase tracking-wider">
+            {isExpanded ? <ChevronDown size={16} className="text-terminal" /> : <ChevronRight size={16} className="text-text-dim" />}
+            {title}
+          </div>
+        </button>
 
-            {/* Panel */}
-            <div className="relative bg-surface border border-border w-full h-full sm:h-auto sm:max-w-lg sm:mx-4 p-4 sm:p-6 overflow-y-auto">
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-terminal text-sm font-bold tracking-[0.2em] uppercase glow-green">
-                        ⚙ SETTINGS
-                    </h2>
-                    <button
-                        onClick={toggleSettings}
-                        className="text-text-dim hover:text-danger transition-colors"
-                    >
-                        <X size={18} />
-                    </button>
-                </div>
-
-                {/* ─── Provider Tabs ─── */}
-                <div className="flex items-center gap-1 mb-4 border-b border-border overflow-x-auto pb-px">
-                    {settings.providers.map((p) => (
-                        <button
-                            key={p.id}
-                            onClick={() => { setActiveTab(p.id); setTestResult(null); }}
-                            className={`px-3 py-1.5 text-[11px] uppercase tracking-wider whitespace-nowrap transition-all border-b-2 -mb-px ${activeTab === p.id
-                                ? 'text-ice border-ice'
-                                : 'text-text-dim border-transparent hover:text-text-primary hover:border-border'
-                                }`}
-                        >
-                            {p.label}
-                        </button>
-                    ))}
-                    <button
-                        onClick={handleAddProvider}
-                        className="px-2 py-1.5 text-text-dim hover:text-terminal transition-colors -mb-px border-b-2 border-transparent"
-                        title="Add provider"
-                    >
-                        <Plus size={14} />
-                    </button>
-                </div>
-
-                {/* ─── Active Provider Config ─── */}
-                {activeProviderConfig && (
-                    <div className="space-y-4">
-                        {/* Label */}
-                        <div>
-                            <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-                                Label
-                            </label>
-                            <input
-                                type="text"
-                                value={activeProviderConfig.label}
-                                onChange={(e) => handleUpdateField('label', e.target.value)}
-                                placeholder="e.g. DS-Chat, Opus, Local"
-                                className="w-full bg-void border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 font-mono"
-                            />
-                        </div>
-
-                        {/* Endpoint */}
-                        <div>
-                            <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-                                API Endpoint
-                            </label>
-                            <input
-                                type="text"
-                                value={activeProviderConfig.endpoint}
-                                onChange={(e) => handleUpdateField('endpoint', e.target.value)}
-                                placeholder="http://localhost:11434/v1"
-                                className="w-full bg-void border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 font-mono"
-                            />
-                        </div>
-
-                        {/* Model */}
-                        <div>
-                            <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-                                Model Name
-                            </label>
-                            <input
-                                type="text"
-                                value={activeProviderConfig.modelName}
-                                onChange={(e) => handleUpdateField('modelName', e.target.value)}
-                                placeholder="llama3"
-                                className="w-full bg-void border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 font-mono"
-                            />
-                        </div>
-
-                        {/* API Key */}
-                        <div>
-                            <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-                                API Key <span className="text-text-dim/60">(empty for local)</span>
-                            </label>
-                            <input
-                                type="password"
-                                value={activeProviderConfig.apiKey}
-                                onChange={(e) => handleUpdateField('apiKey', e.target.value)}
-                                placeholder="sk-..."
-                                className="w-full bg-void border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 font-mono"
-                            />
-                        </div>
-
-                        {/* Test + Delete row */}
-                        <div className="flex gap-2">
-                            <button
-                                onClick={handleTest}
-                                disabled={testing}
-                                className="flex-1 bg-void border border-terminal/40 hover:border-terminal text-terminal text-xs uppercase tracking-widest py-2 transition-all hover:glow-border disabled:opacity-50 flex items-center justify-center gap-2"
-                            >
-                                {testing ? (
-                                    <>
-                                        <Loader2 size={14} className="animate-spin" />
-                                        Testing...
-                                    </>
-                                ) : (
-                                    'Test Connection'
-                                )}
-                            </button>
-
-                            {settings.providers.length > 1 && (
-                                <button
-                                    onClick={() => handleRemoveProvider(activeProviderConfig.id)}
-                                    className="bg-void border border-danger/40 hover:border-danger text-danger text-xs uppercase tracking-widest px-3 py-2 transition-all flex items-center gap-1.5"
-                                    title="Delete this provider"
-                                >
-                                    <Trash2 size={13} />
-                                </button>
-                            )}
-                        </div>
-
-                        {testResult && (
-                            <div
-                                className={`flex items-center gap-2 text-xs px-3 py-2 border ${testResult.ok
-                                    ? 'border-terminal/30 text-terminal bg-terminal/5'
-                                    : 'border-danger/30 text-danger bg-danger/5'
-                                    }`}
-                            >
-                                {testResult.ok ? <CheckCircle size={14} /> : <XCircle size={14} />}
-                                {testResult.detail}
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* ─── Image AI Settings ─── */}
-                <div className="mt-6 pt-4 border-t border-border space-y-4">
-                    <h3 className="text-[11px] text-ice uppercase tracking-wider font-bold">◆ Image AI Settings</h3>
-                    <div>
-                        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-                            API Endpoint
-                        </label>
-                        <input
-                            type="text"
-                            value={settings.imageApiEndpoint || ''}
-                            onChange={(e) => updateSettings({ imageApiEndpoint: e.target.value })}
-                            placeholder="e.g. https://api.wavespeed.ai/v1/images/generations"
-                            className="w-full bg-void border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 font-mono"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-                            API Key
-                        </label>
-                        <input
-                            type="password"
-                            value={settings.imageApiKey || ''}
-                            onChange={(e) => updateSettings({ imageApiKey: e.target.value })}
-                            placeholder="sk-..."
-                            className="w-full bg-void border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 font-mono"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-                            Image Model <span className="text-text-dim/60">(optional)</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={settings.imageApiModel || ''}
-                            onChange={(e) => updateSettings({ imageApiModel: e.target.value })}
-                            placeholder="e.g. dall-e-3, sd-xl..."
-                            className="w-full bg-void border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 font-mono"
-                        />
-                    </div>
-                </div>
-
-                {/* ─── Global Settings ─── */}
-                <div className="mt-6 pt-4 border-t border-border space-y-4">
-                    {/* Context Limit */}
-                    <div>
-                        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-                            Context Limit: <span className="text-terminal">{settings.contextLimit}</span> tokens
-                        </label>
-                        <input
-                            type="range"
-                            min={1024}
-                            max={131072}
-                            step={512}
-                            value={settings.contextLimit}
-                            onChange={(e) => updateSettings({ contextLimit: Number(e.target.value) })}
-                            className="w-full accent-terminal"
-                        />
-                        <div className="flex justify-between text-[10px] text-text-dim">
-                            <span>1K</span>
-                            <span>128K</span>
-                        </div>
-                    </div>
-
-                    {/* Auto-Condense */}
-                    <div className="flex items-center justify-between">
-                        <label className="text-[11px] text-text-dim uppercase tracking-wider">
-                            Auto-Condense
-                        </label>
-                        <button
-                            onClick={() => updateSettings({ autoCondenseEnabled: !settings.autoCondenseEnabled })}
-                            className={`relative w-9 h-4.5 rounded-full transition-colors ${settings.autoCondenseEnabled ? 'bg-terminal' : 'bg-border'}`}
-                        >
-                            <div
-                                className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-surface transition-transform ${settings.autoCondenseEnabled ? 'translate-x-4.5' : 'translate-x-0.5'}`}
-                            />
-                        </button>
-                    </div>
-                    {settings.autoCondenseEnabled && (
-                        <p className="text-[9px] text-text-dim/50 -mt-2">
-                            Automatically compresses old history when tokens exceed 40% of context limit
-                        </p>
-                    )}
-
-                    {/* Debug Mode */}
-                    <div className="flex items-center justify-between">
-                        <label className="text-[11px] text-text-dim uppercase tracking-wider">
-                            Debug Payload Viewer
-                        </label>
-                        <button
-                            onClick={() => updateSettings({ debugMode: !settings.debugMode })}
-                            className={`relative w-9 h-4.5 rounded-full transition-colors ${settings.debugMode ? 'bg-terminal' : 'bg-border'}`}
-                        >
-                            <div
-                                className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-surface transition-transform ${settings.debugMode ? 'translate-x-4.5' : 'translate-x-0.5'}`}
-                            />
-                        </button>
-                    </div>
-
-                    {/* Theme */}
-                    <div className="flex items-center justify-between">
-                        <label className="text-[11px] text-text-dim uppercase tracking-wider">
-                            Theme
-                        </label>
-                        <div className="flex border border-border overflow-hidden rounded">
-                            <button
-                                onClick={() => updateSettings({ theme: 'light' })}
-                                className={`px-3 py-1 text-[10px] uppercase tracking-wider transition-colors ${(settings.theme ?? 'light') === 'light'
-                                    ? 'bg-terminal text-surface'
-                                    : 'bg-void text-text-dim hover:text-text-primary'
-                                    }`}
-                            >
-                                ☀ Light
-                            </button>
-                            <button
-                                onClick={() => updateSettings({ theme: 'dark' })}
-                                className={`px-3 py-1 text-[10px] uppercase tracking-wider transition-colors border-l border-border ${settings.theme === 'dark'
-                                    ? 'bg-terminal text-surface'
-                                    : 'bg-void text-text-dim hover:text-text-primary'
-                                    }`}
-                            >
-                                ☽ Dark
-                            </button>
-                        </div>
-                    </div>
-                </div>
+        {isExpanded && (
+          <div className="p-4 space-y-4 border-t border-border bg-void">
+            <div>
+              <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">API Endpoint</label>
+              <input
+                type="text"
+                value={config.endpoint}
+                onChange={(e) => handleUpdateEndpoint(section, 'endpoint', e.target.value)}
+                placeholder="http://localhost:11434/v1"
+                className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono focus:border-terminal focus:outline-none"
+              />
             </div>
-        </div>
+            <div>
+              <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">Model Name</label>
+              <input
+                type="text"
+                value={config.modelName}
+                onChange={(e) => handleUpdateEndpoint(section, 'modelName', e.target.value)}
+                placeholder="llama3"
+                className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono focus:border-terminal focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">API Key</label>
+              <input
+                type="password"
+                value={config.apiKey}
+                onChange={(e) => handleUpdateEndpoint(section, 'apiKey', e.target.value)}
+                placeholder="sk-..."
+                className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono focus:border-terminal focus:outline-none"
+              />
+            </div>
+
+            <div className="pt-2">
+              <button
+                onClick={() => handleTest(section)}
+                disabled={isTesting || !config.endpoint}
+                className="w-full bg-surface border border-terminal/40 hover:border-terminal text-terminal text-xs uppercase tracking-widest py-3 transition-all hover:glow-border disabled:opacity-50 flex items-center justify-center gap-2 min-h-[48px]"
+              >
+                {isTesting ? <><Loader2 size={14} className="animate-spin" /> Testing...</> : 'Test Connection'}
+              </button>
+              {result && (
+                <div className={`flex items-center gap-2 text-xs px-3 py-2 border mt-2 ${result.ok ? 'border-terminal/30 text-terminal bg-terminal/5' : 'border-danger/30 text-danger bg-danger/5'}`}>
+                  {result.ok ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                  {result.detail}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     );
+  };
+
+  return (
+    <div className={`mobile-page md:fixed md:inset-0 md:z-[100] md:flex md:items-center md:justify-center ${settingsOpen ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="Settings">
+      {/* Desktop Backdrop */}
+      <div className="hidden md:absolute md:inset-0 md:bg-ember/40 md:backdrop-blur-sm" onClick={handleClose} />
+
+      {/* Panel */}
+      <div className="relative bg-surface border-border w-full h-full md:h-[85vh] md:max-w-xl md:mx-4 md:border md:shadow-2xl flex flex-col overflow-hidden">
+        {/* Mobile Header */}
+        <div className="mobile-page-header safe-top md:hidden px-4 py-3 border-b border-border bg-void">
+          <button onClick={handleClose} className="back-btn -ml-2">
+            <ArrowLeft size={24} />
+          </button>
+          <span className="page-title">Settings</span>
+        </div>
+
+        {/* Desktop Header */}
+        <div className="hidden md:flex items-center justify-between p-6 border-b border-border shrink-0 bg-void z-10">
+          <h2 className="text-terminal text-sm font-bold tracking-[0.2em] uppercase glow-green">
+            ⚙ SETTINGS
+          </h2>
+          <button onClick={handleClose} className="text-text-dim hover:text-danger">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 nav-clearance md:pb-6">
+          {/* Preset Tabs */}
+          <div className="flex flex-col mb-8">
+            <label className="text-text-dim text-xs uppercase tracking-widest mb-3 font-bold">AI Presets</label>
+            <div className="flex items-center gap-1 border-b border-border overflow-x-auto pb-px">
+              {settings.presets.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => { setActiveTab(p.id); setTestResults({}); }}
+                  className={`px-4 py-3 md:py-2 text-xs md:text-[11px] uppercase tracking-wider whitespace-nowrap transition-all border-b-2 -mb-px ${activeTab === p.id
+                    ? 'text-terminal border-terminal bg-terminal/5 font-bold'
+                    : 'text-text-dim border-transparent hover:text-text-primary'
+                    }`}
+                >
+                  {p.name}
+                </button>
+              ))}
+              <button
+                onClick={handleAddPreset}
+                className="px-4 py-3 md:py-2 text-text-dim hover:text-terminal transition-colors touch-btn"
+              >
+                <Plus size={18} />
+              </button>
+            </div>
+          </div>
+
+          {activePreset && (
+            <div className="mb-8">
+              <div className="flex gap-2 items-end mb-8">
+                <div className="flex-1">
+                  <label className="block text-[10px] text-text-dim uppercase tracking-wider mb-1">Preset Name</label>
+                  <input
+                    type="text"
+                    value={activePreset.name}
+                    onChange={(e) => handleUpdatePresetName(e.target.value)}
+                    className="w-full bg-void border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary font-bold focus:border-terminal focus:outline-none"
+                  />
+                </div>
+                {settings.presets.length > 1 && (
+                  <button
+                    onClick={() => handleRemovePreset(activePreset.id)}
+                    className="bg-void border border-danger/40 text-danger touch-btn hover:bg-danger/10"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                )}
+              </div>
+
+              {renderEndpointConfig('storyAI', 'Story & Logic AI')}
+              {renderEndpointConfig('summarizerAI', 'Summarizer & Context AI')}
+              {renderEndpointConfig('imageAI', 'Image Generation AI')}
+              {renderEndpointConfig('utilityAI', 'Utility AI (Context Recommender)')}
+              {renderEndpointConfig('enemyAI', 'Enemy AI (Adversarial Player)')}
+              {renderEndpointConfig('neutralAI', 'Neutral AI (Chaos/Environmental)')}
+              {renderEndpointConfig('allyAI', 'Ally AI (Beneficial Player)')}
+            </div>
+          )}
+
+          {/* Global Settings */}
+          <div className="mt-4 pt-8 border-t border-border space-y-8">
+            <label className="text-text-dim text-xs uppercase tracking-widest font-bold block">Global Preferences</label>
+
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-[11px] text-text-dim uppercase tracking-wider">Max Context (Tokens)</label>
+                <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs">
+                  {settings.contextLimit.toLocaleString()}
+                </span>
+              </div>
+              <input
+                type="number"
+                step={1024}
+                value={settings.contextLimit || 0}
+                onChange={(e) => updateSettings({ contextLimit: parseInt(e.target.value) || 0 })}
+                className="w-full bg-void border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm font-mono focus:border-terminal focus:outline-none mb-4"
+              />
+              <div className="flex flex-wrap gap-2">
+                {[8192, 16384, 32768, 131072, 1048576].map(limit => (
+                  <button
+                    key={limit}
+                    onClick={() => updateSettings({ contextLimit: limit })}
+                    className={`px-3 py-2 text-[10px] md:text-[9px] font-mono border rounded transition-colors ${settings.contextLimit === limit ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim'}`}
+                  >
+                    {limit >= 1048576 ? `${limit / 1048576}M` : `${limit / 1024}K`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Toggles */}
+            <div className="space-y-4">
+              {[
+                { label: 'Auto-Condense', setting: 'autoCondenseEnabled' as const, sub: 'Compress history at 75% limit' },
+                { label: 'Debug Mode', setting: 'debugMode' as const, sub: 'Show raw API payloads' },
+                { label: 'Show Reasoning', setting: 'showReasoning' as const, sub: 'Display model thinking blocks' },
+              ].map(({ label, setting, sub }) => (
+                <div key={setting} className="flex items-center justify-between bg-void p-4 border border-border rounded">
+                  <div>
+                    <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">{label}</label>
+                    <p className="text-[10px] text-text-dim">{sub}</p>
+                  </div>
+                  <button
+                    onClick={() => updateSettings({ [setting]: !settings[setting] })}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${settings[setting] ? 'bg-terminal' : 'bg-border'}`}
+                  >
+                    <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings[setting] ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* UI Scale */}
+            <div className="flex flex-col bg-void p-4 border border-border rounded">
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">UI Scale</label>
+                <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs">
+                  {Math.round((settings.uiScale ?? 1) * 100)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0.75}
+                max={1.25}
+                step={0.05}
+                value={settings.uiScale ?? 1}
+                onChange={(e) => updateSettings({ uiScale: parseFloat(e.target.value) })}
+                className="w-full accent-terminal"
+              />
+              <div className="flex gap-2 mt-3">
+                {[0.75, 0.85, 1.0, 1.1].map(v => (
+                  <button
+                    key={v}
+                    onClick={() => updateSettings({ uiScale: v })}
+                    className={`px-3 py-2 text-[10px] font-mono border rounded transition-colors ${(settings.uiScale ?? 1) === v ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim'}`}
+                  >
+                    {Math.round(v * 100)}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Theme */}
+            <div className="flex items-center justify-between bg-void p-4 border border-border rounded">
+              <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">UI Theme</label>
+              <div className="flex border border-border overflow-hidden rounded">
+                {['light', 'dark'].map(t => (
+                  <button
+                    key={t}
+                    onClick={() => updateSettings({ theme: t as any })}
+                    className={`px-5 py-2 text-[11px] uppercase tracking-wider transition-colors ${settings.theme === t ? 'bg-terminal text-surface font-bold' : 'bg-void text-text-dim'}`}
+                  >
+                    {t === 'light' ? '☀ Light' : '☽ Dark'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

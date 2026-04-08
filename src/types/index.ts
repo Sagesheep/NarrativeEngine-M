@@ -1,3 +1,21 @@
+export type EndpointConfig = {
+    endpoint: string;
+    apiKey: string;
+    modelName: string;
+};
+
+export type AIPreset = {
+    id: string;
+    name: string;
+    storyAI: EndpointConfig;
+    imageAI: EndpointConfig;
+    summarizerAI: EndpointConfig;
+    utilityAI?: EndpointConfig; // Context recommender — optional, fallback to substring scan if empty
+    enemyAI?: EndpointConfig;
+    neutralAI?: EndpointConfig;
+    allyAI?: EndpointConfig;
+};
+
 export type ProviderConfig = {
     id: string;
     label: string;
@@ -6,45 +24,22 @@ export type ProviderConfig = {
     modelName: string;
 };
 
-export type DiceConfig = {
-    catastrophe: number;
-    failure: number;
-    mixedSuccess: number;
-    cleanSuccess: number;
-    exceptionalSuccess: number;
-};
-
-export type SurpriseConfig = {
-    types: string[];  // Event types (e.g. "ENVIRONMENTAL_HAZARD")
-    tones: string[];  // Event tones (e.g. "GOOD", "BAD")
-    initialDC: number; // Starting DC after a reset (default: 98)
-    dcReduction: number; // Amount DC drops per turn (default: 3)
-};
-
-// Bundles GM + Summarizer provider together for quick-switching
-export type ProviderPreset = {
-    id: string;
-    label: string;              // e.g. "Cloud Full", "Hybrid", "Budget"
-    gmProviderId: string;       // which provider is the Main GM
-    summarizerProviderId?: string; // which provider summarizes. Empty = same as GM
-};
-
 export type AppSettings = {
-    providers: ProviderConfig[];
-    activeProviderId: string;
-    summarizerProviderId?: string; // Which provider does condensation. Empty = use activeProviderId.
-    presets: ProviderPreset[];
-    activePresetId?: string;
+    presets: AIPreset[];
+    activePresetId: string;
     contextLimit: number;
     autoCondenseEnabled: boolean;
     debugMode?: boolean; // Toggles inline payload viewer
     theme?: 'light' | 'dark'; // UI theme
+    showReasoning?: boolean; // Toggles visibility of LLM thinking blocks
+    uiScale?: number;  // 0.75 to 1.25, default 1.0
+
     // Legacy fields kept for migration only
+    providers?: ProviderConfig[];
+    activeProviderId?: string;
     endpoint?: string;
     apiKey?: string;
     modelName?: string;
-
-    // Image API
     imageApiEndpoint?: string;
     imageApiKey?: string;
     imageApiModel?: string;
@@ -56,9 +51,31 @@ export type CondenserState = {
     isCondensing: boolean;
 };
 
+export type DiceConfig = {
+    catastrophe: number; // e.g. 2 (1-2 is catastrophe)
+    failure: number;     // e.g. 6 (3-6 is failure)
+    success: number;     // e.g. 15 (7-15 is success)
+    triumph: number;     // e.g. 19 (16-19 is triumph)
+    crit: number;        // e.g. 20 (20 is crit)
+};
+
+export type SurpriseConfig = {
+    initialDC: number;
+    dcReduction: number;
+    types: string[];
+    tones: string[];
+};
+
+export type EncounterConfig = {
+    initialDC: number;
+    dcReduction: number;
+    types: string[];
+    tones: string[];
+};
+
 export type WorldEventConfig = {
-    initialDC: number; // Starting DC (default: 198)
-    dcReduction: number; // Amount DC drops per turn (default: 3)
+    initialDC: number; // Starting DC (default: 498)
+    dcReduction: number; // Amount DC drops per turn (default: 2)
     who?: string[]; // The custom 'who' table
     where?: string[]; // The custom 'where' table
     why?: string[]; // The custom 'why' table
@@ -75,6 +92,7 @@ export type GameContext = {
     inventory: string;
     characterProfile: string;
     surpriseDC?: number;
+    encounterDC?: number;
     worldEventDC?: number;
     diceConfig?: DiceConfig;
     worldEventConfig?: WorldEventConfig;
@@ -86,10 +104,30 @@ export type GameContext = {
     inventoryActive: boolean;
     characterProfileActive: boolean;
     surpriseEngineActive: boolean;
+    encounterEngineActive: boolean;
     worldEngineActive: boolean;
     diceFairnessActive: boolean;
+    sceneNote: string;
+    sceneNoteActive: boolean;
+    sceneNoteDepth: number;
     surpriseConfig?: SurpriseConfig;
+    encounterConfig?: EncounterConfig;
+    coreMemorySlots?: CoreMemorySlot[];
+    // --- AI Players (Enemy, Neutral, Ally) ---
+    worldVibe: string; // Global genre constraints (e.g. "Low fantasy, no magic")
+    enemyPlayerActive: boolean;
+    neutralPlayerActive: boolean;
+    allyPlayerActive: boolean;
+    enemyPlayerPrompt: string;
+    neutralPlayerPrompt: string;
+    allyPlayerPrompt: string;
+    interventionChance: number; // 0-100%
+    enemyCooldown: number;
+    neutralCooldown: number;
+    allyCooldown: number;
+    interventionQueue: ('enemy' | 'neutral' | 'ally')[];
 };
+
 
 export type ChatMessage = {
     id: string;
@@ -97,8 +135,7 @@ export type ChatMessage = {
     content: string;
     displayContent?: string; // Clean text for UI (without dice/surprise blocks)
     timestamp: number;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    debugPayload?: any; // Stores the exact JSON LLM payload
+    debugPayload?: unknown; // Stores the exact JSON LLM payload
     name?: string;
     tool_calls?: {
         id: string;
@@ -106,6 +143,35 @@ export type ChatMessage = {
         function: { name: string; arguments: string };
     }[];
     tool_call_id?: string;
+};
+
+/** @deprecated — replaced by ArchiveIndexEntry + ArchiveScene. Kept for backwards-compat migration. */
+export type ArchiveChunk = {
+    id: string;
+    sceneRange: string;
+    timestamp: number;
+    summary: string;
+    keywords: string[];
+    tokens: number;
+};
+
+/** Search index entry — one per scene, auto-built by server on every turn. */
+export type ArchiveIndexEntry = {
+    sceneId: string;         // zero-padded, e.g. "014" — matches ## SCENE header in .archive.md
+    timestamp: number;
+    keywords: string[];      // proper nouns, quoted strings, [MEMORABLE:] tags
+    npcsMentioned: string[]; // NPC names detected in the scene
+    userSnippet: string;     // first ~100 chars of user message (human-readable preview)
+    keywordStrengths?: Record<string, number>;
+    npcStrengths?: Record<string, number>;
+    importance?: number;
+};
+
+/** Full verbatim scene content fetched from .archive.md for recall injection. */
+export type ArchiveScene = {
+    sceneId: string;
+    content: string;
+    tokens: number;
 };
 
 export type Campaign = {
@@ -116,6 +182,19 @@ export type Campaign = {
     lastPlayedAt: number;
 };
 
+export type LoreCategory = 
+    | 'world_overview'
+    | 'faction'
+    | 'location'
+    | 'character'
+    | 'power_system'
+    | 'economy'
+    | 'event'
+    | 'relationship'
+    | 'rules'
+    | 'culture'
+    | 'misc';
+
 export type LoreChunk = {
     id: string;
     header: string;
@@ -124,13 +203,47 @@ export type LoreChunk = {
     alwaysInclude: boolean;
     triggerKeywords: string[];  // exact keywords that activate this chunk
     scanDepth: number;          // how many recent messages to scan (default: 3)
+    category: LoreCategory;
+    linkedEntities: string[];   // Names of NPCs, factions, locations referenced
+    parentSection?: string;     // The ## parent header this ### belongs under
+    priority: number;           // 0-10, higher = more important
+    summary?: string;           // One-line auto-summary for recommender index
+};
+
+export type EngineSeed = {
+    surpriseTypes: string[];
+    surpriseTones: string[];
+    encounterTypes: string[];
+    encounterTones: string[];
+    worldWho: string[];
+    worldWhere: string[];
+    worldWhy: string[];
+    worldWhat: string[];
+};
+
+export type NPCVisualProfile = {
+    race: string;
+    gender: string;
+    ageRange: string;
+    build: string;
+    symmetry: string; // ugly / pretty / handsome etc.
+    hairStyle: string;
+    eyeColor: string;
+    skinTone: string;
+    gait: string;
+    distinctMarks: string;
+    clothing: string;
+    artStyle: string;
 };
 
 export type NPCEntry = {
     id: string;
     name: string;
     aliases: string;
-    appearance: string;
+    appearance: string; // Legacy fallback or raw notes
+    visualProfile?: NPCVisualProfile; // Structured AI-ready fields
+    faction: string;
+    storyRelevance: string;
     disposition: string;
     status: string;
     goals: string;
@@ -142,6 +255,9 @@ export type NPCEntry = {
     ego: number;      // 1-10
     affinity: number; // 0-100
     portrait?: string; // Image path or base64
+    previousAxes?: { nature?: number; training?: number; emotion?: number; social?: number; belief?: number; ego?: number; affinity?: number; };
+    shiftNote?: string;
+    shiftTurnCount?: number;
 };
 
 
@@ -157,3 +273,60 @@ export type OpenAITool = {
         };
     };
 };
+
+export type ContextSourceClassification = 'stable_truth' | 'summary' | 'world_context' | 'volatile_state' | 'scene_local';
+
+export type PayloadTrace = {
+    source: string;
+    classification: ContextSourceClassification;
+    tokens: number;
+    reason: string;
+    preview?: string;
+    included: boolean;
+    position?: string;
+};
+
+export type CoreMemorySlot = {
+    key: string;
+    value: string;
+    priority: number;
+    sceneId: string;
+};
+
+export type SemanticFact = {
+    id: string;
+    subject: string;
+    predicate: string;
+    object: string;
+    importance: number;
+    sceneId: string;
+    timestamp: number;
+};
+
+export type ArchiveChapter = {
+    chapterId: string;
+    title: string;
+    sceneRange: [string, string];
+    summary: string;
+    keywords: string[];
+    npcs: string[];
+    majorEvents: string[];
+    unresolvedThreads: string[];
+    tone: string;
+    themes: string[];
+    sceneCount: number;
+    sealedAt?: number;
+    invalidated?: boolean;
+    _lastSeenSessionId?: string;
+};
+
+export type BackupMeta = {
+    timestamp: number;
+    label: string;
+    trigger: string;
+    hash: string;
+    fileCount: number;
+    isAuto: boolean;
+    campaignName: string;
+};
+

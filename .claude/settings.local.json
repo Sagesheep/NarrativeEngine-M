@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /d/Games/AI DM Project/Automated_system/mobileApp/capacitor.config* '/d/Games/AI DM Project/Automated_system/mobileApp/capacitor.config.ts' '/d/Games/AI DM Project/Automated_system/mobileApp/capacitor.config.json')",
+      "Read(//d/Games/AI DM Project/Automated_system/mobileApp/**)"
+    ]
+  }
+}

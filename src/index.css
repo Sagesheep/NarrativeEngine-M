@@ -107,10 +107,6 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
   }
 
   /* Subtle grain overlay — adapts via --color-grain */
@@ -169,18 +165,65 @@
   }
 
   .animate-pulse-slow {
-    animation: pulse-slow 3s ease-in-out infinite;
+    animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
   @keyframes pulse-slow {
+    0%, 100% { opacity: 1; filter: brightness(1.2); }
+    50% { opacity: 0.8; filter: brightness(1); }
+  }
 
-    0%,
-    100% {
-      opacity: 1;
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(20px) scale(0.95);
     }
 
-    50% {
-      opacity: 0.7;
+    to {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slide-in-left {
+    from {
+      transform: translateX(-100%);
+    }
+
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes msg-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 }
@@ -304,4 +347,243 @@
   background: var(--color-void-lighter);
   color: var(--color-ice);
   font-weight: 600;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MOBILE UI SYSTEM — Samsung S25 Ultra (412px viewport)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Safe Areas ── */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+@media (max-width: 767px) {
+  .safe-top {
+    padding-top: calc(max(env(safe-area-inset-top), 48px) / var(--ui-scale, 1));
+  }
+  .safe-bottom {
+    padding-bottom: calc(max(env(safe-area-inset-bottom), 48px) / var(--ui-scale, 1));
+  }
+}
+
+/* ── Bottom Sheet ── */
+.bottom-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 109;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.bottom-sheet-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bottom-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 110;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  border-radius: 16px 16px 0 0;
+  max-height: 92vh;
+  padding-top: env(safe-area-inset-top, 40px);
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bottom-sheet.open {
+  transform: translateY(0);
+}
+
+.bottom-sheet-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-text-dim);
+  opacity: 0.3;
+  margin: 10px auto 6px;
+  flex-shrink: 0;
+}
+
+/* ── Full-Screen Page (slides from right) ── */
+.mobile-page {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: var(--color-surface);
+  transform: translateX(100%);
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobile-page.open {
+  transform: translateX(0);
+}
+
+/* ── Mobile Page Header Bar ── */
+.mobile-page-header {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-void);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.mobile-page-header .back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  color: var(--color-terminal);
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.mobile-page-header .page-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-text-primary);
+}
+
+.mobile-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: color-mix(in srgb, var(--color-void), transparent 5%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  display: flex;
+  min-height: calc(64px + max(env(safe-area-inset-bottom), 48px) / var(--ui-scale, 1));
+  padding: 0 12px calc(max(env(safe-area-inset-bottom), 48px) / var(--ui-scale, 1)) 12px;
+  align-items: center;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.mobile-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--color-text-dim);
+  font-size: 9px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  border: none;
+  background: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-nav-item.active {
+  color: var(--color-terminal);
+  font-weight: 900;
+}
+
+.mobile-nav-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: 8px;
+  width: 5px;
+  height: 2px;
+  background: var(--color-terminal);
+  border-radius: 1px;
+  box-shadow: 0 0 10px var(--color-terminal);
+}
+
+.mobile-nav-item:active {
+  transform: scale(0.9);
+  transition: transform 0.1s ease;
+}
+
+/* ── Touch Targets ── */
+@media (max-width: 767px) {
+
+  /* Ensure all interactive elements have minimum 48px tap area */
+  .touch-btn {
+    min-height: 48px;
+    min-width: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Prevent WebView auto-zoom on input focus */
+  input[type="text"],
+  input[type="number"],
+  input[type="password"],
+  input[type="url"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* Add bottom padding for content behind the floating nav bar */
+  .nav-clearance {
+    padding-bottom: calc(64px + (max(env(safe-area-inset-bottom), 48px) / var(--ui-scale, 1)));
+  }
+
+  /* Tap feedback for buttons */
+  button:active {
+    transform: scale(0.97);
+    transition: transform 0.08s ease;
+  }
+
+  /* Bottom sheet content scroll */
+  .bottom-sheet-content {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-bottom: calc(64px + max(env(safe-area-inset-bottom), 48px));
+  }
+}
+
+/* ── NPC Detail Push Animation ── */
+.npc-detail-push {
+  animation: slide-in-right 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+/* ── Mobile Toggle (larger for thumb) ── */
+@media (max-width: 767px) {
+  .mobile-toggle {
+    width: 48px !important;
+    height: 26px !important;
+  }
+
+  .mobile-toggle>div {
+    height: 22px !important;
+    width: 22px !important;
+  }
+}
+
+:root {
+  --color-terminal-raw: 71, 243, 183;
 }

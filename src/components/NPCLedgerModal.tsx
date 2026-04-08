@@ -1,511 +1,302 @@
-import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, Users, User, Search, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { Filesystem, Directory } from '@capacitor/filesystem';
-import { Capacitor } from '@capacitor/core';
+import { useState, useRef } from 'react';
+import { X, Plus, LayoutGrid, List, ArrowLeft } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import type { NPCEntry } from '../types';
+import { generateNPCPortrait, updateExistingNPCs } from '../services/chatEngine';
+import { parseNPCsFromLore } from '../services/loreNPCParser';
+import { dedupeNPCLedger } from '../store/slices/campaignSlice';
+import { api } from '../services/apiClient';
 
-// Helper to format axis labels based on 1-10 value
-const AXIS_LABELS: Record<string, string[]> = {
-    'Nature': ['Pacifist', 'Gentle', 'Cautious', 'Measured', 'Pragmatic', 'Assertive', 'Aggressive', 'Brutal', 'Savage', 'Feral'],
-    'Training': ['Untrained', 'Dabbler', 'Novice', 'Apprentice', 'Competent', 'Seasoned', 'Veteran', 'Expert', 'Master', 'Legendary'],
-    'Emotion': ['Hollow', 'Stoic', 'Guarded', 'Composed', 'Steady', 'Sensitive', 'Volatile', 'Intense', 'Explosive', 'Hysterical'],
-    'Social': ['Mute', 'Recluse', 'Shy', 'Reserved', 'Neutral', 'Sociable', 'Charismatic', 'Influential', 'Magnetic', 'Manipulative'],
-    'Belief': ['Nihilist', 'Apathetic', 'Skeptic', 'Doubter', 'Moderate', 'Faithful', 'Devout', 'Zealous', 'Fanatical', 'Messianic'],
-    'Ego': ['Selfless', 'Servile', 'Meek', 'Humble', 'Balanced', 'Confident', 'Proud', 'Arrogant', 'Narcissistic', 'God-Complex']
+import { downloadImageToLocal } from '../services/assetService';
+import type { NPCEntry, NPCVisualProfile } from '../types';
+import { toast } from './Toast';
+
+import { NPCListView } from './npc-ledger/NPCListView';
+import { NPCGalleryView } from './npc-ledger/NPCGalleryView';
+import { NPCEditForm } from './npc-ledger/NPCEditForm';
+
+const DEFAULT_VISUAL_PROFILE: NPCVisualProfile = {
+  race: '', gender: '', ageRange: '', build: '', symmetry: '',
+  hairStyle: '', eyeColor: '', skinTone: '', gait: '', distinctMarks: '', clothing: '', artStyle: 'Anime'
 };
 
-function getAxisLabel(axis: string, value: number) {
-    const list = AXIS_LABELS[axis];
-    if (!list) return '';
-    // Value is 1-10, Array index is 0-9
-    const index = Math.max(0, Math.min(9, value - 1));
-    return list[index];
+function uid(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
 export function NPCLedgerModal() {
-    const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC } = useAppStore();
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [isEditing, setIsEditing] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [imageStyle, setImageStyle] = useState('Realistic');
-    const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-    const IMAGE_STYLES = ['Realistic', 'Anime Realistic', 'Full Anime', 'Chibi', 'Cartoonish', 'Western animation'];
+  const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC, setNPCLedger, setMobileView, activeCampaignId } = useAppStore();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'gallery'>('list');
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isAIUpdating, setIsAIUpdating] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
-    // Form state
-    const [form, setForm] = useState<Partial<NPCEntry>>({
-        status: 'Alive', nature: 5, training: 1, emotion: 5, social: 5, belief: 5, ego: 5, affinity: 50
+  const importRef = useRef<HTMLInputElement>(null);
+
+  const [form, setForm] = useState<Partial<NPCEntry>>({
+    status: 'Alive', nature: 5, training: 1, emotion: 5, social: 5, belief: 5, ego: 5,
+    visualProfile: { ...DEFAULT_VISUAL_PROFILE }
+  });
+
+  if (!npcLedgerOpen) return null;
+
+  const handleClose = () => {
+    toggleNPCLedger();
+    setMobileView('chat');
+  };
+
+  const handleSelect = (npc: NPCEntry) => {
+    setSelectedId(npc.id);
+    setForm({ ...npc, visualProfile: npc.visualProfile || { ...DEFAULT_VISUAL_PROFILE } });
+    setIsEditing(false);
+  };
+
+  const handleBackToList = () => {
+    setSelectedId(null);
+    setIsEditing(false);
+  };
+
+  const handleCreateNew = () => {
+    setSelectedId(null);
+    setForm({
+      name: '', aliases: '', appearance: '', faction: '', storyRelevance: '', disposition: '',
+      status: 'Alive', goals: '', nature: 5, training: 1, emotion: 5, social: 5, belief: 5, ego: 5,
+      visualProfile: { ...DEFAULT_VISUAL_PROFILE }
     });
+    setIsEditing(true);
+  };
 
-    // Close on escape
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && npcLedgerOpen) toggleNPCLedger();
-        };
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [npcLedgerOpen, toggleNPCLedger]);
+  const handleSave = () => {
+    if (!form.name?.trim()) return;
+    if (selectedId) {
+      updateNPC(selectedId, form);
+    } else {
+      const newId = uid();
+      addNPC({ ...form, id: newId } as NPCEntry);
+      setSelectedId(newId);
+    }
+    setIsEditing(false);
+  };
 
-    if (!npcLedgerOpen) return null;
+  const handleDelete = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('Delete this NPC from the ledger?')) {
+      removeNPC(id);
+      if (selectedId === id) { setSelectedId(null); setIsEditing(false); }
+    }
+  };
 
-    const handleSelect = (npc: NPCEntry) => {
-        setSelectedId(npc.id);
-        setForm({ ...npc });
-        setIsEditing(false);
-    };
 
-    const handleCreateNew = () => {
-        setSelectedId(null);
-        setForm({ name: '', aliases: '', appearance: '', disposition: '', status: 'Alive', goals: '', nature: 5, training: 1, emotion: 5, social: 5, belief: 5, ego: 5, affinity: 50, portrait: '' });
-        setIsEditing(true);
-    };
 
-    const handleGenerateImage = async () => {
-        const endpoint = useAppStore.getState().settings.imageApiEndpoint;
-        const apiKey = useAppStore.getState().settings.imageApiKey;
-        const apiModel = useAppStore.getState().settings.imageApiModel;
+  const handleExport = () => {
+    const exportData = npcLedger.map(({ portrait: _p, ...rest }) => rest);
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `npc_ledger_export_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a).click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
-        if (!endpoint) {
-            alert('Please configure the Image API Endpoint in Settings first.');
-            return;
+  const handleAIUpdate = async () => {
+    if (!selectedId) return;
+    const state = useAppStore.getState();
+    const provider = state.getActiveStoryEndpoint();
+    if (!provider) return;
+    setIsAIUpdating(true);
+    try {
+      const npc = npcLedger.find(n => n.id === selectedId);
+      if (npc) await updateExistingNPCs(provider, state.messages, [npc], (id, patch) => {
+        updateNPC(id, patch);
+        setForm(prev => ({ ...prev, ...patch }));
+      });
+    } finally { setIsAIUpdating(false); }
+  };
+
+  const handleGeneratePortrait = async () => {
+    const state = useAppStore.getState();
+    const activePreset = state.settings.presets[0];
+    if (!activePreset?.imageAI?.endpoint) { toast.error('Check Image AI settings'); return; }
+    setIsGeneratingImage(true);
+    try {
+      const vp = form.visualProfile || DEFAULT_VISUAL_PROFILE;
+      const prompt = `Fantasy character portrait, ${form.name}. ${vp.race} ${vp.gender}. Art style: ${vp.artStyle}`;
+      const url = await generateNPCPortrait(activePreset.imageAI, prompt);
+      const localPath = await downloadImageToLocal(url, form.name || 'Unknown');
+      setForm(prev => ({ ...prev, portrait: localPath }));
+      if (form.id) updateNPC(form.id, { portrait: localPath });
+    } finally { setIsGeneratingImage(false); }
+  };
+
+  const handleSeedFromLore = async () => {
+    const chunks = useAppStore.getState().loreChunks;
+    const loreNPCs = parseNPCsFromLore(chunks);
+    if (loreNPCs.length > 0) {
+      const merged = dedupeNPCLedger([...npcLedger, ...loreNPCs]);
+      setNPCLedger(merged);
+      toast.success(`Seeded ${loreNPCs.length} NPCs from lore`);
+    } else {
+      toast.info('No NPCs found in lore chunks');
+    }
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        if (Array.isArray(data)) {
+          const imported = data.map((d: any) => ({
+            id: d.id || uid(),
+            name: d.name || '',
+            aliases: d.aliases || '',
+            appearance: d.appearance || '',
+            visualProfile: d.visualProfile || undefined,
+            faction: d.faction || '',
+            storyRelevance: d.storyRelevance || '',
+            disposition: d.disposition || '',
+            status: d.status || 'Alive',
+            goals: d.goals || '',
+            nature: d.nature ?? 5,
+            training: d.training ?? 1,
+            emotion: d.emotion ?? 5,
+            social: d.social ?? 5,
+            belief: d.belief ?? 5,
+            ego: d.ego ?? 5,
+            affinity: d.affinity ?? 50,
+            portrait: d.portrait || '',
+          } as NPCEntry));
+          const merged = dedupeNPCLedger([...npcLedger, ...imported]);
+          setNPCLedger(merged);
+          toast.success(`Imported ${imported.length} NPCs`);
         }
-        if (!form.appearance) {
-            alert('Please provide some Visual Profiling text first.');
-            return;
-        }
-
-        setIsGeneratingImage(true);
-        try {
-            const stylePrompts: Record<string, string> = {
-                'Realistic': 'hyper-realistic, photorealistic, cinematic lighting, 8k resolution, intricate detail, professional photography',
-                'Anime Realistic': 'semi-realistic anime style, digital art, high quality, vibrant colors, sharp focus, Makoto Shinkai aesthetic',
-                'Full Anime': 'high quality anime, cel shaded, clean lines, vibrant digital art, Kyoto Animation style',
-                'Chibi': 'cute chibi style, large expressive eyes, small body, soft shading, sticker art quality',
-                'Cartoonish': 'stylized cartoon art, bold colors, expressive features, modern animation aesthetic, clean rendering',
-                'Western animation': 'Arcane aesthetic, painterly texture, dramatic lighting, high quality digital painting'
-            };
-            const stylePrefix = stylePrompts[imageStyle] || imageStyle;
-            const prompt = `${stylePrefix} portrait of a character with this appearance: ${form.appearance}`;
-
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
-                },
-                body: JSON.stringify({
-                    ...(apiModel ? { model: apiModel } : {}),
-                    prompt,
-                    n: 1,
-                    size: "512x512",
-                    response_format: "b64_json"
-                })
-            });
-
-            if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(errText || `Image API failed with status ${response.status}`);
-            }
-
-            const data = await response.json();
-            const b64 = data?.data?.[0]?.b64_json;
-            if (!b64) {
-                throw new Error("No image data returned from API.");
-            }
-
-            const filename = `npc_${selectedId || Date.now()}_${Date.now()}.png`;
-            await Filesystem.writeFile({
-                path: filename,
-                data: b64,
-                directory: Directory.Data
-            });
-
-            const uriResult = await Filesystem.getUri({
-                path: filename,
-                directory: Directory.Data
-            });
-
-            const safeUrl = Capacitor.convertFileSrc(uriResult.uri);
-            setForm(prev => ({ ...prev, portrait: safeUrl }));
-
-            if (selectedId) {
-                updateNPC(selectedId, { ...form, portrait: safeUrl });
-            }
-
-        } catch (err: any) {
-            console.error('Image Generation Error:', err);
-            alert(`Failed to generate portrait: ${err.message}`);
-        } finally {
-            setIsGeneratingImage(false);
-        }
+      } catch {
+        toast.error('Invalid JSON file');
+      }
     };
+    reader.readAsText(file);
+  };
 
-    const handleSave = () => {
-        if (!form.name?.trim()) return;
+  const handleBulkDelete = async () => {
+    if (checkedIds.size === 0) return;
+    if (!confirm(`Delete ${checkedIds.size} selected NPCs?`)) return;
+    if (activeCampaignId) {
+      await api.backup.create(activeCampaignId, { trigger: 'pre-npc-bulk-delete', isAuto: true }).catch(() => {});
+    }
+    const remaining = npcLedger.filter(n => !checkedIds.has(n.id));
+    setNPCLedger(remaining);
+    setCheckedIds(new Set());
+    setSelectMode(false);
+    toast.success(`Deleted ${checkedIds.size} NPCs`);
+  };
 
-        if (selectedId) {
-            updateNPC(selectedId, form);
-        } else {
-            addNPC({
-                ...form,
-                id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
-            } as NPCEntry);
-        }
-        setIsEditing(false);
-    };
+  const showDetail = !!selectedId || (isEditing && !selectedId);
 
-    const handleDelete = (id: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (confirm('Delete this NPC from the ledger?')) {
-            removeNPC(id);
-            if (selectedId === id) {
-                setSelectedId(null);
-                setIsEditing(false);
-            }
-        }
-    };
+  return (
+    <div className={`mobile-page md:fixed md:inset-0 md:z-[100] md:flex md:items-center md:justify-center ${npcLedgerOpen ? 'open' : ''}`}>
+      {/* Desktop Backdrop */}
+      <div className="hidden md:absolute md:inset-0 md:bg-void/80 md:backdrop-blur-sm" onClick={handleClose} />
 
-    const renderSlider = (label: keyof NPCEntry, displayLabel: string) => {
-        const value = form[label] as number ?? 5;
-        return (
-            <div className="mb-4">
-                <div className="flex justify-between items-end mb-1">
-                    <label className="text-text-dim text-xs uppercase tracking-wider">{displayLabel}</label>
-                    <span className="text-xs text-terminal">{value} / 10 <span className="text-text-dim ml-1 text-[10px] hidden sm:inline">({getAxisLabel(displayLabel, value)})</span></span>
-                </div>
-                <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={value}
-                    onChange={(e) => setForm({ ...form, [label]: parseInt(e.target.value, 10) })}
-                    disabled={!isEditing}
-                    className="w-full accent-terminal"
-                />
+      <div className="relative bg-surface w-full h-full md:max-w-6xl md:h-[85vh] md:border md:border-border md:shadow-2xl flex flex-col md:flex-row overflow-hidden">
+        <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
+
+        {/* Navigation / List Side */}
+        <div className={`flex flex-col w-full h-full border-r border-border bg-void-lighter transition-transform duration-300 ${showDetail ? 'hidden md:flex md:w-80' : 'flex'}`}>
+          <div className="mobile-page-header safe-top px-4 py-3 border-b border-border bg-void">
+            <button onClick={handleClose} className="back-btn -ml-2">
+              <ArrowLeft size={24} />
+            </button>
+            <span className="page-title">NPC Ledger</span>
+            <button onClick={handleCreateNew} className="touch-btn text-terminal ml-auto">
+              <Plus size={24} />
+            </button>
+          </div>
+
+          {/* List Toolbar */}
+          <div className="p-3 border-b border-border bg-void-lighter space-y-2">
+            <div className="flex bg-surface border border-border rounded overflow-hidden h-10">
+              <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 text-xs uppercase ${viewMode === 'list' ? 'bg-terminal text-void' : 'text-text-dim'}`}>
+                <List size={14} /> List
+              </button>
+              <button onClick={() => setViewMode('gallery')} className={`flex-1 flex items-center justify-center gap-2 text-xs uppercase border-l border-border ${viewMode === 'gallery' ? 'bg-terminal text-void' : 'text-text-dim'}`}>
+                <LayoutGrid size={14} /> Gallery
+              </button>
             </div>
-        );
-    };
-
-    const filteredLedger = npcLedger.filter(n => {
-        if (!searchQuery) return true;
-        const query = searchQuery.toLowerCase();
-        return (n.name?.toLowerCase().includes(query) || (typeof n.aliases === 'string' && n.aliases.toLowerCase().includes(query)));
-    });
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-void/80 backdrop-blur-sm p-4 sm:p-8" onClick={toggleNPCLedger}>
-            <div className="bg-surface border border-border flex flex-col sm:flex-row w-full max-w-5xl h-full max-h-[800px] overflow-hidden" onClick={e => e.stopPropagation()}>
-
-                {/* Left Sidebar: List */}
-                <div className="w-full sm:w-1/3 border-b sm:border-b-0 sm:border-r border-border flex flex-col bg-void-lighter max-h-[40vh] sm:max-h-none">
-                    <div className="p-4 border-b border-border flex justify-between items-center bg-void">
-                        <div className="flex items-center gap-2 text-terminal font-bold uppercase tracking-widest text-sm">
-                            <Users size={16} />
-                            NPC Ledger
-                        </div>
-                        <button onClick={toggleNPCLedger} className="text-text-dim hover:text-text-primary p-1 sm:hidden">
-                            <X size={18} />
-                        </button>
-                    </div>
-
-                    <div className="p-4 border-b border-border flex flex-col gap-2">
-                        <div className="relative w-full">
-                            <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                                <Search size={12} className="text-text-dim/50" />
-                            </div>
-                            <input
-                                type="text"
-                                placeholder="Search records..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-void border border-border rounded pl-7 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-dim/50 focus:border-terminal outline-none transition-colors"
-                            />
-                        </div>
-                        <button
-                            onClick={handleCreateNew}
-                            className={`w-full flex items-center justify-center gap-2 py-2 px-4 border border-dashed rounded text-xs uppercase tracking-wider transition-colors ${!selectedId && isEditing ? 'border-terminal text-terminal bg-terminal/10' : 'border-border text-text-dim hover:text-terminal hover:border-terminal'
-                                }`}
-                        >
-                            <Plus size={14} /> New Record
-                        </button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                        {npcLedger.length === 0 && (
-                            <p className="text-text-dim text-xs text-center p-4 italic opacity-50">No records found.</p>
-                        )}
-                        {npcLedger.length > 0 && filteredLedger.length === 0 && (
-                            <p className="text-text-dim text-xs text-center p-4 italic opacity-50">No matches found.</p>
-                        )}
-                        {filteredLedger.map(npc => (
-                            <div
-                                key={npc.id}
-                                onClick={() => handleSelect(npc)}
-                                className={`flex items-center justify-between p-3 cursor-pointer border-l-2 transition-all ${selectedId === npc.id ? 'border-terminal bg-terminal/5' : 'border-transparent hover:bg-surface'
-                                    }`}
-                            >
-                                <div className="flex items-center gap-2 truncate">
-                                    <User size={14} className={selectedId === npc.id ? 'text-terminal' : 'text-text-dim'} />
-                                    <div className="truncate">
-                                        <p className={`text-sm font-bold truncate ${selectedId === npc.id ? 'text-terminal glow-green-sm' : 'text-text-primary'}`}>
-                                            {npc.name}
-                                        </p>
-                                        {npc.aliases && <p className="text-[10px] text-text-dim truncate">{npc.aliases}</p>}
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={(e) => handleDelete(npc.id, e)}
-                                    className="p-1 text-text-dim hover:text-danger hover:bg-danger/10 rounded transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                                >
-                                    <Trash2 size={12} className="pointer-events-none" />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Right Area: Form/Details */}
-                <div className="flex-1 flex flex-col bg-surface overflow-hidden relative">
-                    <button onClick={toggleNPCLedger} className="absolute top-4 right-4 text-text-dim hover:text-text-primary hidden sm:block p-1 bg-void rounded border border-transparent hover:border-border transition-all z-10">
-                        <X size={18} />
-                    </button>
-
-                    {selectedId || isEditing ? (
-                        <div className="flex-1 overflow-y-auto p-6 sm:p-8 flex flex-col">
-                            <div className="flex justify-between items-start mb-6">
-                                <div>
-                                    <h2 className="text-xl font-bold text-text-primary tracking-wide uppercase">
-                                        {isEditing && !selectedId ? 'New Subject Record' : selectedId && !isEditing ? form.name : `Editing: ${form.name}`}
-                                    </h2>
-                                    <p className="text-xs text-text-dim mt-1">Classified GM Information file.</p>
-                                </div>
-                                {!isEditing && (
-                                    <button
-                                        onClick={() => setIsEditing(true)}
-                                        className="bg-void border border-border px-4 py-1.5 text-xs text-text-dim hover:text-terminal hover:border-terminal uppercase tracking-widest transition-colors"
-                                    >
-                                        Edit Record
-                                    </button>
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1">
-                                {/* Details Column */}
-                                <div className="space-y-4">
-                                    {/* Image Section */}
-                                    <div className="flex gap-4 p-3 bg-void border border-border/50 rounded">
-                                        <div className="w-24 h-24 sm:w-32 sm:h-32 shrink-0 bg-surface border border-border flex items-center justify-center overflow-hidden relative group">
-                                            {form.portrait ? (
-                                                <img src={form.portrait} alt={form.name} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <ImageIcon className="text-text-dim/30 w-8 h-8 sm:w-12 sm:h-12" />
-                                            )}
-                                            {isEditing && form.portrait && (
-                                                <button
-                                                    onClick={() => setForm({ ...form, portrait: '' })}
-                                                    className="absolute top-1 right-1 p-1 bg-danger text-void rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                                >
-                                                    <X size={12} />
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="flex-1 flex flex-col justify-center space-y-2">
-                                            <label className="text-text-dim text-[10px] uppercase tracking-wider block">AI Portrait Generation</label>
-                                            <select
-                                                value={imageStyle}
-                                                onChange={(e) => setImageStyle(e.target.value)}
-                                                className="w-full bg-void-lighter border border-border px-2 py-1.5 text-xs text-text-primary outline-none focus:border-terminal transition-colors"
-                                            >
-                                                {IMAGE_STYLES.map(style => (
-                                                    <option key={style} value={style}>{style}</option>
-                                                ))}
-                                            </select>
-                                            <button
-                                                onClick={handleGenerateImage}
-                                                disabled={isGeneratingImage || !form.appearance}
-                                                className="w-full flex items-center justify-center gap-2 bg-void border border-terminal/40 text-terminal hover:border-terminal px-3 py-1.5 text-[11px] uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                title={!form.appearance ? "Provide Visual Profiling text first" : "Generate Image"}
-                                            >
-                                                {isGeneratingImage ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />}
-                                                {isGeneratingImage ? 'Generating...' : 'Generate Portrait'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Primary Designation</label>
-                                        <input
-                                            type="text"
-                                            value={form.name || ''}
-                                            onChange={e => setForm({ ...form, name: e.target.value })}
-                                            disabled={!isEditing}
-                                            placeholder="Subject Name"
-                                            className="w-full bg-void border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent"
-                                        />
-                                    </div>
-                                    <div className="flex gap-4">
-                                        <div className="flex-1">
-                                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1 flex justify-between">
-                                                <span>Known Aliases</span>
-                                                <span className="text-text-dim/50 lowercase tracking-normal">comma separated</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={form.aliases || ''}
-                                                onChange={e => setForm({ ...form, aliases: e.target.value })}
-                                                disabled={!isEditing}
-                                                placeholder="The Blacksmith, Kael, Old Man"
-                                                className="w-full bg-void border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent"
-                                            />
-                                        </div>
-                                        <div className="w-1/3">
-                                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Status</label>
-                                            <select
-                                                value={form.status || 'Alive'}
-                                                onChange={e => setForm({ ...form, status: e.target.value })}
-                                                disabled={!isEditing}
-                                                className="w-full bg-void border border-border rounded px-3 py-2 text-sm text-text-primary disabled:opacity-70 disabled:bg-surface disabled:border-transparent outline-none focus:border-terminal transition-colors"
-                                            >
-                                                <option value="Alive">Alive</option>
-                                                <option value="Deceased">Deceased</option>
-                                                <option value="Missing">Missing</option>
-                                                <option value="Unknown">Unknown</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Visual Profiling</label>
-                                        <textarea
-                                            value={form.appearance || ''}
-                                            onChange={e => setForm({ ...form, appearance: e.target.value })}
-                                            disabled={!isEditing}
-                                            placeholder="Physical description, clothing, distinct marks..."
-                                            rows={2}
-                                            className="w-full bg-void border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent resize-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Default Disposition</label>
-                                        <input
-                                            type="text"
-                                            value={form.disposition || ''}
-                                            onChange={e => setForm({ ...form, disposition: e.target.value })}
-                                            disabled={!isEditing}
-                                            placeholder="Helpful, Suspicious, Hostile..."
-                                            className="w-full bg-void border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Core Motive / Goals</label>
-                                        <textarea
-                                            value={form.goals || ''}
-                                            onChange={e => setForm({ ...form, goals: e.target.value })}
-                                            disabled={!isEditing}
-                                            placeholder="What does this character ultimately want?"
-                                            rows={2}
-                                            className="w-full bg-void border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent resize-none"
-                                        />
-                                    </div>
-                                    <div className="pt-2 border-t border-border/50">
-                                        <div className="flex justify-between items-end mb-1">
-                                            <label className="text-text-dim text-xs uppercase tracking-wider">Affinity</label>
-                                            <span className={`text-xs ${(form.affinity ?? 50) < 30 ? 'text-danger' :
-                                                (form.affinity ?? 50) > 70 ? 'text-terminal glow-green-sm' :
-                                                    'text-ice'
-                                                }`}>
-                                                {form.affinity ?? 50} / 100 <span className="text-text-dim ml-1 text-[10px] hidden sm:inline">({
-                                                    (form.affinity ?? 50) <= 9 ? 'Arch Nemesis' :
-                                                        (form.affinity ?? 50) <= 19 ? 'Bitter Enemy' :
-                                                            (form.affinity ?? 50) <= 29 ? 'Hostile' :
-                                                                (form.affinity ?? 50) <= 39 ? 'Unfriendly' :
-                                                                    (form.affinity ?? 50) <= 44 ? 'Skeptical' :
-                                                                        (form.affinity ?? 50) <= 55 ? 'Neutral' :
-                                                                            (form.affinity ?? 50) <= 60 ? 'Receptive' :
-                                                                                (form.affinity ?? 50) <= 70 ? 'Friendly' :
-                                                                                    (form.affinity ?? 50) <= 80 ? 'Trusted' :
-                                                                                        (form.affinity ?? 50) <= 90 ? 'Ally' :
-                                                                                            'Loyal Ally'
-                                                })</span>
-                                            </span>
-                                        </div>
-                                        <input
-                                            type="range"
-                                            min="0"
-                                            max="100"
-                                            value={form.affinity ?? 50}
-                                            onChange={(e) => setForm({ ...form, affinity: parseInt(e.target.value, 10) })}
-                                            disabled={!isEditing}
-                                            className={`w-full ${(form.affinity ?? 50) < 30 ? 'accent-danger' :
-                                                (form.affinity ?? 50) > 70 ? 'accent-terminal' :
-                                                    'accent-ice'
-                                                }`}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Axes Column */}
-                                <div className="bg-void p-4 rounded border border-border/50">
-                                    <div className="flex items-center gap-2 text-ember font-bold uppercase tracking-widest text-xs mb-6 border-b border-border/50 pb-2">
-                                        <div className="w-1.5 h-1.5 bg-ember rounded-full animate-pulse-slow"></div>
-                                        Psychological Axes
-                                    </div>
-                                    {renderSlider('nature', 'Nature')}
-                                    {renderSlider('training', 'Training')}
-                                    {renderSlider('emotion', 'Emotion')}
-                                    {renderSlider('social', 'Social')}
-                                    {renderSlider('belief', 'Belief')}
-                                    {renderSlider('ego', 'Ego')}
-                                </div>
-                            </div>
-
-                            {/* Actions Bar */}
-                            {isEditing && (
-                                <div className="mt-8 pt-4 border-t border-border flex justify-between gap-3 shrink-0">
-                                    {selectedId ? (
-                                        <button
-                                            onClick={(e) => handleDelete(selectedId, e)}
-                                            className="px-4 py-2 text-xs uppercase tracking-widest text-danger hover:bg-danger/10 border border-danger/30 rounded transition-colors"
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <Trash2 size={14} /> Delete Record
-                                            </div>
-                                        </button>
-                                    ) : (
-                                        <div /> /* Spacer */
-                                    )}
-
-                                    <div className="flex gap-3">
-                                        {selectedId && (
-                                            <button
-                                                onClick={() => {
-                                                    const npc = npcLedger.find(n => n.id === selectedId);
-                                                    if (npc) setForm({ ...npc });
-                                                    setIsEditing(false);
-                                                }}
-                                                className="px-4 py-2 text-xs uppercase tracking-widest text-text-dim hover:text-text-primary border border-border bg-void transition-colors"
-                                            >
-                                                Discard Change
-                                            </button>
-                                        )}
-                                        <button
-                                            onClick={handleSave}
-                                            disabled={!form.name?.trim()}
-                                            className="flex items-center gap-2 px-6 py-2 text-xs uppercase tracking-widest text-void bg-terminal font-bold hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                                        >
-                                            <Save size={14} /> Commit Record
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 opacity-50">
-                            <Users size={48} className="mb-4 text-text-dim/50" />
-                            <p className="text-text-dim uppercase tracking-widest text-sm">No Record Selected</p>
-                            <p className="text-text-dim/50 text-xs mt-2">Select a subject from the ledger or create a new entry.</p>
-                        </div>
-                    )}
-                </div>
+            <div className="flex gap-1.5 h-10">
+              <button onClick={() => importRef.current?.click()} className="flex-1 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim">
+                Import
+              </button>
+              <button onClick={handleExport} className="flex-1 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim">
+                Export
+              </button>
+              <button onClick={handleSeedFromLore} className="flex-1 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim">
+                Seed
+              </button>
+              <button onClick={() => { setSelectMode(!selectMode); setCheckedIds(new Set()); }} className={`flex-1 border rounded text-[10px] uppercase tracking-wider ${selectMode ? 'border-terminal text-terminal' : 'border-border text-text-dim'}`}>
+                {selectMode ? 'Cancel' : 'Select'}
+              </button>
             </div>
+            {selectMode && (
+              <div className="flex gap-1.5 h-10">
+                <button onClick={() => setCheckedIds(new Set(npcLedger.map(n => n.id)))} className="flex-1 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim">
+                  All
+                </button>
+                <button onClick={() => setCheckedIds(new Set())} className="flex-1 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim">
+                  None
+                </button>
+                <button onClick={handleBulkDelete} disabled={checkedIds.size === 0} className="flex-1 border border-red-500/30 rounded text-[10px] uppercase tracking-wider text-red-500 disabled:opacity-30">
+                  Delete ({checkedIds.size})
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {viewMode === 'list'
+              ? <NPCListView npcLedger={npcLedger} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })} onDelete={handleDelete} />
+              : <NPCGalleryView npcLedger={npcLedger} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })} onDelete={handleDelete} />
+            }
+          </div>
         </div>
-    );
+
+        {/* Detail Side */}
+        <div className={`flex-1 flex flex-col bg-surface transition-transform duration-300 ${!showDetail ? 'hidden md:flex' : 'flex'}`}>
+          {/* Detail Header (Mobile) */}
+          <div className="mobile-page-header md:hidden px-4 py-3 border-b border-border bg-void">
+            <button onClick={handleBackToList} className="back-btn -ml-2">
+              <ArrowLeft size={24} />
+            </button>
+            <span className="page-title">{isEditing && !selectedId ? 'New NPC' : 'NPC Details'}</span>
+          </div>
+
+          {/* Detail Header (Desktop) */}
+          <div className="hidden md:flex items-center justify-between p-4 border-b border-border bg-void">
+            <span className="text-terminal text-[10px] font-bold uppercase tracking-widest">NPC Detail</span>
+            <button onClick={handleClose} className="text-text-dim hover:text-danger"><X size={18} /></button>
+          </div>
+
+          <NPCEditForm
+            form={form}
+            setForm={setForm}
+            selectedId={selectedId}
+            isEditing={isEditing}
+            isAIUpdating={isAIUpdating}
+            isGeneratingImage={isGeneratingImage}
+            onEdit={() => setIsEditing(true)}
+            onSave={handleSave}
+            onCancel={() => setIsEditing(false)}
+            onDelete={handleDelete}
+            onAIUpdate={handleAIUpdate}
+            onGeneratePortrait={handleGeneratePortrait}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
