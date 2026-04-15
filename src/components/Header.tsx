@@ -35,7 +35,7 @@ export function Header() {
     };
 
     return (
-        <header className="bg-surface border-b border-border flex items-center px-2 sm:px-4 gap-1 sm:gap-2 shrink-0 safe-top min-h-12 md:min-h-12 py-1 md:py-0">
+        <header className="bg-surface border-b border-border flex items-center px-2 sm:px-4 gap-1 shrink-0 safe-top min-h-9 md:min-h-10 py-0">
             <button
                 onClick={toggleDrawer}
                 className="text-text-dim hover:text-terminal transition-colors p-1 touch-btn md:p-1 md:min-h-0 md:min-w-0"

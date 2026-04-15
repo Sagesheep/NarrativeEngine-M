@@ -1,5 +1,6 @@
 import type { ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, SemanticFact } from '../types';
 import { extractContextActivations, expandActivationsWithFacts, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
+import { getChatUrl, buildChatHeaders, extractContent } from '../utils/llmApiHelper';
 
 const AUTO_SEAL_SCENE_THRESHOLD = 25; // ~25 exchanges is a meaningful arc
 
@@ -128,6 +129,7 @@ export type EndpointConfig = {
     endpoint: string;
     apiKey: string;
     modelName: string;
+    apiFormat?: 'openai' | 'ollama';
 };
 
 export type ProviderConfig = EndpointConfig;
@@ -240,9 +242,8 @@ async function validateChapterRelevance(
     const timeoutId = setTimeout(() => controller.abort(), 3000);
 
     try {
-        const url = `${provider.endpoint.replace(/\/+$/, '')}/chat/completions`;
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (provider.apiKey) headers['Authorization'] = `Bearer ${provider.apiKey}`;
+        const url = getChatUrl(provider);
+        const headers = buildChatHeaders(provider);
 
         const res = await fetch(url, {
             method: 'POST',
@@ -252,15 +253,15 @@ async function validateChapterRelevance(
                 model: provider.modelName,
                 messages: [{ role: 'user', content: prompt }],
                 stream: false,
-                max_tokens: 10, // we only need YES/NO
+                max_tokens: 10,
             }),
         });
 
         clearTimeout(timeoutId);
-        if (!res.ok) return true; // on failure, assume relevant (don't lose data)
+        if (!res.ok) return true;
 
         const data = await res.json();
-        const answer = (data.choices?.[0]?.message?.content ?? '').trim().toUpperCase();
+        const answer = extractContent(data, provider).trim().toUpperCase();
         return answer.startsWith('YES');
     } catch {
         clearTimeout(timeoutId);
@@ -327,7 +328,8 @@ export async function recallWithChapterFunnel(
     semanticFacts: SemanticFact[],
     tokenBudget: number,
     utilityProvider: EndpointConfig | ProviderConfig,
-    _countTokens?: (text: string) => number
+    _countTokens?: (text: string) => number,
+    semanticCandidateIds?: string[]
 ): Promise<{ scenes: string; usedTokens: number }> {
     // ─── Phase 1: Chapter-level 3D scoring ───
     const ranked = rankChapters(chapters, userMessage, recentMessages, npcLedger, semanticFacts);
@@ -335,7 +337,7 @@ export async function recallWithChapterFunnel(
     if (ranked.length === 0) {
         // No sealed chapters with summaries — fall back to flat retrieval
         const scenes = await fetchArchiveScenes(campaignId, 
-            retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts),
+            retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds),
             tokenBudget
         );
         const sceneText = scenes.map(s => `\n--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n');
@@ -360,12 +362,11 @@ export async function recallWithChapterFunnel(
     // ─── Phase 4: Scene-level 3D scoring within ranges ───
     const matchedIds = retrieveArchiveMemory(
         index, userMessage, recentMessages, npcLedger,
-        undefined, semanticFacts, sceneRanges
+        undefined, semanticFacts, sceneRanges, semanticCandidateIds
     );
 
     if (matchedIds.length === 0) {
-        // Fallback to flat retrieval
-        const flatIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts);
+        const flatIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds);
         const scenes = await fetchArchiveScenes(campaignId, flatIds, tokenBudget);
         const sceneText = scenes.map(s => `\n--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n');
         const usedTokens = scenes.reduce((sum, s) => sum + s.tokens, 0);

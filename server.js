@@ -358,6 +358,8 @@ app.delete('/api/campaigns/:id', (req, res) => {
         path.join(CAMPAIGNS_DIR, `${id}.archive.index.json`),
         path.join(CAMPAIGNS_DIR, `${id}.facts.json`),
         path.join(CAMPAIGNS_DIR, `${id}.archive.chapters.json`),
+        path.join(CAMPAIGNS_DIR, `${id}.timeline.json`),
+        path.join(CAMPAIGNS_DIR, `${id}.entities.json`),
     ];
     for (const f of files) {
         if (fs.existsSync(f)) fs.unlinkSync(f);
@@ -995,6 +997,203 @@ app.delete('/api/campaigns/:id/backups/:ts', (req, res) => {
     } catch (err) {
         res.status(500).json({ error: 'Failed to delete backup' });
     }
+});
+
+// ═══════════════════════════════════════════
+//  Archive Rollback
+// ═══════════════════════════════════════════
+
+app.delete('/api/campaigns/:id/archive/scenes-from/:sceneId', (req, res) => {
+    const fp = archivePath(req.params.id);
+    const idxp = archiveIndexPath(req.params.id);
+    const fromId = req.params.sceneId.padStart(3, '0');
+    const fromNum = parseInt(fromId, 10);
+
+    if (fs.existsSync(fp)) {
+        const raw = fs.readFileSync(fp, 'utf-8');
+        const sceneBlocks = raw.split(/^(?=## SCENE )/m);
+        const kept = sceneBlocks.filter(block => {
+            const match = block.match(/^## SCENE (\d+)/);
+            if (!match) return true;
+            return parseInt(match[1], 10) < fromNum;
+        });
+        fs.writeFileSync(fp, kept.join(''), 'utf-8');
+    }
+
+    if (fs.existsSync(idxp)) {
+        const entries = readJson(idxp, []);
+        writeJson(idxp, entries.filter(e => parseInt(e.sceneId, 10) < fromNum));
+    }
+
+    // Prune facts from rolled-back scenes
+    const ftFile = factsPath(req.params.id);
+    if (fs.existsSync(ftFile)) {
+        const facts = readJson(ftFile, []);
+        writeJson(ftFile, facts.filter(f => parseInt(f.sceneId, 10) < fromNum));
+    }
+
+    // Prune timeline from rolled-back scenes
+    const tlFile = timelinePath(req.params.id);
+    if (fs.existsSync(tlFile)) {
+        const timeline = readJson(tlFile, []);
+        writeJson(tlFile, timeline.filter(e => parseInt(e.sceneId, 10) < fromNum));
+    }
+
+    // Chapter rollback cascade
+    const cp = chaptersPath(req.params.id);
+    let chaptersRepaired = false;
+    if (fs.existsSync(cp)) {
+        let chapters = readJson(cp, []);
+        const originalCount = chapters.length;
+
+        chapters = chapters.filter(ch => parseInt(ch.sceneRange[0], 10) < fromNum);
+
+        for (const ch of chapters) {
+            const endNum = parseInt(ch.sceneRange[1], 10);
+            if (endNum >= fromNum) {
+                ch.sceneRange[1] = String(fromNum - 1).padStart(3, '0');
+                ch.invalidated = true;
+                delete ch.sealedAt;
+                ch.sceneCount = fromNum - parseInt(ch.sceneRange[0], 10);
+                chaptersRepaired = true;
+            }
+        }
+
+        if (chapters.length !== originalCount) chaptersRepaired = true;
+
+        const openChapter = chapters.find(ch => !ch.sealedAt);
+        if (!openChapter) {
+            const nextNum = chapters.length + 1;
+            chapters.push({
+                chapterId: `CH${String(nextNum).padStart(2, '0')}`,
+                title: `Chapter ${nextNum}`,
+                sceneRange: [fromId, fromId],
+                summary: '',
+                keywords: [],
+                npcs: [],
+                majorEvents: [],
+                unresolvedThreads: [],
+                tone: '',
+                themes: [],
+                sceneCount: 0,
+            });
+            chaptersRepaired = true;
+        }
+
+        writeJson(cp, chapters);
+    }
+
+    res.json({
+        ok: true,
+        removedFrom: fromId,
+        chaptersRepaired,
+        condenserResetRecommended: true,
+    });
+});
+
+function timelinePath(id) {
+    return path.join(CAMPAIGNS_DIR, `${id}.timeline.json`);
+}
+
+function entitiesPath(id) {
+    return path.join(CAMPAIGNS_DIR, `${id}.entities.json`);
+}
+
+const TIMELINE_PREDICATES_SERVER = [
+    'status', 'located_in', 'holds', 'allied_with', 'enemy_of', 'killed_by',
+    'controls', 'relationship_to', 'seeks', 'knows_about', 'destroyed', 'misc',
+];
+
+// ═══════════════════════════════════════════
+//  Timeline (World State Truth Store)
+// ═══════════════════════════════════════════
+
+app.get('/api/campaigns/:id/timeline', (req, res) => {
+    const id = req.params.id;
+    const tp = timelinePath(id);
+
+    if (!fs.existsSync(tp)) {
+        const fp = factsPath(id);
+        if (fs.existsSync(fp)) {
+            const facts = readJson(fp, []);
+            const migrated = facts.map(f => ({
+                id: `tl_${f.id ? f.id.replace('fact_', '') : String(Math.random()).slice(2, 6)}`,
+                sceneId: f.sceneId || '000',
+                chapterId: 'CH00',
+                subject: f.subject || '',
+                predicate: TIMELINE_PREDICATES_SERVER.includes(f.predicate) ? f.predicate : 'misc',
+                object: f.object || '',
+                summary: `${f.subject} ${f.predicate} ${f.object}`,
+                importance: typeof f.importance === 'number' ? f.importance : 5,
+                source: f.source || 'regex',
+            }));
+            writeJson(tp, migrated);
+            return res.json(migrated);
+        }
+        return res.json([]);
+    }
+
+    res.json(readJson(tp, []));
+});
+
+app.post('/api/campaigns/:id/timeline', (req, res) => {
+    const tp = timelinePath(req.params.id);
+    const existing = readJson(tp, []);
+    const { subject, predicate, object: obj, summary, importance, sceneId: evSceneId, chapterId } = req.body;
+
+    if (!subject || !predicate || !obj) {
+        return res.status(400).json({ error: 'subject, predicate, and object are required' });
+    }
+
+    const event = {
+        id: `tl_${String(existing.length + 1).padStart(4, '0')}`,
+        sceneId: evSceneId || '000',
+        chapterId: chapterId || 'CH00',
+        subject,
+        predicate: TIMELINE_PREDICATES_SERVER.includes(predicate) ? predicate : 'misc',
+        object: obj,
+        summary: summary || `${subject} ${predicate} ${obj}`,
+        importance: Math.min(10, Math.max(1, typeof importance === 'number' ? importance : 5)),
+        source: 'manual',
+    };
+
+    existing.push(event);
+    writeJson(tp, existing);
+    res.json(event);
+});
+
+app.delete('/api/campaigns/:id/timeline/:eventId', (req, res) => {
+    const tp = timelinePath(req.params.id);
+    const existing = readJson(tp, []);
+    const filtered = existing.filter(e => e.id !== req.params.eventId);
+    writeJson(tp, filtered);
+    res.json({ ok: true, removed: existing.length - filtered.length });
+});
+
+// ═══════════════════════════════════════════
+//  Entities
+// ═══════════════════════════════════════════
+
+app.get('/api/campaigns/:id/entities', (req, res) => {
+    const entities = readJson(entitiesPath(req.params.id), []);
+    res.json(entities);
+});
+
+app.post('/api/campaigns/:id/entities/merge', (req, res) => {
+    const { survivorId, absorbedId } = req.body;
+    if (!survivorId || !absorbedId) return res.status(400).json({ error: 'survivorId and absorbedId required' });
+
+    const ep = entitiesPath(req.params.id);
+    const entities = readJson(ep, []);
+    const survivor = entities.find(e => e.id === survivorId);
+    const absorbed = entities.find(e => e.id === absorbedId);
+
+    if (!survivor || !absorbed) return res.status(404).json({ error: 'Entity not found' });
+
+    survivor.aliases = [...new Set([...(survivor.aliases || []), absorbed.name, ...(absorbed.aliases || [])])];
+    const filtered = entities.filter(e => e.id !== absorbedId);
+    writeJson(ep, filtered);
+    res.json({ ok: true, survivor });
 });
 
 // ═══════════════════════════════════════════

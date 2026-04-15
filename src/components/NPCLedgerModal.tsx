@@ -1,23 +1,17 @@
 import { useState, useRef } from 'react';
 import { X, Plus, LayoutGrid, List, ArrowLeft } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { generateNPCPortrait, updateExistingNPCs } from '../services/chatEngine';
+import { updateExistingNPCs } from '../services/chatEngine';
 import { parseNPCsFromLore } from '../services/loreNPCParser';
 import { dedupeNPCLedger } from '../store/slices/campaignSlice';
 import { api } from '../services/apiClient';
 
-import { downloadImageToLocal } from '../services/assetService';
-import type { NPCEntry, NPCVisualProfile } from '../types';
+import type { NPCEntry } from '../types';
 import { toast } from './Toast';
 
 import { NPCListView } from './npc-ledger/NPCListView';
 import { NPCGalleryView } from './npc-ledger/NPCGalleryView';
 import { NPCEditForm } from './npc-ledger/NPCEditForm';
-
-const DEFAULT_VISUAL_PROFILE: NPCVisualProfile = {
-  race: '', gender: '', ageRange: '', build: '', symmetry: '',
-  hairStyle: '', eyeColor: '', skinTone: '', gait: '', distinctMarks: '', clothing: '', artStyle: 'Anime'
-};
 
 function uid(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -28,7 +22,6 @@ export function NPCLedgerModal() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'gallery'>('list');
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isAIUpdating, setIsAIUpdating] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
@@ -37,7 +30,6 @@ export function NPCLedgerModal() {
 
   const [form, setForm] = useState<Partial<NPCEntry>>({
     status: 'Alive', nature: 5, training: 1, emotion: 5, social: 5, belief: 5, ego: 5,
-    visualProfile: { ...DEFAULT_VISUAL_PROFILE }
   });
 
   if (!npcLedgerOpen) return null;
@@ -49,7 +41,7 @@ export function NPCLedgerModal() {
 
   const handleSelect = (npc: NPCEntry) => {
     setSelectedId(npc.id);
-    setForm({ ...npc, visualProfile: npc.visualProfile || { ...DEFAULT_VISUAL_PROFILE } });
+    setForm({ ...npc });
     setIsEditing(false);
   };
 
@@ -63,7 +55,6 @@ export function NPCLedgerModal() {
     setForm({
       name: '', aliases: '', appearance: '', faction: '', storyRelevance: '', disposition: '',
       status: 'Alive', goals: '', nature: 5, training: 1, emotion: 5, social: 5, belief: 5, ego: 5,
-      visualProfile: { ...DEFAULT_VISUAL_PROFILE }
     });
     setIsEditing(true);
   };
@@ -91,7 +82,7 @@ export function NPCLedgerModal() {
 
 
   const handleExport = () => {
-    const exportData = npcLedger.map(({ portrait: _p, ...rest }) => rest);
+    const exportData = npcLedger.map(({ ...rest }) => rest);
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -115,21 +106,6 @@ export function NPCLedgerModal() {
         setForm(prev => ({ ...prev, ...patch }));
       });
     } finally { setIsAIUpdating(false); }
-  };
-
-  const handleGeneratePortrait = async () => {
-    const state = useAppStore.getState();
-    const activePreset = state.settings.presets[0];
-    if (!activePreset?.imageAI?.endpoint) { toast.error('Check Image AI settings'); return; }
-    setIsGeneratingImage(true);
-    try {
-      const vp = form.visualProfile || DEFAULT_VISUAL_PROFILE;
-      const prompt = `Fantasy character portrait, ${form.name}. ${vp.race} ${vp.gender}. Art style: ${vp.artStyle}`;
-      const url = await generateNPCPortrait(activePreset.imageAI, prompt);
-      const localPath = await downloadImageToLocal(url, form.name || 'Unknown');
-      setForm(prev => ({ ...prev, portrait: localPath }));
-      if (form.id) updateNPC(form.id, { portrait: localPath });
-    } finally { setIsGeneratingImage(false); }
   };
 
   const handleSeedFromLore = async () => {
@@ -157,7 +133,6 @@ export function NPCLedgerModal() {
             name: d.name || '',
             aliases: d.aliases || '',
             appearance: d.appearance || '',
-            visualProfile: d.visualProfile || undefined,
             faction: d.faction || '',
             storyRelevance: d.storyRelevance || '',
             disposition: d.disposition || '',
@@ -170,7 +145,6 @@ export function NPCLedgerModal() {
             belief: d.belief ?? 5,
             ego: d.ego ?? 5,
             affinity: d.affinity ?? 50,
-            portrait: d.portrait || '',
           } as NPCEntry));
           const merged = dedupeNPCLedger([...npcLedger, ...imported]);
           setNPCLedger(merged);
@@ -287,13 +261,11 @@ export function NPCLedgerModal() {
             selectedId={selectedId}
             isEditing={isEditing}
             isAIUpdating={isAIUpdating}
-            isGeneratingImage={isGeneratingImage}
             onEdit={() => setIsEditing(true)}
             onSave={handleSave}
             onCancel={() => setIsEditing(false)}
             onDelete={handleDelete}
             onAIUpdate={handleAIUpdate}
-            onGeneratePortrait={handleGeneratePortrait}
           />
         </div>
       </div>

@@ -81,16 +81,16 @@ export function BackupModal() {
 
     function triggerBadge(trigger: string) {
         const colors: Record<string, string> = {
-            manual: 'bg-green-900/50 text-green-400',
-            auto: 'bg-blue-900/50 text-blue-400',
-            'pre-clear': 'bg-amber-900/50 text-amber-400',
-            'pre-rollback': 'bg-amber-900/50 text-amber-400',
-            'pre-delete-npc': 'bg-amber-900/50 text-amber-400',
-            'pre-clear-archive': 'bg-amber-900/50 text-amber-400',
-            'pre-delete-campaign': 'bg-amber-900/50 text-amber-400',
-            'pre-restore': 'bg-purple-900/50 text-purple-400',
+            manual: 'bg-terminal/10 text-terminal',
+            auto: 'bg-terminal/10 text-terminal-dim',
+            'pre-clear': 'bg-amber-500/10 text-amber-500',
+            'pre-rollback': 'bg-amber-500/10 text-amber-500',
+            'pre-delete-npc': 'bg-amber-500/10 text-amber-500',
+            'pre-clear-archive': 'bg-amber-500/10 text-amber-500',
+            'pre-delete-campaign': 'bg-amber-500/10 text-amber-500',
+            'pre-restore': 'bg-terminal/10 text-terminal-dim',
         };
-        const color = colors[trigger] || 'bg-gray-700/50 text-gray-400';
+        const color = colors[trigger] || 'bg-void-lighter text-text-dim';
         return (
             <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${color}`}>
                 {trigger}
@@ -147,7 +147,7 @@ export function BackupModal() {
                             {backups.map((b) => (
                                 <div
                                     key={b.timestamp}
-                                    className="flex items-center gap-3 p-3 rounded hover:bg-white/5 transition-colors"
+                                    className="flex items-center gap-3 p-3 rounded hover:bg-void-lighter transition-colors"
                                 >
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-0.5 flex-wrap">

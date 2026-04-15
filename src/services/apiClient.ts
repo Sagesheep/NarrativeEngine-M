@@ -1,156 +1,116 @@
-import type { AppSettings, ArchiveChapter, ArchiveIndexEntry, BackupMeta, ChatMessage, CondenserState, GameContext, NPCEntry, SemanticFact } from '../types';
-
-const API = '/api';
+import type { AppSettings, ArchiveChapter, ArchiveIndexEntry, BackupMeta, ChatMessage, CondenserState, EntityEntry, GameContext, NPCEntry, SemanticFact, TimelineEvent } from '../types';
+import { offlineStorage } from './offlineStorage';
+import { get as idbGet, set as idbSet } from 'idb-keyval';
 
 export const api = {
     archive: {
         async append(campaignId: string, userText: string, assistantText: string): Promise<{ sceneId: string } | undefined> {
             try {
-                const res = await fetch(`${API}/campaigns/${campaignId}/archive`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userContent: userText, assistantContent: assistantText }),
-                });
-                if (res.ok) {
-                    return await res.json();
-                }
+                const result = await offlineStorage.archive.append(campaignId, userText, assistantText);
+                return result ? { sceneId: result.sceneId } : undefined;
             } catch (err) {
                 console.warn('[Archive] Failed to append:', err);
             }
             return undefined;
         },
         async getIndex(campaignId: string): Promise<ArchiveIndexEntry[]> {
-            const res = await fetch(`${API}/campaigns/${campaignId}/archive/index`);
-            if (res.ok) return await res.json();
-            return [];
+            return offlineStorage.archive.getIndex(campaignId);
         },
         async deleteFrom(campaignId: string, sceneId: string): Promise<void> {
-            await fetch(`${API}/campaigns/${campaignId}/archive/scenes-from/${sceneId}`, {
-                method: 'DELETE'
-            });
+            await offlineStorage.archive.deleteFrom(campaignId, sceneId);
         },
         async clear(campaignId: string): Promise<void> {
-            const res = await fetch(`${API}/campaigns/${campaignId}/archive`, { method: 'DELETE' });
-            if (!res.ok) throw new Error('Failed to clear archive');
+            await offlineStorage.archive.clear(campaignId);
         },
-        async open(campaignId: string): Promise<void> {
-            const res = await fetch(`${API}/campaigns/${campaignId}/archive/open`);
-            if (!res.ok) {
-                const data = await res.json();
-                console.warn('[Archive]', data.error || 'Failed to open');
-            }
-        }
+        async open(_campaignId: string): Promise<void> {
+            // No-op on mobile — can't open text editor
+        },
     },
     campaigns: {
         async saveState(campaignId: string, state: { context: GameContext; messages: ChatMessage[]; condenser: CondenserState }): Promise<void> {
-            await fetch(`${API}/campaigns/${campaignId}/state`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(state),
-            });
+            const { saveCampaignState } = await import('../store/campaignStore');
+            await saveCampaignState(campaignId, state);
         },
         async saveNPCs(campaignId: string, npcs: NPCEntry[]): Promise<void> {
-            await fetch(`${API}/campaigns/${campaignId}/npcs`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(npcs),
-            });
-        }
+            const { saveNPCLedger } = await import('../store/campaignStore');
+            await saveNPCLedger(campaignId, npcs);
+        },
     },
     facts: {
         get: async (campaignId: string): Promise<SemanticFact[]> => {
-            const res = await fetch(`${API}/campaigns/${campaignId}/facts`);
-            if (!res.ok) return [];
-            return res.json();
+            return offlineStorage.facts.get(campaignId);
         },
         save: async (campaignId: string, facts: SemanticFact[]): Promise<void> => {
-            await fetch(`${API}/campaigns/${campaignId}/facts`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(facts),
-            });
+            await offlineStorage.facts.save(campaignId, facts);
         },
     },
     chapters: {
         list: async (campaignId: string): Promise<ArchiveChapter[]> => {
-            const res = await fetch(`${API}/campaigns/${campaignId}/archive/chapters`);
-            if (!res.ok) return [];
-            return res.json();
+            return offlineStorage.chapters.list(campaignId);
         },
         create: async (campaignId: string, title?: string): Promise<ArchiveChapter> => {
-            const res = await fetch(`${API}/campaigns/${campaignId}/archive/chapters`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: title || 'New Chapter' }),
-            });
-            return res.json();
+            return offlineStorage.chapters.create(campaignId, title);
         },
         update: async (campaignId: string, chapterId: string, patch: Partial<ArchiveChapter>): Promise<void> => {
-            await fetch(`${API}/campaigns/${campaignId}/archive/chapters/${chapterId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(patch),
-            });
+            await offlineStorage.chapters.update(campaignId, chapterId, patch);
         },
         seal: async (campaignId: string): Promise<any> => {
-            const res = await fetch(`${API}/campaigns/${campaignId}/archive/chapters/seal`, { method: 'POST' });
-            return res.json();
+            return offlineStorage.chapters.seal(campaignId);
         },
         merge: async (campaignId: string, chapterA: string, chapterB: string): Promise<any> => {
-            const res = await fetch(`${API}/campaigns/${campaignId}/archive/chapters/merge`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chapterA, chapterB }),
-            });
-            return res.json();
+            return offlineStorage.chapters.merge(campaignId, chapterA, chapterB);
         },
         split: async (campaignId: string, chapterId: string, atSceneId: string): Promise<any> => {
-            const res = await fetch(`${API}/campaigns/${campaignId}/archive/chapters/${chapterId}/split`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ atSceneId }),
-            });
-            return res.json();
+            return offlineStorage.chapters.split(campaignId, chapterId, atSceneId);
         },
     },
     backup: {
         create: async (campaignId: string, opts: { label?: string; trigger?: string; isAuto?: boolean }): Promise<any> => {
-            const res = await fetch(`${API}/campaigns/${campaignId}/backup`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(opts),
-            });
-            return res.json();
+            return offlineStorage.backup.create(campaignId, opts);
         },
         list: async (campaignId: string): Promise<BackupMeta[]> => {
-            const res = await fetch(`${API}/campaigns/${campaignId}/backups`);
-            if (!res.ok) return [];
-            return res.json();
+            const list = await offlineStorage.backup.list(campaignId);
+            return list;
         },
         read: async (campaignId: string, timestamp: number): Promise<any> => {
-            const res = await fetch(`${API}/campaigns/${campaignId}/backups/${timestamp}`);
-            return res.json();
+            return offlineStorage.backup.read(campaignId, timestamp);
         },
         restore: async (campaignId: string, timestamp: number): Promise<any> => {
-            const res = await fetch(`${API}/campaigns/${campaignId}/backups/${timestamp}/restore`, { method: 'POST' });
-            return res.json();
+            return offlineStorage.backup.restore(campaignId, timestamp);
         },
         delete: async (campaignId: string, timestamp: number): Promise<void> => {
-            await fetch(`${API}/campaigns/${campaignId}/backups/${timestamp}`, { method: 'DELETE' });
+            await offlineStorage.backup.delete(campaignId, timestamp);
+        },
+    },
+    timeline: {
+        get: async (campaignId: string): Promise<TimelineEvent[]> => {
+            return offlineStorage.timeline.get(campaignId);
+        },
+        add: async (campaignId: string, event: Partial<TimelineEvent>): Promise<TimelineEvent | null> => {
+            return offlineStorage.timeline.add(campaignId, event);
+        },
+        remove: async (campaignId: string, eventId: string): Promise<boolean> => {
+            return offlineStorage.timeline.remove(campaignId, eventId);
+        },
+    },
+    entities: {
+        get: async (campaignId: string): Promise<EntityEntry[]> => {
+            return offlineStorage.entities.get(campaignId);
+        },
+        merge: async (campaignId: string, survivorId: string, absorbedId: string): Promise<any> => {
+            return offlineStorage.entities.merge(campaignId, survivorId, absorbedId);
         },
     },
     settings: {
         async get(): Promise<any> {
-            const res = await fetch(`${API}/settings`);
-            if (!res.ok) throw new Error('Failed to load settings');
-            return await res.json();
+            const localSettings = await idbGet('nn_settings');
+            return localSettings?.settings || {};
         },
         async save(settings: AppSettings, activeCampaignId: string | null): Promise<void> {
-            await fetch(`${API}/settings`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ settings, activeCampaignId }),
-            });
-        }
-    }
+            const { encryptSettingsPresets } = await import('./settingsCrypto');
+            const encryptedPresets = await encryptSettingsPresets(settings.presets);
+            const encryptedSettings = { ...settings, presets: encryptedPresets };
+            await idbSet('nn_settings', { settings: encryptedSettings, activeCampaignId });
+        },
+    },
 };

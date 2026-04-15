@@ -75,16 +75,14 @@ async function decryptString(ciphertext: string, key: CryptoKey): Promise<string
 /** Encrypts apiKey fields in a preset and returns a new preset object. */
 export async function encryptPreset(preset: AIPreset): Promise<AIPreset> {
     const key = await getDeviceCryptoKey();
-    const [storyKey, imageKey, summKey, utilKey] = await Promise.all([
+    const [storyKey, summKey, utilKey] = await Promise.all([
         encryptString(preset.storyAI.apiKey, key),
-        encryptString(preset.imageAI.apiKey, key),
         encryptString(preset.summarizerAI.apiKey, key),
         preset.utilityAI ? encryptString(preset.utilityAI.apiKey, key) : Promise.resolve(''),
     ]);
     return {
         ...preset,
         storyAI: { ...preset.storyAI, apiKey: storyKey },
-        imageAI: { ...preset.imageAI, apiKey: imageKey },
         summarizerAI: { ...preset.summarizerAI, apiKey: summKey },
         ...(preset.utilityAI ? { utilityAI: { ...preset.utilityAI, apiKey: utilKey } } : {}),
     };
@@ -93,16 +91,14 @@ export async function encryptPreset(preset: AIPreset): Promise<AIPreset> {
 /** Decrypts apiKey fields in a preset and returns a new preset object. */
 export async function decryptPreset(preset: AIPreset): Promise<AIPreset> {
     const key = await getDeviceCryptoKey();
-    const [storyKey, imageKey, summKey, utilKey] = await Promise.all([
+    const [storyKey, summKey, utilKey] = await Promise.all([
         decryptString(preset.storyAI.apiKey, key),
-        decryptString(preset.imageAI.apiKey, key),
         decryptString(preset.summarizerAI.apiKey, key),
         preset.utilityAI ? decryptString(preset.utilityAI.apiKey, key) : Promise.resolve(''),
     ]);
     return {
         ...preset,
         storyAI: { ...preset.storyAI, apiKey: storyKey },
-        imageAI: { ...preset.imageAI, apiKey: imageKey },
         summarizerAI: { ...preset.summarizerAI, apiKey: summKey },
         ...(preset.utilityAI ? { utilityAI: { ...preset.utilityAI, apiKey: utilKey } } : {}),
     };

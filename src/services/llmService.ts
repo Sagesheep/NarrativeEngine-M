@@ -1,5 +1,7 @@
 import type { EndpointConfig, ProviderConfig } from '../types';
 import { uid } from '../utils/uid';
+import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent } from '../utils/llmApiHelper';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 export type OpenAIMessage = {
     role: 'system' | 'user' | 'assistant' | 'tool';
@@ -18,25 +20,43 @@ export async function sendMessage(
     tools?: unknown[],
     abortController?: AbortController
 ) {
-    const url = `${provider.endpoint.replace(/\/+$/, '')}/chat/completions`;
-
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (provider.apiKey) {
-        headers['Authorization'] = `Bearer ${provider.apiKey}`;
-    }
+    const url = getChatUrl(provider);
+    const headers = buildChatHeaders(provider);
+    const isOllama = getApiFormat(provider) === 'ollama';
 
     try {
-        const payload: Record<string, unknown> = {
-            model: provider.modelName,
-            messages,
-            stream: true,
-        };
-        if (tools && tools.length > 0) {
-            payload.tools = tools;
+        const useStreaming = provider.streamingEnabled !== false;
+
+        // On native with streaming OFF: use CapacitorHttp to bypass WebView CORS restrictions.
+        // (Providers like Ollama cloud don't send CORS headers; CapacitorHttp routes through
+        // the native HTTP client which has no CORS restrictions.)
+        // When streaming is ON, fall through to regular fetch — providers like OpenAI/Anthropic
+        // do support CORS and streaming works fine for them.
+        if (Capacitor.isNativePlatform() && !useStreaming) {
+            const nativePayload = buildChatBody(provider, messages, { stream: false, tools });
+            const nativeRes = await CapacitorHttp.post({
+                url,
+                headers,
+                data: nativePayload,
+                readTimeout: 600000,
+                connectTimeout: 15000,
+            });
+            if (nativeRes.status < 200 || nativeRes.status >= 300) {
+                onError(`API error ${nativeRes.status}: ${JSON.stringify(nativeRes.data)}`);
+                return;
+            }
+            const nativeText = extractContent(nativeRes.data, provider);
+            onChunk(nativeText);
+            onDone(nativeText);
+            return;
         }
+        const payload = buildChatBody(provider, messages, {
+            stream: useStreaming,
+            tools,
+        });
 
         const controller = abortController || new AbortController();
-        let timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds timeout
+        let timeoutId = setTimeout(() => controller.abort(), 120000);
 
         const res = await fetch(url, {
             method: 'POST',
@@ -49,6 +69,15 @@ export async function sendMessage(
             clearTimeout(timeoutId);
             const errBody = await res.text();
             onError(`API error ${res.status}: ${errBody}`);
+            return;
+        }
+
+        if (!useStreaming) {
+            clearTimeout(timeoutId);
+            const data = await res.json();
+            const text = extractContent(data, provider);
+            onChunk(text);
+            onDone(text);
             return;
         }
 
@@ -71,7 +100,7 @@ export async function sendMessage(
             clearTimeout(timeoutId);
             if (done) break;
 
-            timeoutId = setTimeout(() => controller.abort(), 120000); // reset timeout for next chunk
+            timeoutId = setTimeout(() => controller.abort(), 120000);
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
@@ -79,7 +108,23 @@ export async function sendMessage(
 
             for (const line of lines) {
                 const trimmed = line.trim();
-                if (!trimmed || !trimmed.startsWith('data: ')) continue;
+                if (!trimmed) continue;
+
+                if (isOllama) {
+                    try {
+                        const parsed = JSON.parse(trimmed);
+                        if (parsed.message?.content) {
+                            fullText += parsed.message.content;
+                            onChunk(fullText);
+                        }
+                    } catch {
+                        // skip malformed chunks
+                    }
+                    continue;
+                }
+
+                // OpenAI SSE format
+                if (!trimmed.startsWith('data: ')) continue;
                 const data = trimmed.slice(6);
                 if (data === '[DONE]') continue;
 
@@ -105,16 +150,12 @@ export async function sendMessage(
         }
 
         // --- DeepSeek / Local Model Fallback Parsing ---
-        // Some models output tool calls as text tags instead of actual JSON `tool_calls` array
         if (!tcName && fullText.includes('<\uFF5CDSML\uFF5C>function_calls>')) {
             const funcMatch = fullText.match(/<\uFF5CDSML\uFF5C>invoke name="([^"]+)">/);
             if (funcMatch) {
                 tcName = funcMatch[1];
-                tcId = uid(); // Generate a fake ID since it was just text
+                tcId = uid();
 
-                // Try to extract parameters using basic regex (DeepSeek string format)
-                // <｜DSML｜parameter name="query" string="true">lore</｜DSML｜parameter>
-                // We'll capture both the parameter name and the text content inside the tags.
                 const paramRegex = /<\uFF5CDSML\uFF5Cparameter name="([^"]+)"[^>]*>([\s\S]*?)<\/\uFF5CDSML\uFF5Cparameter>/g;
                 let match;
                 const argsObj: Record<string, unknown> = {};
@@ -126,7 +167,6 @@ export async function sendMessage(
                 if (Object.keys(argsObj).length > 0) {
                     tcArgs = JSON.stringify(argsObj);
                 } else {
-                    // Fallback to searching the entire DSML tag content just in case
                     const fallbackQueryMatch = fullText.match(/>([^<]+)<\/\uFF5CDSML\uFF5Cparameter>/);
                     if (fallbackQueryMatch) {
                         tcArgs = JSON.stringify({ query: fallbackQueryMatch[1].trim() });
@@ -138,10 +178,8 @@ export async function sendMessage(
                     }
                 }
 
-                // Clean the fullText so the user doesn't see the raw XML junk in the UI
-                // if it happens to bypass the ChatArea tool filter
                 fullText = fullText.split('<\uFF5CDSML\uFF5C>function_calls>')[0].trim();
-                onChunk(fullText); // Push the cleaned text back to UI
+                onChunk(fullText);
             }
         }
 
@@ -156,13 +194,24 @@ export async function sendMessage(
 }
 
 export async function testConnection(provider: EndpointConfig | ProviderConfig): Promise<{ ok: boolean; detail: string }> {
-    const url = `${provider.endpoint.replace(/\/+$/, '')}/models`;
+    const url = getModelsUrl(provider);
     const headers: Record<string, string> = {};
     if (provider.apiKey) {
         headers['Authorization'] = `Bearer ${provider.apiKey}`;
     }
 
     try {
+        if (Capacitor.isNativePlatform()) {
+            // Native HTTP bypasses WebView CORS restrictions; safe here because
+            // testConnection is a simple GET (no streaming involved).
+            const res = await CapacitorHttp.get({ url, headers });
+            if (res.status >= 200 && res.status < 300) {
+                return { ok: true, detail: 'Connection successful' };
+            }
+            return { ok: false, detail: `HTTP ${res.status}: ${JSON.stringify(res.data)}` };
+        }
+
+        // Web / dev server path — unchanged
         const res = await fetch(url, { headers });
         if (res.ok) {
             return { ok: true, detail: 'Connection successful' };

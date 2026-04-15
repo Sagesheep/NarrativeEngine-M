@@ -46,7 +46,7 @@ export function ChatArea() {
     const [input, setInput] = useState('');
     const [isStreaming, setStreaming] = useState(false);
     const [isCheckingNotes, setIsCheckingNotes] = useState(false);
-    const [visibleCount, setVisibleCount] = useState(20);
+    const [visibleCount, setVisibleCount] = useState(10);
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
     const [forcedAIs, setForcedAIs] = useState<('enemy' | 'neutral' | 'ally')[]>([]);
@@ -160,6 +160,9 @@ export function ChatArea() {
             getFreshProvider: () => getActiveStoryEndpoint(),
             getUtilityEndpoint: () => getActiveUtilityEndpoint(),
             forcedInterventions: forcedAIs,
+            incrementBookkeepingTurnCounter: () => useAppStore.getState().incrementBookkeepingTurnCounter(),
+            autoBookkeepingInterval: useAppStore.getState().autoBookkeepingInterval,
+            resetBookkeepingTurnCounter: () => useAppStore.getState().resetBookkeepingTurnCounter(),
         }, {
             onCheckingNotes: setIsCheckingNotes,
             addMessage,
@@ -361,10 +364,10 @@ export function ChatArea() {
                     <span 
                         key={i} 
                         className={`inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 my-0.5 rounded border text-[10px] font-black uppercase tracking-widest leading-none align-middle shadow-sm transition-all hover:scale-105 active:scale-95 cursor-default select-none ${
-                            isDice ? 'bg-terminal/10 border-terminal/30 text-terminal shadow-[0_0_10px_rgba(71,243,183,0.1)]' :
-                            isEvent ? 'bg-amber-500/10 border-amber-500/30 text-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.1)]' :
-                            isWorld ? 'bg-red-500/10 border-red-500/30 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]' :
-                            'bg-ice/10 border-ice/30 text-ice'
+                        isDice ? 'bg-terminal/10 border-terminal/30 text-terminal' :
+                            isEvent ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' :
+                                isWorld ? 'bg-red-500/10 border-red-500/30 text-red-500' :
+                                    'bg-ice/10 border-ice/30 text-ice'
                         }`}
                     >
                         {isDice ? <Dice5 size={10} strokeWidth={3} /> : <Terminal size={10} strokeWidth={3} />}
@@ -373,17 +376,16 @@ export function ChatArea() {
                 );
             }
             return (
-                <span key={i} className="inline text-text-primary/90 prose-invert leading-relaxed">
-                    <ReactMarkdown 
+                <div key={i} className="text-text-primary/90 leading-relaxed">
+                    <ReactMarkdown
                         components={{
-                            p: ({children}) => <>{children}</>,
-                            strong: ({children}) => <strong className="text-terminal font-black shadow-[0_0_8px_rgba(71,243,183,0.2)]">{children}</strong>,
+                            strong: ({children}) => <strong className="text-terminal font-black">{children}</strong>,
                             em: ({children}) => <em className="text-ice italic opacity-90">{children}</em>
                         }}
                     >
                         {part}
                     </ReactMarkdown>
-                </span>
+                </div>
             );
         });
     };
@@ -445,9 +447,9 @@ export function ChatArea() {
                             <div className={`max-w-[95%] md:max-w-[75%] px-3 md:px-4 py-2 md:py-3 text-sm font-mono leading-relaxed relative ${
                                 msg.role === 'user' ? 'bg-terminal/8 border-l-2 border-terminal text-text-primary' :
                                 msg.role === 'system' ? 'bg-ember/8 border-l-2 border-ember text-ember/80' :
-                                isEnemy ? 'bg-red-500/5 border-l-2 border-red-500 text-text-primary shadow-[0_0_15px_rgba(239,68,68,0.05)]' :
-                                isNeutral ? 'bg-amber-500/5 border-l-2 border-amber-500 text-text-primary shadow-[0_0_15px_rgba(245,158,11,0.05)]' :
-                                isAlly ? 'bg-emerald-500/5 border-l-2 border-emerald-500 text-text-primary shadow-[0_0_15px_rgba(16,185,129,0.05)]' :
+                                isEnemy ? 'bg-red-500/5 border-l-2 border-red-500 text-text-primary' :
+                                isNeutral ? 'bg-amber-500/5 border-l-2 border-amber-500 text-text-primary' :
+                                isAlly ? 'bg-emerald-500/5 border-l-2 border-emerald-500 text-text-primary' :
                                 'bg-void-lighter border-l-2 border-border text-text-primary'
                             }`}>
                                 <div className={`absolute -top-3 ${msg.role === 'user' ? 'left-2' : 'right-2'} flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-void-darker border border-border p-[2px] rounded z-10`}>
@@ -492,7 +494,7 @@ export function ChatArea() {
                                     <div className="mt-4 bg-terminal/5 border border-terminal/20 rounded p-3 relative overflow-hidden group/summary animate-in fade-in zoom-in duration-300">
                                         <div className="absolute top-0 right-0 p-1.5 opacity-20"><Terminal size={12} className="text-terminal" /></div>
                                         <div className="flex items-center gap-2 mb-2">
-                                            <div className="w-1 h-3 bg-terminal animate-pulse shadow-[0_0_8px_rgba(71,243,183,0.5)]" />
+                                            <div className="w-1 h-3 bg-terminal animate-pulse" />
                                             <span className="text-[9px] font-black uppercase tracking-[0.2em] text-terminal/80">System Analysis Result</span>
                                         </div>
                                         <ul className="space-y-2">
@@ -594,20 +596,22 @@ export function ChatArea() {
                     </div>
                 )}
 
+                {/* NPC stance filter buttons — hidden for now
                 <div className="px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar">
                     {['enemy', 'neutral', 'ally'].map(id => (
-                        <button key={id} onClick={() => setForcedAIs(p => p.includes(id as any) ? p.filter(t => t !== id) : [...p, id as any])} 
-                            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[10px] font-black uppercase border transition-all ${forcedAIs.includes(id as any) 
-                                ? (id === 'enemy' ? 'border-red-500 bg-red-500/20 text-red-500 shadow-[0_0_20px_rgba(239,68,68,0.3)] animate-pulse-slow' : id === 'neutral' ? 'border-amber-500 bg-amber-500/20 text-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.3)] animate-pulse-slow' : 'border-emerald-500 bg-emerald-500/20 text-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] animate-pulse-slow')
+                        <button key={id} onClick={() => setForcedAIs(p => p.includes(id as any) ? p.filter(t => t !== id) : [...p, id as any])}
+                            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[10px] font-black uppercase border transition-all ${forcedAIs.includes(id as any)
+                                ? (id === 'enemy' ? 'border-red-500 bg-red-500/20 text-red-500 animate-pulse-slow' : id === 'neutral' ? 'border-amber-500 bg-amber-500/20 text-amber-500 animate-pulse-slow' : 'border-emerald-500 bg-emerald-500/20 text-emerald-500 animate-pulse-slow')
                                 : 'border-border bg-surface text-text-dim'}`}>
                             {id}
                         </button>
                     ))}
                 </div>
+                */}
 
-                <div className="px-2 sm:px-4 pb-3 sm:pb-4 pt-1 sm:pt-2">
-                    <div className="flex gap-1 border border-border bg-void focus-within:border-terminal items-end p-1 rounded-sm">
-                        <div className="relative shrink-0 mb-[4px] ml-1">
+                <div className="px-2 sm:px-4 pb-1 pt-1">
+                    <div className="flex gap-1 border border-border bg-void focus-within:border-terminal items-center p-1 rounded-sm">
+                        <div className="relative shrink-0 ml-1">
                             <select value={settings.activePresetId} onChange={(e) => useAppStore.getState().setActivePreset(e.target.value)} 
                                 className="h-[32px] bg-surface border border-border text-text-dim pl-2 pr-6 text-[10px] font-bold uppercase transition-colors appearance-none rounded focus:border-terminal overflow-hidden max-w-[100px]">
                                 {settings.presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -617,7 +621,7 @@ export function ChatArea() {
                         <textarea ref={inputRef} value={input} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder={editingMessageId ? "Edit..." : "What do you do?"} 
                             className="flex-1 bg-transparent px-2 py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[40px] leading-5" />
                         <button onClick={isStreaming ? handleStop : (editingMessageId ? handleEditSubmit : () => handleSend())} disabled={!isStreaming && !input.trim()}
-                            className={`h-[32px] w-[40px] mb-[4px] rounded transition-all flex items-center justify-center shrink-0 ${isStreaming ? 'text-amber-500 hover:bg-amber-500/10' : 'text-terminal hover:bg-terminal/10'}`}>
+                            className={`h-[32px] w-[40px] rounded transition-all flex items-center justify-center shrink-0 ${isStreaming ? 'text-amber-500 hover:bg-amber-500/10' : 'text-terminal hover:bg-terminal/10'}`}>
                             {isStreaming ? <Square size={16} fill="currentColor" /> : (editingMessageId ? <Check size={16} /> : <Send size={16} />)}
                         </button>
                     </div>

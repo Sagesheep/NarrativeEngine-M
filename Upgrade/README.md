@@ -1,56 +1,69 @@
-# mobileApp Upgrade Plan: Feature Parity with mainApp
+# mobileApp Upgrade Plan: Phases 11-14
 
 ## Purpose
-This folder contains a phased upgrade plan to bring mobileApp to feature parity with mainApp.
-Each phase file is self-contained with explicit instructions, code references, and file paths.
+Feature parity upgrade covering LLM request queue, auto-backup timer, lightweight embeddings, and semantic search.
 
-## For AI Coders
-- Read each phase file IN ORDER from Phase 0 to Phase 10
-- Each file tells you EXACTLY which files to read, what to add, and what to change
-- Reference the mainApp source at `../mainApp/` for the canonical implementation
-- DO NOT skip phases - later phases depend on earlier ones
-- After each phase, verify the app compiles with `npm run build`
-
-## Current State
-mobileApp already has ~80% feature parity. The gaps are:
+## Current State (post Phase 1-10)
+mobileApp has ~95% feature parity with mainApp. Core gameplay loop is complete. Remaining gaps:
 
 | Area | Status | Gap |
 |------|--------|-----|
-| Types | 95% | Missing 4 types + 3 fields |
-| Services | 70% | 2 files missing entirely, 3 files need major upgrades |
-| Server.js | 60% | Missing 13 endpoints, atomic writes, chapter lifecycle |
-| Store | 75% | Missing chapters/facts/backup state and actions |
-| Components | 70% | Missing 3 components, 5 components need upgrades |
-| turnOrchestrator | 60% | Missing parallel gathering, chapter funnel, abort detection |
+| LLM Call Management | Missing | No request queue, no 429 handling, no retry logic |
+| Auto-Backup | Missing | No periodic backup timer |
+| Semantic Search | Missing | No vector embeddings, no semantic candidate retrieval |
 
 ## Phase Overview
 
 | Phase | Name | New Files | Modified Files | Est. Lines |
 |-------|------|-----------|----------------|------------|
-| 0 | Types & Dependencies | 0 | 1 | ~50 |
-| 1 | Server Backend | 0 | 1 | ~660 |
-| 2 | Semantic Memory Service | 1 | 0 | ~120 |
-| 3 | Archive Chapter Engine | 1 | 0 | ~250 |
-| 4 | Save File Engine Upgrade | 0 | 1 | ~250 |
-| 5 | Archive Memory Upgrade | 0 | 1 | ~130 |
-| 6 | Store Layer Upgrades | 0 | 5 | ~100 |
-| 7 | Condenser & Orchestrator | 0 | 2 | ~120 |
-| 8 | New Components | 3 | 1 | ~450 |
-| 9 | Component Upgrades | 0 | 7 | ~300 |
-| 10 | Integration & Testing | 0 | 1 | ~20 |
+| 11 | LLM Queue + Auto-Backup | 2 | ~6 | ~250 |
+| 12 | Embedding Service | 1 | 2 + npm dep | ~120 |
+| 13 | Vector Storage + Cosine Search | 1 | 3 | ~200 |
+| 14 | Semantic Candidates Integration | 0 | 3 | ~80 |
 
-**Total estimated: ~2,350 lines of changes across ~20 files**
+**Total estimated: ~650 lines of changes across ~12 files**
+
+## For AI Coders
+- Execute phases IN ORDER from 11 to 14
+- Each phase file is self-contained with exact file paths, code, and insertion points
+- After each phase, verify with `npm run build`
+- **Graceful degradation is critical** — every new feature falls back cleanly to current behavior on failure
 
 ## Key Reference Paths
 - mobileApp source: `D:\Games\AI DM Project\Automated_system\mobileApp\src\`
-- mainApp source: `D:\Games\AI DM Project\Automated_system\mainApp\src\`
-- mainApp server: `D:\Games\AI DM Project\Automated_system\mainApp\server.js`
-- mobileApp server: `D:\Games\AI DM Project\Automated_system\mobileApp\server.js`
+- mainApp source: `D:\Games\AI DM Project\Automated_system\mainApp\src\` (reference for porting)
 
-## CRITICAL RULES
-1. **DO NOT change mobileApp's persistence layer** - it uses idb-keyval + server API hybrid. Keep it.
-2. **DO NOT remove mobileApp-only features** - AI Players (enemy/neutral/ally), MobileNavBar, bottom sheet, touch targets, UI scale
-3. **DO NOT change mobileApp's styling approach** - keep Tailwind + existing CSS
-4. **Port mainApp features TO mobileApp patterns** - adapt, don't copy-paste
-5. **All new server endpoints must work with existing Express server** on port 3001
-6. **Keep mobileApp's sequential context gathering** for now (parallel is a future optimization)
+## Phase Dependencies
+
+```
+Phase 11 (LLM Queue + Auto-Backup)  ←── no deps, pure TS
+    ↓
+Phase 12 (Embedding Service)         ←── new npm dep, lazy model download
+    ↓
+Phase 13 (Vector Storage + Search)   ←── depends on Phase 12
+    ↓
+Phase 14 (Semantic Integration)      ←── depends on Phases 12 + 13
+```
+
+Phases 11 and 12 can be started in parallel if desired (no code overlap).
+
+## Architecture: Semantic Search on Mobile
+
+mainApp runs embeddings server-side (Node.js native addons, 500MB model, sqlite-vec). mobileApp cannot replicate this — no server runs on the phone, and native C++ addons don't work in a WebView.
+
+**mobileApp approach:**
+
+| Component | mainApp | mobileApp |
+|-----------|---------|-----------|
+| Embedding model | mxbai-embed-large-v1 (1024-dim, ~500MB) | all-MiniLM-L6-v2 (384-dim, ~25MB) |
+| Runtime | Node.js CPU | WebView WebGPU / WASM |
+| Vector storage | sqlite-vec (native) | IndexedDB (pure JS) |
+| Search algorithm | sqlite-vec KNN | Brute-force cosine similarity |
+| Storage size | Unlimited (filesystem) | ~1MB for 500 scenes |
+
+## Critical Rules (carried from Phase 1-10)
+1. **DO NOT change mobileApp's persistence layer** — keep idb-keyval + offlineStorage
+2. **DO NOT remove mobileApp-only features** — AI Players, MobileNavBar, touch targets, etc.
+3. **DO NOT change mobileApp's styling approach** — keep Tailwind
+4. **Port mainApp features TO mobileApp patterns** — adapt, don't copy-paste
+5. **All new features must degrade gracefully** — if embedding fails, fall back to keyword search

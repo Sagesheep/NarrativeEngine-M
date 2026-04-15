@@ -176,6 +176,14 @@ export function buildPayload(
         worldBlocks.push({ source: 'Semantic Facts', content: semanticFactText, tokens: countTokens(semanticFactText), reason: 'Injected verified facts' });
     }
 
+    // Scene Notebook
+    if (context.notebookActive && context.notebook && context.notebook.length > 0) {
+        const notebookText = '[SCENE NOTEBOOK]\n' +
+            context.notebook.map(n => `- ${n.text}`).join('\n') +
+            '\n[END SCENE NOTEBOOK]';
+        worldBlocks.push({ source: 'Scene Notebook', content: notebookText, tokens: countTokens(notebookText), reason: 'Active scene state' });
+    }
+
     // Active NPCs
     if (npcLedger && npcLedger.length > 0) {
         const loreHeadersSet = new Set((relevantLore ?? []).map(l => l.header.toLowerCase()));

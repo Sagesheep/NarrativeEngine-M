@@ -1,13 +1,36 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { BookOpen, Plus, Loader2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../services/apiClient';
 import { ChapterCard } from './ChapterCard';
 import { toast } from '../Toast';
+import { countTokens } from '../../services/tokenizer';
 import type { ArchiveChapter } from '../../types';
 
 export function ChapterTab() {
-    const { chapters, setChapters, activeCampaignId } = useAppStore();
+    const { chapters, setChapters, activeCampaignId, context, messages, settings, condenser } = useAppStore();
+
+    const ctxPct = useMemo(() => {
+        const sysText = [
+            context.loreRaw,
+            context.rulesRaw,
+            context.canonStateActive ? context.canonState : '',
+            context.headerIndexActive ? context.headerIndex : '',
+            context.starterActive ? context.starter : '',
+            context.continuePromptActive ? context.continuePrompt : '',
+            context.characterProfileActive ? context.characterProfile : '',
+            context.inventoryActive ? context.inventory : '',
+            condenser.condensedSummary,
+        ].filter(Boolean).join('\n\n');
+        const activeMessages = (condenser.condensedUpToIndex !== undefined && condenser.condensedUpToIndex >= 0)
+            ? messages.slice(condenser.condensedUpToIndex + 1)
+            : messages;
+        const histText = activeMessages.map(m => m.content || '').join('');
+        const used = countTokens(sysText) + countTokens(histText);
+        return Math.round((used / settings.contextLimit) * 100);
+    }, [context, messages, settings.contextLimit, condenser]);
+
+    const ctxColor = ctxPct >= 90 ? 'text-danger' : ctxPct >= 75 ? 'text-ember' : 'text-terminal';
 
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [isRegenerating, setIsRegenerating] = useState<string | null>(null);
@@ -113,6 +136,9 @@ export function ChapterTab() {
                     </h3>
                     <span className="text-[10px] bg-void-dark px-1.5 py-0.5 rounded border border-border text-text-muted font-mono">
                         {chapters.length}
+                    </span>
+                    <span className={`text-[10px] font-mono ${ctxColor}`}>
+                        CTX {ctxPct}%
                     </span>
                 </div>
                 <div className="flex gap-2">

@@ -1,14 +1,17 @@
+export type ApiFormat = 'openai' | 'ollama';
+
 export type EndpointConfig = {
     endpoint: string;
     apiKey: string;
     modelName: string;
+    streamingEnabled?: boolean;
+    apiFormat?: ApiFormat;
 };
 
 export type AIPreset = {
     id: string;
     name: string;
     storyAI: EndpointConfig;
-    imageAI: EndpointConfig;
     summarizerAI: EndpointConfig;
     utilityAI?: EndpointConfig; // Context recommender — optional, fallback to substring scan if empty
     enemyAI?: EndpointConfig;
@@ -22,6 +25,8 @@ export type ProviderConfig = {
     endpoint: string;
     apiKey: string;
     modelName: string;
+    streamingEnabled?: boolean;
+    apiFormat?: ApiFormat;
 };
 
 export type AppSettings = {
@@ -30,7 +35,7 @@ export type AppSettings = {
     contextLimit: number;
     autoCondenseEnabled: boolean;
     debugMode?: boolean; // Toggles inline payload viewer
-    theme?: 'light' | 'dark'; // UI theme
+    theme?: 'light' | 'dark' | 'system';
     showReasoning?: boolean; // Toggles visibility of LLM thinking blocks
     uiScale?: number;  // 0.75 to 1.25, default 1.0
 
@@ -40,9 +45,7 @@ export type AppSettings = {
     endpoint?: string;
     apiKey?: string;
     modelName?: string;
-    imageApiEndpoint?: string;
-    imageApiKey?: string;
-    imageApiModel?: string;
+
 };
 
 export type CondenserState = {
@@ -90,7 +93,9 @@ export type GameContext = {
     starter: string;
     continuePrompt: string;
     inventory: string;
+    inventoryLastScene: string;
     characterProfile: string;
+    characterProfileLastScene: string;
     surpriseDC?: number;
     encounterDC?: number;
     worldEventDC?: number;
@@ -113,6 +118,8 @@ export type GameContext = {
     surpriseConfig?: SurpriseConfig;
     encounterConfig?: EncounterConfig;
     coreMemorySlots?: CoreMemorySlot[];
+    notebook: NotebookNote[];
+    notebookActive: boolean;
     // --- AI Players (Enemy, Neutral, Ally) ---
     worldVibe: string; // Global genre constraints (e.g. "Low fantasy, no magic")
     enemyPlayerActive: boolean;
@@ -143,6 +150,7 @@ export type ChatMessage = {
         function: { name: string; arguments: string };
     }[];
     tool_call_id?: string;
+    ephemeral?: boolean;
 };
 
 /** @deprecated — replaced by ArchiveIndexEntry + ArchiveScene. Kept for backwards-compat migration. */
@@ -221,27 +229,11 @@ export type EngineSeed = {
     worldWhat: string[];
 };
 
-export type NPCVisualProfile = {
-    race: string;
-    gender: string;
-    ageRange: string;
-    build: string;
-    symmetry: string; // ugly / pretty / handsome etc.
-    hairStyle: string;
-    eyeColor: string;
-    skinTone: string;
-    gait: string;
-    distinctMarks: string;
-    clothing: string;
-    artStyle: string;
-};
-
 export type NPCEntry = {
     id: string;
     name: string;
     aliases: string;
     appearance: string; // Legacy fallback or raw notes
-    visualProfile?: NPCVisualProfile; // Structured AI-ready fields
     faction: string;
     storyRelevance: string;
     disposition: string;
@@ -254,7 +246,6 @@ export type NPCEntry = {
     belief: number;   // 1-10
     ego: number;      // 1-10
     affinity: number; // 0-100
-    portrait?: string; // Image path or base64
     previousAxes?: { nature?: number; training?: number; emotion?: number; social?: number; belief?: number; ego?: number; affinity?: number; };
     shiftNote?: string;
     shiftTurnCount?: number;
@@ -301,6 +292,8 @@ export type SemanticFact = {
     importance: number;
     sceneId: string;
     timestamp: number;
+    source?: 'regex' | 'llm';
+    confidence?: number;
 };
 
 export type ArchiveChapter = {
@@ -320,6 +313,12 @@ export type ArchiveChapter = {
     _lastSeenSessionId?: string;
 };
 
+export type NotebookNote = {
+    id: string;
+    text: string;
+    timestamp: number;
+};
+
 export type BackupMeta = {
     timestamp: number;
     label: string;
@@ -328,5 +327,51 @@ export type BackupMeta = {
     fileCount: number;
     isAuto: boolean;
     campaignName: string;
+};
+
+export type EntityEntry = {
+    id: string;
+    name: string;
+    type: 'npc' | 'location' | 'object' | 'concept' | 'faction' | 'event';
+    aliases: string[];
+    firstSeen?: string;
+    factCount?: number;
+};
+
+export const CHAPTER_SCENE_SOFT_CAP = 25;
+
+export const TIMELINE_PREDICATES = [
+    'status',
+    'located_in',
+    'holds',
+    'allied_with',
+    'enemy_of',
+    'killed_by',
+    'controls',
+    'relationship_to',
+    'seeks',
+    'knows_about',
+    'destroyed',
+    'misc',
+] as const;
+
+export type TimelinePredicate = typeof TIMELINE_PREDICATES[number];
+
+export const SUPERSEDE_RULES: Record<string, string[]> = {
+    killed_by:  ['status', 'located_in', 'seeks', 'allied_with'],
+    destroyed:  ['located_in', 'controls', 'holds'],
+    status:     [],
+};
+
+export type TimelineEvent = {
+    id: string;
+    sceneId: string;
+    chapterId: string;
+    subject: string;
+    predicate: TimelinePredicate;
+    object: string;
+    summary: string;
+    importance: number;
+    source: 'regex' | 'llm' | 'manual';
 };
 

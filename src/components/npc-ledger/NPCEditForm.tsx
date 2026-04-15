@@ -1,6 +1,5 @@
 import { Trash2, Save, Loader2, Sparkles, Users } from 'lucide-react';
-import { NPCPortraitSection } from './NPCPortraitSection';
-import type { NPCEntry, NPCVisualProfile } from '../../types';
+import type { NPCEntry } from '../../types';
 
 const AXIS_LABELS: Record<string, string[]> = {
     'Nature': ['Pacifist', 'Gentle', 'Cautious', 'Measured', 'Pragmatic', 'Assertive', 'Aggressive', 'Brutal', 'Savage', 'Feral'],
@@ -23,26 +22,17 @@ type Props = {
     selectedId: string | null;
     isEditing: boolean;
     isAIUpdating: boolean;
-    isGeneratingImage: boolean;
     onEdit: () => void;
     onSave: () => void;
     onCancel: () => void;
     onDelete: (id: string, e: React.MouseEvent) => void;
     onAIUpdate: () => void;
-    onGeneratePortrait: () => void;
 };
 
 export function NPCEditForm({
-    form, setForm, selectedId, isEditing, isAIUpdating, isGeneratingImage,
-    onEdit, onSave, onCancel, onDelete, onAIUpdate, onGeneratePortrait,
+    form, setForm, selectedId, isEditing, isAIUpdating,
+    onEdit, onSave, onCancel, onDelete, onAIUpdate,
 }: Props) {
-    const handleVisualProfileChange = (field: keyof NPCVisualProfile, value: string) => {
-        setForm(prev => ({
-            ...prev,
-            visualProfile: { ...(prev.visualProfile || DEFAULT_VISUAL_PROFILE), [field]: value }
-        }));
-    };
-
     const renderSlider = (label: keyof NPCEntry, displayLabel: string) => {
         const value = form[label] as number ?? 5;
         return (
@@ -103,139 +93,133 @@ export function NPCEditForm({
             </div>
 
             {/* Form grid */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 flex-1">
-                {/* Left Form Column */}
-                <div className="space-y-4">
-                    <div className="flex gap-4">
-                        <div className="flex-1">
-                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Primary Designation</label>
-                            <input
-                                type="text"
-                                value={form.name || ''}
-                                onChange={e => setForm({ ...form, name: e.target.value })}
-                                disabled={!isEditing}
-                                placeholder="Subject Name"
-                                className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent focus:outline-none focus:border-terminal min-h-[48px] md:min-h-0"
-                            />
-                        </div>
-                        <div className="w-1/3">
-                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Status</label>
-                            <select
-                                value={form.status || 'Alive'}
-                                onChange={e => setForm({ ...form, status: e.target.value })}
-                                disabled={!isEditing}
-                                className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary disabled:opacity-70 disabled:bg-surface disabled:border-transparent outline-none focus:border-terminal transition-colors min-h-[48px] md:min-h-0"
-                            >
-                                <option value="Alive">Alive</option>
-                                <option value="Deceased">Deceased</option>
-                                <option value="Missing">Missing</option>
-                                <option value="Unknown">Unknown</option>
-                                <option value="In Custody">In Custody</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="flex gap-4">
-                        <div className="flex-1">
-                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Faction / Organization</label>
-                            <input
-                                type="text"
-                                value={form.faction || ''}
-                                onChange={e => setForm({ ...form, faction: e.target.value })}
-                                disabled={!isEditing}
-                                placeholder="e.g. Ironspire Knights"
-                                className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent focus:outline-none focus:border-terminal min-h-[48px] md:min-h-0"
-                            />
-                        </div>
-                        <div className="flex-1">
-                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Known Aliases</label>
-                            <input
-                                type="text"
-                                value={form.aliases || ''}
-                                onChange={e => setForm({ ...form, aliases: e.target.value })}
-                                disabled={!isEditing}
-                                placeholder="Comma separated"
-                                className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent focus:outline-none focus:border-terminal min-h-[48px] md:min-h-0"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-terminal text-[10px] uppercase tracking-wider font-bold mb-1">Story Relevance</label>
-                        <textarea
-                            value={form.storyRelevance || ''}
-                            onChange={e => setForm({ ...form, storyRelevance: e.target.value })}
+            <div className="space-y-4 flex-1">
+                <div className="flex gap-4">
+                    <div className="flex-1">
+                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Primary Designation</label>
+                        <input
+                            type="text"
+                            value={form.name || ''}
+                            onChange={e => setForm({ ...form, name: e.target.value })}
                             disabled={!isEditing}
-                            placeholder="Why does this NPC matter to the narrative?"
-                            rows={2}
-                            className="w-full bg-terminal/5 border border-terminal/30 rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent resize-none focus:outline-none focus:border-terminal min-h-[80px] md:min-h-0"
+                            placeholder="Subject Name"
+                            className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent focus:outline-none focus:border-terminal min-h-[48px] md:min-h-0"
                         />
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Default Disposition</label>
-                            <input
-                                type="text"
-                                value={form.disposition || ''}
-                                onChange={e => setForm({ ...form, disposition: e.target.value })}
-                                disabled={!isEditing}
-                                placeholder="Helpful, Suspicious..."
-                                className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent focus:outline-none focus:border-terminal min-h-[48px] md:min-h-0"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Affinity (0-100)</label>
-                            <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                value={form.affinity ?? 50}
-                                onChange={e => setForm({ ...form, affinity: parseInt(e.target.value, 10) || 50 })}
-                                disabled={!isEditing}
-                                className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary disabled:opacity-70 disabled:bg-surface disabled:border-transparent focus:outline-none focus:border-terminal min-h-[48px] md:min-h-0"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Core Motive / Goals</label>
-                        <textarea
-                            value={form.goals || ''}
-                            onChange={e => setForm({ ...form, goals: e.target.value })}
+                    <div className="w-1/3">
+                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Status</label>
+                        <select
+                            value={form.status || 'Alive'}
+                            onChange={e => setForm({ ...form, status: e.target.value })}
                             disabled={!isEditing}
-                            placeholder="What does this character ultimately want?"
-                            rows={2}
-                            className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent resize-none focus:outline-none focus:border-terminal min-h-[80px] md:min-h-0"
-                        />
-                    </div>
-
-                    <div className="bg-void p-4 rounded border border-border">
-                        <div className="flex items-center gap-2 text-text-primary font-bold uppercase tracking-widest text-xs mb-4">
-                            Psychological Axes
-                        </div>
-                        {renderSlider('nature', 'Nature')}
-                        {renderSlider('training', 'Training')}
-                        {renderSlider('emotion', 'Emotion')}
-                        {renderSlider('social', 'Social')}
-                        {renderSlider('belief', 'Belief')}
-                        {renderSlider('ego', 'Ego')}
+                            className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary disabled:opacity-70 disabled:bg-surface disabled:border-transparent outline-none focus:border-terminal transition-colors min-h-[48px] md:min-h-0"
+                        >
+                            <option value="Alive">Alive</option>
+                            <option value="Deceased">Deceased</option>
+                            <option value="Missing">Missing</option>
+                            <option value="Unknown">Unknown</option>
+                            <option value="In Custody">In Custody</option>
+                        </select>
                     </div>
                 </div>
 
-                {/* Right Form Column (Visual Profile) */}
-                <div className="space-y-4">
-                    <NPCPortraitSection
-                        portrait={form.portrait}
-                        name={form.name || ''}
-                        visualProfile={form.visualProfile || DEFAULT_VISUAL_PROFILE}
-                        isEditing={isEditing}
-                        isGeneratingImage={isGeneratingImage}
-                        onGeneratePortrait={onGeneratePortrait}
-                        onVisualProfileChange={handleVisualProfileChange}
-                        appearance={form.appearance || ''}
-                        onAppearanceChange={(v) => setForm(prev => ({ ...prev, appearance: v }))}
+                <div className="flex gap-4">
+                    <div className="flex-1">
+                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Faction / Organization</label>
+                        <input
+                            type="text"
+                            value={form.faction || ''}
+                            onChange={e => setForm({ ...form, faction: e.target.value })}
+                            disabled={!isEditing}
+                            placeholder="e.g. Ironspire Knights"
+                            className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent focus:outline-none focus:border-terminal min-h-[48px] md:min-h-0"
+                        />
+                    </div>
+                    <div className="flex-1">
+                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Known Aliases</label>
+                        <input
+                            type="text"
+                            value={form.aliases || ''}
+                            onChange={e => setForm({ ...form, aliases: e.target.value })}
+                            disabled={!isEditing}
+                            placeholder="Comma separated"
+                            className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent focus:outline-none focus:border-terminal min-h-[48px] md:min-h-0"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-terminal text-[10px] uppercase tracking-wider font-bold mb-1">Story Relevance</label>
+                    <textarea
+                        value={form.storyRelevance || ''}
+                        onChange={e => setForm({ ...form, storyRelevance: e.target.value })}
+                        disabled={!isEditing}
+                        placeholder="Why does this NPC matter to the narrative?"
+                        rows={2}
+                        className="w-full bg-terminal/5 border border-terminal/30 rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent resize-none focus:outline-none focus:border-terminal min-h-[80px] md:min-h-0"
                     />
+                </div>
+
+                <div>
+                    <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Appearance</label>
+                    <textarea
+                        value={form.appearance || ''}
+                        onChange={e => setForm({ ...form, appearance: e.target.value })}
+                        disabled={!isEditing}
+                        placeholder="Physical description, distinguishing features..."
+                        rows={3}
+                        className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent resize-none focus:outline-none focus:border-terminal min-h-[80px] md:min-h-0"
+                    />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Default Disposition</label>
+                        <input
+                            type="text"
+                            value={form.disposition || ''}
+                            onChange={e => setForm({ ...form, disposition: e.target.value })}
+                            disabled={!isEditing}
+                            placeholder="Helpful, Suspicious..."
+                            className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent focus:outline-none focus:border-terminal min-h-[48px] md:min-h-0"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Affinity (0-100)</label>
+                        <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={form.affinity ?? 50}
+                            onChange={e => setForm({ ...form, affinity: parseInt(e.target.value, 10) || 50 })}
+                            disabled={!isEditing}
+                            className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary disabled:opacity-70 disabled:bg-surface disabled:border-transparent focus:outline-none focus:border-terminal min-h-[48px] md:min-h-0"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Core Motive / Goals</label>
+                    <textarea
+                        value={form.goals || ''}
+                        onChange={e => setForm({ ...form, goals: e.target.value })}
+                        disabled={!isEditing}
+                        placeholder="What does this character ultimately want?"
+                        rows={2}
+                        className="w-full bg-void border border-border rounded px-3 py-2.5 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface disabled:border-transparent resize-none focus:outline-none focus:border-terminal min-h-[80px] md:min-h-0"
+                    />
+                </div>
+
+                <div className="bg-void p-4 rounded border border-border">
+                    <div className="flex items-center gap-2 text-text-primary font-bold uppercase tracking-widest text-xs mb-4">
+                        Psychological Axes
+                    </div>
+                    {renderSlider('nature', 'Nature')}
+                    {renderSlider('training', 'Training')}
+                    {renderSlider('emotion', 'Emotion')}
+                    {renderSlider('social', 'Social')}
+                    {renderSlider('belief', 'Belief')}
+                    {renderSlider('ego', 'Ego')}
                 </div>
             </div>
 
@@ -277,8 +261,3 @@ export function NPCEditForm({
         </div>
     );
 }
-
-const DEFAULT_VISUAL_PROFILE: NPCVisualProfile = {
-    race: '', gender: '', ageRange: '', build: '', symmetry: '',
-    hairStyle: '', eyeColor: '', skinTone: '', gait: '', distinctMarks: '', clothing: '', artStyle: 'Anime'
-};

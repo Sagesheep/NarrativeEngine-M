@@ -3,7 +3,8 @@ import {
     ChevronDown, ChevronUp, Lock, Unlock, AlertCircle,
     RefreshCcw, Edit2, Check, X, GitMerge, Scissors
 } from 'lucide-react';
-import type { ArchiveChapter } from '../../types';
+import type { ArchiveChapter, TimelineEvent } from '../../types';
+import { TimelineDotRow } from './TimelineDotRow';
 
 interface ChapterCardProps {
     chapter: ArchiveChapter;
@@ -16,6 +17,8 @@ interface ChapterCardProps {
     onSplit?: (atSceneId: string) => void;
     isNextAdjacent?: boolean;
     isProcessing?: boolean;
+    timelineEvents?: TimelineEvent[];
+    onDeleteTimelineEvent?: (eventId: string) => void;
 }
 
 export const ChapterCard = memo(function ChapterCard({
@@ -29,6 +32,8 @@ export const ChapterCard = memo(function ChapterCard({
     onSplit,
     isNextAdjacent,
     isProcessing,
+    timelineEvents,
+    onDeleteTimelineEvent,
 }: ChapterCardProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState(chapter.title);
@@ -127,6 +132,9 @@ export const ChapterCard = memo(function ChapterCard({
 
             {expanded && (
                 <div className="p-3 pt-0 border-t border-border/50 text-sm">
+                    {timelineEvents && timelineEvents.length > 0 && onDeleteTimelineEvent && (
+                        <TimelineDotRow chapter={chapter} events={timelineEvents} onDeleteEvent={onDeleteTimelineEvent} />
+                    )}
                     <div className="space-y-4 pt-3">
                         {chapter.summary ? (
                             <div className="space-y-1">

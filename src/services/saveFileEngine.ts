@@ -1,6 +1,7 @@
 import type { ChatMessage, GameContext, ProviderConfig, EndpointConfig, CoreMemorySlot } from '../types';
 import { countTokens } from './tokenizer';
 import { extractJson } from './payloadBuilder';
+import { getChatUrl, buildChatHeaders, extractContent } from '../utils/llmApiHelper';
 
 const BATCH_TOKEN_LIMIT = 100_000; // max tokens per LLM call for save engine
 
@@ -58,11 +59,8 @@ export function validateHeaderIndex(output: string): { valid: boolean; missing: 
 // ─── LLM Call Helper ───
 
 async function llmCall(provider: ProviderConfig | EndpointConfig, prompt: string): Promise<string> {
-    const url = `${provider.endpoint.replace(/\/+$/, '')}/chat/completions`;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (provider.apiKey) {
-        headers['Authorization'] = `Bearer ${provider.apiKey}`;
-    }
+    const url = getChatUrl(provider);
+    const headers = buildChatHeaders(provider);
 
     const res = await fetch(url, {
         method: 'POST',
@@ -80,7 +78,7 @@ async function llmCall(provider: ProviderConfig | EndpointConfig, prompt: string
     }
 
     const data = await res.json();
-    return data.choices?.[0]?.message?.content ?? '';
+    return extractContent(data, provider);
 }
 
 // ─── Canon State Generator (JSON Slot Format) ───

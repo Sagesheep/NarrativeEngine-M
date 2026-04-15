@@ -5,15 +5,15 @@ const config: CapacitorConfig = {
   appName: 'Narrative Engine',
   webDir: 'dist',
   android: {
-    backgroundColor: '#1A1A2E',
+    backgroundColor: '#FFFFFF',
   },
   server: {
     androidScheme: 'https',
   },
   plugins: {
     StatusBar: {
-      style: 'DARK',
-      backgroundColor: '#1A1A2E',
+      style: 'LIGHT',
+      backgroundColor: '#FFFFFF',
     },
     Keyboard: {
       resize: 'body',

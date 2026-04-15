@@ -103,7 +103,7 @@ export default function App() {
 
   if (!settingsLoaded || !campaignLoaded) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-950 text-gray-400">
+      <div className="flex items-center justify-center h-screen bg-void text-text-dim">
         <div className="text-lg animate-pulse">Loading…</div>
       </div>
     );

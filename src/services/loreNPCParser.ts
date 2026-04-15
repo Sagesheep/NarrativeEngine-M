@@ -56,33 +56,11 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
             return m ? parseInt(m[1], 10) : getNum(label, fallback);
         }
 
-        const visualProfile = {
-            race: getAny(['VisualRace', 'Visual Race', 'Race', 'Race / Species']),
-            gender: getAny(['VisualGender', 'Gender']),
-            ageRange: getAny(['VisualAgeRange', 'Age Range', 'VisualAge', 'Age']),
-            build: getAny(['VisualBuild', 'Build', 'Build / Body Type']),
-            symmetry: getAny(['VisualSymmetry', 'Attract / Symmetry', 'Symmetry', 'Attractiveness']),
-            hairStyle: getAny(['VisualHairStyle', 'Hair Style & Color', 'Hair', 'Hair Style']),
-            eyeColor: getAny(['VisualEyeColor', 'Eye Color', 'Eyes']),
-            skinTone: getAny(['VisualSkinTone', 'Skin Tone']),
-            gait: getAny(['VisualGait', 'Gait / Posture', 'Gait']),
-            distinctMarks: getAny(['VisualDistinctMarks', 'Distinct Marks']),
-            clothing: getAny(['VisualClothing', 'Clothing Style', 'Clothing']),
-            artStyle: getAny(['VisualArtStyle', 'Art Style']) || 'Anime',
-        };
-        
-        const hasVisualProfile = !!(
-            visualProfile.race || visualProfile.gender || visualProfile.ageRange || visualProfile.build ||
-            visualProfile.symmetry || visualProfile.hairStyle || visualProfile.eyeColor || visualProfile.skinTone ||
-            visualProfile.gait || visualProfile.distinctMarks || visualProfile.clothing
-        );
-
         npcs.push({
             id: uid(),
             name,
             aliases: get('Aliases'),
             appearance: getAny(['Appearance', 'VisualForAI']),
-            visualProfile: hasVisualProfile ? visualProfile : undefined,
             disposition: get('Disposition'),
             goals: get('Goals'),
             faction: get('Faction'),
@@ -95,7 +73,6 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
             social: parseAxis('Social', 5),
             belief: parseAxis('Belief', 5),
             ego: parseAxis('Ego', 5),
-            portrait: '',
         });
     }
 

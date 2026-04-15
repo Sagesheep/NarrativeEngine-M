@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { GameContext, ChatMessage, CondenserState, LoreChunk, ArchiveIndexEntry, NPCEntry, ArchiveChapter, SemanticFact } from '../../types';
+import type { GameContext, ChatMessage, CondenserState, LoreChunk, ArchiveIndexEntry, NPCEntry, ArchiveChapter, SemanticFact, TimelineEvent, EntityEntry } from '../../types';
 import { toast } from '../../components/Toast';
 import { debouncedSaveSettings } from './settingsSlice';
 import {
@@ -8,24 +8,25 @@ import {
     DEFAULT_WORLD_WHO, DEFAULT_WORLD_WHERE, DEFAULT_WORLD_WHY, DEFAULT_WORLD_WHAT,
 } from './settingsSlice';
 
-const API = '/api';
-
 // ── Debounced save helpers ─────────────────────────────────────────────
 
 let stateTimer: ReturnType<typeof setTimeout> | null = null;
 let loreTimer: ReturnType<typeof setTimeout> | null = null;
+let autoBackupTimer: ReturnType<typeof setInterval> | null = null;
 let _getStateForSave: (() => { context: GameContext; messages: ChatMessage[]; condenser: CondenserState }) | null = null;
 
 export function debouncedSaveCampaignState(campaignId: string | null, _state: { context: GameContext; messages: ChatMessage[]; condenser: CondenserState }) {
     if (!campaignId) return;
     if (stateTimer) clearTimeout(stateTimer);
-    stateTimer = setTimeout(() => {
+    stateTimer = setTimeout(async () => {
         const state = _getStateForSave ? _getStateForSave() : _state;
-        fetch(`${API}/campaigns/${campaignId}/state`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(state),
-        }).catch((e) => { console.error(e); toast.error('Failed to save campaign state'); });
+        try {
+            const { saveCampaignState } = await import('../../store/campaignStore');
+            await saveCampaignState(campaignId, state);
+        } catch (e) {
+            console.error(e);
+            toast.error('Failed to save campaign state');
+        }
     }, 1000);
 }
 
@@ -42,12 +43,14 @@ let npcTimer: ReturnType<typeof setTimeout> | null = null;
 export function debouncedSaveNPCLedger(campaignId: string | null, npcs: NPCEntry[]) {
     if (!campaignId) return;
     if (npcTimer) clearTimeout(npcTimer);
-    npcTimer = setTimeout(() => {
-        fetch(`${API}/campaigns/${campaignId}/npcs`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(npcs),
-        }).catch((e) => { console.error(e); toast.error('Failed to save NPC ledger'); });
+    npcTimer = setTimeout(async () => {
+        try {
+            const { saveNPCLedger } = await import('../../store/campaignStore');
+            await saveNPCLedger(campaignId, npcs);
+        } catch (e) {
+            console.error(e);
+            toast.error('Failed to save NPC ledger');
+        }
     }, 1000);
 }
 
@@ -173,6 +176,10 @@ export const defaultContext: GameContext = {
         what: [...DEFAULT_WORLD_WHAT],
     },
     coreMemorySlots: [],
+    notebook: [],
+    notebookActive: true,
+    inventoryLastScene: 'Never',
+    characterProfileLastScene: 'Never',
 };
 
 // ── Slice type ─────────────────────────────────────────────────────────
@@ -202,6 +209,28 @@ export type CampaignSlice = {
     setSemanticFacts: (facts: SemanticFact[]) => void;
     preOpBackup: (campaignId: string, trigger: string) => Promise<void>;
     _registerCampaignStateGetter: (getter: () => { context: GameContext; messages: ChatMessage[]; condenser: CondenserState }) => void;
+
+    // Timeline / World State
+    timeline: TimelineEvent[];
+    setTimeline: (events: TimelineEvent[]) => void;
+    addTimelineEvent: (event: TimelineEvent) => void;
+    removeTimelineEvent: (eventId: string) => void;
+
+    // Entity Registry
+    entities: EntityEntry[];
+    setEntities: (entities: EntityEntry[]) => void;
+
+    // Pinned Chapters
+    pinnedChapterIds: string[];
+    pinChapter: (chapterId: string) => void;
+    clearPinnedChapters: () => void;
+
+    // Auto Bookkeeping
+    bookkeepingTurnCounter: number;
+    autoBookkeepingInterval: number;
+    setAutoBookkeepingInterval: (interval: number) => void;
+    resetBookkeepingTurnCounter: () => void;
+    incrementBookkeepingTurnCounter: () => number;
 };
 
 // ── Combined state needed for cross-slice access ───────────────────────
@@ -221,16 +250,50 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         const s = get();
         debouncedSaveSettings(s.settings, id);
         
-        // Phase 6: Load chapters and semantic facts when selecting campaign
+        import('../../services/backgroundQueue').then(({ backgroundQueue }) => {
+            backgroundQueue.clear('Campaign switched');
+        }).catch(() => {});
+
+        if (autoBackupTimer) {
+            clearInterval(autoBackupTimer);
+            autoBackupTimer = null;
+        }
+
         if (id) {
             try {
-                const { loadChapters, loadSemanticFacts } = await import('../../store/campaignStore');
-                const chapters = await loadChapters(id);
-                const facts = await loadSemanticFacts(id);
-                set({ chapters, semanticFacts: facts } as Partial<CampaignDeps>);
+                const { loadChapters, loadSemanticFacts, loadTimeline, loadEntities } = await import('../../store/campaignStore');
+                const [chapters, facts, timeline, entities] = await Promise.all([
+                    loadChapters(id),
+                    loadSemanticFacts(id),
+                    loadTimeline(id).catch(() => []),
+                    loadEntities(id).catch(() => []),
+                ]);
+                set({ chapters, semanticFacts: facts, timeline, entities } as Partial<CampaignDeps>);
             } catch (err) {
                 console.warn('[Campaign] Failed to load chapters/facts:', err);
             }
+
+            import('../../services/embedder').then(({ warmupEmbedder }) => {
+                return warmupEmbedder();
+            }).then(() => {
+                console.log('[Embedder] Model warmed up and ready');
+            }).catch(e => {
+                console.warn('[Embedder] Warmup failed, semantic search will use keyword fallback:', e);
+            });
+
+            autoBackupTimer = setInterval(async () => {
+                const state = get();
+                if (!state.activeCampaignId) return;
+                try {
+                    const { offlineStorage } = await import('../../services/offlineStorage');
+                    await offlineStorage.backup.create(state.activeCampaignId, {
+                        trigger: 'auto',
+                        isAuto: true,
+                    });
+                } catch (e) {
+                    console.warn('[Auto-Backup] Failed:', e);
+                }
+            }, 10 * 60 * 1000);
         }
     },
     loreChunks: [],
@@ -291,5 +354,37 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
     },
     _registerCampaignStateGetter: (getter) => {
         _getStateForSave = getter;
+    },
+
+    // Timeline
+    timeline: [],
+    setTimeline: (events) => set({ timeline: events } as Partial<CampaignDeps>),
+    addTimelineEvent: (event) => set((s) => ({ timeline: [...s.timeline, event] })) as any,
+    removeTimelineEvent: (eventId) => set((s) => ({ timeline: s.timeline.filter((e: TimelineEvent) => e.id !== eventId) })) as any,
+
+    // Entities
+    entities: [],
+    setEntities: (entities) => set({ entities } as Partial<CampaignDeps>),
+
+    // Pinned Chapters
+    pinnedChapterIds: [],
+    pinChapter: (chapterId) => set((s) => {
+        const pinned = s.pinnedChapterIds.includes(chapterId)
+            ? s.pinnedChapterIds.filter((id: string) => id !== chapterId)
+            : [...s.pinnedChapterIds, chapterId];
+        return { pinnedChapterIds: pinned };
+    }) as any,
+    clearPinnedChapters: () => set({ pinnedChapterIds: [] } as Partial<CampaignDeps>),
+
+    // Auto Bookkeeping
+    bookkeepingTurnCounter: 0,
+    autoBookkeepingInterval: 5,
+    setAutoBookkeepingInterval: (interval) => set({ autoBookkeepingInterval: interval } as Partial<CampaignDeps>),
+    resetBookkeepingTurnCounter: () => set({ bookkeepingTurnCounter: 0 } as Partial<CampaignDeps>),
+    incrementBookkeepingTurnCounter: () => {
+        const s = get();
+        const newVal = s.bookkeepingTurnCounter + 1;
+        set({ bookkeepingTurnCounter: newVal } as Partial<CampaignDeps>);
+        return newVal;
     },
 });

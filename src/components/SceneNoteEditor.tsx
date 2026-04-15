@@ -55,7 +55,7 @@ export const SceneNoteEditor: React.FC = () => {
                 onChange={(e) => updateContext({ sceneNote: e.target.value, sceneNoteActive: !!e.target.value })}
                 placeholder="Add special instructions for the current scene (e.g., 'The air is thick with humidity', 'NPC is being unusually evasive')..."
                 rows={4}
-                className={`w-full bg-void border px-3 py-2 text-[16px] md:text-xs text-text-primary placeholder:text-text-dim/40 font-mono resize-y transition-all min-h-[120px] md:min-h-0 ${context.sceneNoteActive ? 'border-amber/50 shadow-[0_0_10px_rgba(245,158,11,0.05)]' : 'border-border'
+                className={`w-full bg-void border px-3 py-2 text-[16px] md:text-xs text-text-primary placeholder:text-text-dim/40 font-mono resize-y transition-all min-h-[120px] md:min-h-0 ${context.sceneNoteActive ? 'border-terminal/50' : 'border-border'
                     }`}
             />
 

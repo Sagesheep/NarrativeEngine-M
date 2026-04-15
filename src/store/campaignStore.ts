@@ -1,5 +1,5 @@
 import { get, set, del } from 'idb-keyval';
-import type { Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, ArchiveChapter, SemanticFact } from '../types';
+import type { Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, ArchiveChapter, SemanticFact, TimelineEvent, EntityEntry } from '../types';
 
 export type CampaignState = {
     context: GameContext;
@@ -54,6 +54,16 @@ export async function loadCampaignState(campaignId: string): Promise<CampaignSta
 
 export async function saveLoreChunks(campaignId: string, chunks: LoreChunk[]): Promise<void> {
     await set(`lore_${campaignId}`, chunks);
+
+    import('../services/embedder').then(({ embedText }) => {
+        import('../services/offlineStorage').then(({ offlineStorage }) => {
+            for (const chunk of chunks) {
+                embedText(chunk.content.slice(0, 500)).then(vec => {
+                    if (vec) offlineStorage.embeddings.store(campaignId, chunk.id, Array.from(vec), 'lore');
+                }).catch(() => {});
+            }
+        });
+    }).catch(() => {});
 }
 
 export async function getLoreChunks(campaignId: string): Promise<LoreChunk[]> {
@@ -91,4 +101,14 @@ export async function loadSemanticFacts(campaignId: string): Promise<SemanticFac
 export async function loadChapters(campaignId: string): Promise<ArchiveChapter[]> {
     const { api } = await import('../services/apiClient');
     return api.chapters.list(campaignId);
+}
+
+export async function loadTimeline(campaignId: string): Promise<TimelineEvent[]> {
+    const { api } = await import('../services/apiClient');
+    return api.timeline.get(campaignId);
+}
+
+export async function loadEntities(campaignId: string): Promise<EntityEntry[]> {
+    const { api } = await import('../services/apiClient');
+    return api.entities.get(campaignId);
 }

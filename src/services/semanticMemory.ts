@@ -10,11 +10,11 @@
 
 import type { SemanticFact, NPCEntry } from '../types';
 import { countTokens } from './tokenizer';
+import { offlineStorage } from './offlineStorage';
 
 export async function fetchFacts(campaignId: string): Promise<SemanticFact[]> {
     try {
-        const res = await fetch(`/api/campaigns/${campaignId}/facts`);
-        if (res.ok) return await res.json();
+        return await offlineStorage.facts.get(campaignId);
     } catch (err) {
         console.warn('[SemanticMemory] Failed to fetch facts:', err);
     }

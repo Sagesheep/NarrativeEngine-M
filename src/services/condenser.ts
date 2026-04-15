@@ -1,6 +1,8 @@
 import type { ChatMessage, GameContext, EndpointConfig, ProviderConfig } from '../types';
 
 import { countTokens } from './tokenizer';
+import { llmQueue } from './llmRequestQueue';
+import { getChatUrl, buildChatHeaders, extractContent } from '../utils/llmApiHelper';
 
 const VERBATIM_WINDOW = 8;
 const CONDENSE_BUDGET_RATIO = 0.75;
@@ -81,9 +83,8 @@ export async function condenseHistory(
     }
 
     let finalExistingSummary = existingSummary;
-    const url = `${provider.endpoint.replace(/\/+$/, '')}/chat/completions`;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (provider.apiKey) headers['Authorization'] = `Bearer ${provider.apiKey}`;
+    const url = getChatUrl(provider);
+    const headers = buildChatHeaders(provider);
 
     // --- Phase 4: T3 → T4 Promotion ---
     if (finalExistingSummary && countTokens(finalExistingSummary) > META_SUMMARY_THRESHOLD) {
@@ -92,20 +93,26 @@ export async function condenseHistory(
 
         console.log('[Condenser] Sending T3 meta-summary request...', { promptTokens: countTokens(metaPrompt) });
 
-        const metaRes = await fetch(url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                model: provider.modelName,
-                messages: [{ role: 'user', content: metaPrompt }],
-                stream: false,
-            }),
-            signal,
-        });
+        await llmQueue.acquireSlot('normal');
+        let metaRes: Response;
+        try {
+            metaRes = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model: provider.modelName,
+                    messages: [{ role: 'user', content: metaPrompt }],
+                    stream: false,
+                }),
+                signal,
+            });
+        } finally {
+            llmQueue.releaseSlot();
+        }
 
         if (metaRes.ok) {
             const metaData = await metaRes.json();
-            finalExistingSummary = metaData.choices?.[0]?.message?.content ?? '';
+            finalExistingSummary = extractContent(metaData, provider);
             console.log('[Archive Memory] T3 successfully meta-summarized.');
         } else {
             console.error('[Archive Memory] Meta-summary API failed, retaining old T3 summary.');
@@ -153,16 +160,22 @@ export async function condenseHistory(
         budgetLimit
     });
 
-    const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-            model: provider.modelName,
-            messages: [{ role: 'user', content: prompt }],
-            stream: false,
-        }),
-        signal,
-    });
+    await llmQueue.acquireSlot('normal');
+    let res: Response;
+    try {
+        res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                model: provider.modelName,
+                messages: [{ role: 'user', content: prompt }],
+                stream: false,
+            }),
+            signal,
+        });
+    } finally {
+        llmQueue.releaseSlot();
+    }
 
     if (!res.ok) {
         const errBody = await res.text();
@@ -170,7 +183,7 @@ export async function condenseHistory(
     }
 
     const data = await res.json();
-    const summary = data.choices?.[0]?.message?.content ?? existingSummary;
+    const summary = extractContent(data, provider) || existingSummary;
 
     // Use the last message that was actually included in the chunk for correct index alignment
     const newUpToIndex = lastMsgInChunk ? messages.indexOf(lastMsgInChunk) : condensedUpToIndex;

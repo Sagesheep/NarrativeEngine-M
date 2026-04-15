@@ -9,12 +9,20 @@ import { countTokens } from './tokenizer';
 import { rollEngines, rollDiceFairness } from './engineRolls';
 import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from './npcDetector';
 import { api } from './apiClient';
+import { offlineStorage } from './offlineStorage';
 import { recommendContext } from './contextRecommender';
 import { toast } from '../components/Toast';
 import { shouldAutoSeal, sealChapter, recallWithChapterFunnel } from './archiveChapterEngine';
 import { fetchFacts, queryFacts, formatFactsForContext } from './semanticMemory';
+import { formatResolvedForContext } from './timelineResolver';
 import { useAppStore } from '../store/useAppStore';
 import { loadChapters } from '../store/campaignStore';
+import { backgroundQueue } from './backgroundQueue';
+import { llmQueue } from './llmRequestQueue';
+import { isEmbedderReady } from './embedder';
+import { semanticSearch } from './vectorSearch';
+import { scanCharacterProfile } from './characterProfileParser';
+import { scanInventory } from './inventoryParser';
 
 export type TurnCallbacks = {
     onCheckingNotes: (checking: boolean) => void;
@@ -52,6 +60,9 @@ export type TurnState = {
     getFreshProvider: () => EndpointConfig | ProviderConfig | undefined;
     getUtilityEndpoint?: () => EndpointConfig | undefined; // optional — context recommender
     forcedInterventions?: ('enemy' | 'neutral' | 'ally')[]; // For manual triggers from UI
+    incrementBookkeepingTurnCounter: () => number;
+    autoBookkeepingInterval: number;
+    resetBookkeepingTurnCounter: () => void;
 };
 
 const sanitizePayloadForApi = (rawPayload: any[], allowTools: boolean) => {
@@ -134,20 +145,40 @@ export async function runTurn(
     callbacks.setStreaming(true);
     callbacks.setLoadingStatus?.('[1/5] Extracting Lore & Stats...');
 
+    let semanticArchiveIds: string[] | undefined;
+    let semanticLoreIds: string[] | undefined;
+
+    if (isEmbedderReady() && activeCampaignId) {
+        try {
+            const [sceneIds, loreIds] = await Promise.all([
+                semanticSearch(activeCampaignId, finalInput, 'scene', 20),
+                semanticSearch(activeCampaignId, finalInput, 'lore', 15),
+            ]);
+            semanticArchiveIds = sceneIds;
+            semanticLoreIds = loreIds;
+
+            if (semanticArchiveIds?.length) {
+                console.log(`[Semantic] Found ${semanticArchiveIds.length} scene candidates: [${semanticArchiveIds.join(', ')}]`);
+            }
+            if (semanticLoreIds?.length) {
+                console.log(`[Semantic] Found ${semanticLoreIds.length} lore candidates: [${semanticLoreIds.join(', ')}]`);
+            }
+        } catch (e) {
+            console.warn('[Semantic] Candidate search failed, using keyword fallback:', e);
+        }
+    }
+
     const relevantLore = loreChunks.length > 0
-        ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex, input, 1200, messages)
+        ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex, input, 1200, messages, semanticLoreIds)
         : undefined;
 
     let sceneNumber: string | undefined;
     if (activeCampaignId) {
         callbacks.setLoadingStatus?.('[2/5] Fetching Timeline...');
         try {
-            const snRes = await fetch(`/api/campaigns/${activeCampaignId}/archive/next-scene`);
-            if (snRes.ok) {
-                const snData = await snRes.json();
-                sceneNumber = snData.sceneId; 
-                console.log(`[Scene Engine] Pre-assigned scene #${sceneNumber}`);
-            }
+            const nextScene = await offlineStorage.archive.getNextSceneNumber(activeCampaignId);
+            sceneNumber = String(nextScene).padStart(3, '0');
+            console.log(`[Scene Engine] Pre-assigned scene #${sceneNumber}`);
         } catch { /* ignored */ }
     }
 
@@ -169,8 +200,10 @@ export async function runTurn(
                 messages,
                 npcLedger,
                 semanticFacts,
-                3000, // token budget for archive
-                utilityEndpoint! // for LLM chapter validation
+                3000,
+                utilityEndpoint!,
+                undefined,
+                semanticArchiveIds
             );
             const fallbackPromise = new Promise<{ scenes: string; usedTokens: number } | null>(resolve => setTimeout(resolve, 5000)).then(() => null);
 
@@ -191,7 +224,7 @@ export async function runTurn(
         } catch {
             // Fallback to flat retrieval
             if (activeCampaignId) {
-                const flatRecall = await recallArchiveScenes(activeCampaignId, archiveIndex, input, messages, 3000);
+                const flatRecall = await recallArchiveScenes(activeCampaignId, archiveIndex, input, messages, 3000, npcLedger, semanticFacts, semanticArchiveIds);
                 archiveResult = { scenes: flatRecall || [], usedTokens: 0 };
             }
         }
@@ -199,7 +232,7 @@ export async function runTurn(
         // No chapters, use flat retrieval with upgraded scoring
         const flatRecall = await recallArchiveScenes(
             activeCampaignId, archiveIndex, input, messages, 3000,
-            npcLedger, semanticFacts
+            npcLedger, semanticFacts, semanticArchiveIds
         );
         archiveResult = { scenes: flatRecall || [], usedTokens: 0 };
     }
@@ -214,6 +247,19 @@ export async function runTurn(
         );
     } catch {
         // Non-critical, continue without facts
+    }
+
+    // --- RESOLVED WORLD STATE ---
+    try {
+        const timeline = useAppStore.getState().timeline;
+        if (timeline && timeline.length > 0) {
+            const resolvedText = formatResolvedForContext(
+                (await import('./timelineResolver')).resolveTimeline(timeline)
+            );
+            if (resolvedText) semanticFactText += '\n' + resolvedText;
+        }
+    } catch {
+        // Non-critical
     }
 
     // ── Utility AI Context Recommender ──
@@ -464,8 +510,29 @@ export async function runTurn(
                             }
                         }
                     }
+
+                    // Auto bookkeeping: profile + inventory scan every N turns
+                    const turnCount = state.incrementBookkeepingTurnCounter();
+                    if (turnCount >= state.autoBookkeepingInterval && appendedSceneId) {
+                        state.resetBookkeepingTurnCounter();
+                        const bkProvider = state.getFreshProvider();
+                        if (bkProvider) {
+                            const sceneId = appendedSceneId;
+                            backgroundQueue.push('Profile-Scan', async () => {
+                                const newProfile = await scanCharacterProfile(bkProvider, allMsgs, useAppStore.getState().context.characterProfile);
+                                callbacks.updateContext({ characterProfile: newProfile, characterProfileLastScene: sceneId });
+                                console.log(`[Auto Bookkeeping] Profile updated at scene #${sceneId}`);
+                            }).catch(err => console.warn('[Auto Bookkeeping] Profile scan failed:', err));
+
+                            backgroundQueue.push('Inventory-Scan', async () => {
+                                const newInventory = await scanInventory(bkProvider, allMsgs, useAppStore.getState().context.inventory);
+                                callbacks.updateContext({ inventory: newInventory, inventoryLastScene: sceneId });
+                                console.log(`[Auto Bookkeeping] Inventory updated at scene #${sceneId}`);
+                            }).catch(err => console.warn('[Auto Bookkeeping] Inventory scan failed:', err));
+                        }
+                    }
                 }
-                
+
                 if (settings.autoCondenseEnabled && shouldCondense(allMsgs, settings.contextLimit, condenser.condensedUpToIndex)) {
                     triggerCondense();
                 }
@@ -651,15 +718,20 @@ async function generateAIPlayerAction(
     callbacks.setLoadingStatus?.(`[AI PLAYER] ${type.toUpperCase()} IS INTERVENING...`);
     
     let resultText = "";
-    await sendMessage(
-        endpoint,
-        finalPayload,
-        () => {}, // No partial updates for interventions to keep it fast
-        (finalContent) => { resultText = finalContent; },
-        (err) => { throw new Error(err); },
-        undefined,
-        abortController
-    );
+    await llmQueue.acquireSlot('normal');
+    try {
+        await sendMessage(
+            endpoint,
+            finalPayload,
+            () => {},
+            (finalContent) => { resultText = finalContent; },
+            (err) => { throw new Error(err); },
+            undefined,
+            abortController
+        );
+    } finally {
+        llmQueue.releaseSlot();
+    }
 
     if (resultText) {
         callbacks.addMessage({

@@ -24,16 +24,11 @@ export function NPCGalleryView({ npcLedger, selectedId, selectMode, checkedIds, 
                     <div
                         key={npc.id}
                         onClick={() => selectMode ? onToggleCheck(npc.id) : onSelect(npc)}
-                        className={`relative aspect-[3/4] rounded overflow-hidden cursor-pointer border group transition-all ${isActive ? 'border-terminal ring-1 ring-terminal shadow-[0_0_15px_rgba(0,255,0,0.15)]' : isChecked ? 'border-terminal/50 ring-1 ring-terminal/30' : 'border-border hover:border-terminal/50'}`}
+                        className={`relative aspect-[3/4] rounded overflow-hidden cursor-pointer border group transition-all ${isActive ? 'border-terminal ring-1 ring-terminal' : isChecked ? 'border-terminal/50 ring-1 ring-terminal/30' : 'border-border hover:border-terminal/50'}`}
                     >
-                        {npc.portrait ? (
-                            <img src={npc.portrait} alt={npc.name} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
-                        ) : (
-                            <div className="w-full h-full bg-void-lighter flex flex-col items-center justify-center gap-2">
-                                <User size={32} className="text-text-dim/30" />
-                                <span className="text-[10px] text-text-dim/50 uppercase tracking-widest">No Portrait</span>
-                            </div>
-                        )}
+                        <div className="w-full h-full bg-void-lighter flex flex-col items-center justify-center gap-2">
+                            <User size={32} className="text-text-dim/30" />
+                        </div>
                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-void via-void/80 to-transparent p-3 pt-8">
                             <p className={`text-[14px] md:text-xs font-bold truncate ${isActive ? 'text-terminal glow-green-sm' : 'text-text-primary'}`}>{npc.name}</p>
                             {npc.faction && <p className="text-[9px] text-text-dim truncate uppercase mt-0.5">{npc.faction}</p>}

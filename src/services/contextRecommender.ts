@@ -9,6 +9,7 @@
  */
 
 import type { EndpointConfig, NPCEntry, LoreChunk, ChatMessage } from '../types';
+import { callLLM } from './callLLM';
 
 export type RecommenderResult = {
     relevantNPCNames: string[];   // NPC names the model considers relevant
@@ -102,30 +103,12 @@ ${conversation}
 
 Respond with the JSON object now:`;
 
-    const url = `${utilityEndpoint.endpoint.replace(/\/+$/, '')}/chat/completions`;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (utilityEndpoint.apiKey) headers['Authorization'] = `Bearer ${utilityEndpoint.apiKey}`;
-
     console.log(`[ContextRecommender] Sending recommendation request to ${utilityEndpoint.modelName}...`);
 
-    const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-            model: utilityEndpoint.modelName,
-            messages: [{ role: 'user', content: userContent }],
-            stream: false,
-            temperature: 0.1, // Low temperature for consistent structured output
-        }),
+    const rawContent = await callLLM(utilityEndpoint, userContent, {
+        temperature: 0.1,
+        priority: 'high',
     });
-
-    if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(`ContextRecommender API error ${res.status}: ${errBody}`);
-    }
-
-    const data = await res.json();
-    const rawContent = data.choices?.[0]?.message?.content ?? '';
 
     // Parse the JSON response — handle <think> blocks and markdown wrapping
     let cleanContent = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, '');

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, Loader2, CheckCircle, XCircle, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { testConnection } from '../services/chatEngine';
-import type { AIPreset, EndpointConfig } from '../types';
+import type { AIPreset, EndpointConfig, ApiFormat } from '../types';
 import { toast } from './Toast';
 
 function uid(): string {
@@ -12,12 +12,11 @@ function uid(): string {
 export function SettingsModal() {
   const { settings, updateSettings, settingsOpen, toggleSettings, addPreset, updatePreset, removePreset, setMobileView } = useAppStore();
   const [activeTab, setActiveTab] = useState(settings.presets[0]?.id || '');
-  const [testingSection, setTestingSection] = useState<'storyAI' | 'imageAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI' | null>(null);
+  const [testingSection, setTestingSection] = useState<'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI' | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; detail: string } | null>>({});
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     storyAI: true,
-    imageAI: false,
     summarizerAI: false,
     utilityAI: false,
     enemyAI: false,
@@ -34,7 +33,7 @@ export function SettingsModal() {
 
   const activePreset = settings.presets.find((p) => p.id === activeTab) || settings.presets[0];
 
-  const handleTest = async (section: 'storyAI' | 'imageAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI') => {
+  const handleTest = async (section: 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI') => {
     if (!activePreset) return;
     const config = activePreset[section];
     if (!config || !config.endpoint) return;
@@ -55,9 +54,8 @@ export function SettingsModal() {
     const newPreset: AIPreset = {
       id: uid(),
       name: `Preset ${settings.presets.length + 1}`,
-      storyAI: { endpoint: 'http://localhost:11434/v1', apiKey: '', modelName: 'llama3' },
-      imageAI: { endpoint: '', apiKey: '', modelName: '' },
-      summarizerAI: { endpoint: 'http://localhost:11434/v1', apiKey: '', modelName: 'llama3' },
+      storyAI: { endpoint: 'http://localhost:11434/v1', apiKey: '', modelName: 'llama3', apiFormat: 'openai' },
+      summarizerAI: { endpoint: 'http://localhost:11434/v1', apiKey: '', modelName: 'llama3', apiFormat: 'openai' },
       utilityAI: { endpoint: '', apiKey: '', modelName: '' },
       enemyAI: { endpoint: '', apiKey: '', modelName: '' },
       neutralAI: { endpoint: '', apiKey: '', modelName: '' },
@@ -80,17 +78,44 @@ export function SettingsModal() {
     updatePreset(activePreset.id, { name });
   };
 
-  const handleUpdateEndpoint = (section: 'storyAI' | 'imageAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', field: keyof EndpointConfig, value: string) => {
+  const handleUpdateEndpoint = (section: 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', field: keyof EndpointConfig, value: string | boolean | undefined) => {
     if (!activePreset) return;
     const updatedConfig = { ...activePreset[section], [field]: value };
     updatePreset(activePreset.id, { [section]: updatedConfig });
+  };
+
+  const handleApiFormatChange = (section: 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', newFormat: ApiFormat) => {
+    if (!activePreset) return;
+    const config = activePreset[section] ?? { endpoint: '', apiKey: '', modelName: '' };
+    let endpoint = (config.endpoint || '').replace(/\/+$/, '');
+    if (newFormat === 'ollama') {
+      endpoint = endpoint.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+    } else {
+      if (endpoint && !endpoint.endsWith('/v1') && /localhost:11434|127\.0\.0\.1:11434/.test(endpoint)) {
+        endpoint = endpoint + '/v1';
+      }
+    }
+    const updatedConfig = { ...config, apiFormat: newFormat, endpoint };
+    updatePreset(activePreset.id, { [section]: updatedConfig });
+  };
+
+  const getEndpointPlaceholder = (apiFormat?: ApiFormat) => {
+    return (apiFormat || 'openai') === 'ollama'
+      ? 'http://localhost:11434  or  https://ollama.com'
+      : 'http://localhost:11434/v1';
+  };
+
+  const getApiKeyPlaceholder = (apiFormat?: ApiFormat) => {
+    return (apiFormat || 'openai') === 'ollama'
+      ? 'Ollama API key (optional for local)'
+      : 'sk-...';
   };
 
   const toggleSection = (section: string) => {
     setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const renderEndpointConfig = (section: 'storyAI' | 'imageAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', title: string) => {
+  const renderEndpointConfig = (section: 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', title: string) => {
     const config = activePreset[section] ?? { endpoint: '', apiKey: '', modelName: '' };
     const isExpanded = expanded[section];
     const isTesting = testingSection === section;
@@ -116,10 +141,29 @@ export function SettingsModal() {
                 type="text"
                 value={config.endpoint}
                 onChange={(e) => handleUpdateEndpoint(section, 'endpoint', e.target.value)}
-                placeholder="http://localhost:11434/v1"
+                placeholder={getEndpointPlaceholder(config.apiFormat)}
                 className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono focus:border-terminal focus:outline-none"
               />
-            </div>
+              {(config.apiFormat || 'openai') === 'ollama' && (
+                <p className="text-[10px] text-text-dim mt-1">
+                  Local: <span className="font-mono">http://localhost:11434</span> &middot; Cloud: <span className="font-mono">https://ollama.com</span> (needs API key)
+                </p>
+              )}
+              </div>
+              <div>
+                <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">API Format</label>
+                <div className="flex border border-border overflow-hidden rounded">
+                  {(['openai', 'ollama'] as ApiFormat[]).map(fmt => (
+                    <button
+                      key={fmt}
+                      onClick={() => handleApiFormatChange(section, fmt)}
+                      className={`flex-1 px-4 py-3 md:py-2 text-[11px] md:text-[10px] uppercase tracking-wider transition-colors ${(config.apiFormat || 'openai') === fmt ? 'bg-terminal text-surface font-bold' : 'bg-void text-text-dim hover:text-text-primary'}`}
+                    >
+                      {fmt === 'openai' ? 'OpenAI /v1' : 'Ollama /api'}
+                    </button>
+                  ))}
+                </div>
+              </div>
             <div>
               <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">Model Name</label>
               <input
@@ -136,9 +180,24 @@ export function SettingsModal() {
                 type="password"
                 value={config.apiKey}
                 onChange={(e) => handleUpdateEndpoint(section, 'apiKey', e.target.value)}
-                placeholder="sk-..."
+                placeholder={getApiKeyPlaceholder(config.apiFormat)}
                 className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono focus:border-terminal focus:outline-none"
               />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 py-2">
+              <label className="text-[11px] text-text-dim uppercase tracking-wider truncate">Enable Streaming</label>
+              <button
+                onClick={() => {
+                  if (!activePreset) return;
+                  const updatedConfig = { ...activePreset[section], streamingEnabled: !(config.streamingEnabled !== false) };
+                  updatePreset(activePreset.id, { [section]: updatedConfig });
+                }}
+                className={`relative w-11 h-6 shrink-0 rounded-full transition-colors ${config.streamingEnabled !== false ? 'bg-terminal/60' : 'bg-border'}`}
+                title={config.streamingEnabled !== false ? 'Streaming on — click to disable (use for cloud models like GLM-5.1:cloud)' : 'Streaming off — click to enable'}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${config.streamingEnabled !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
             </div>
 
             <div className="pt-2">
@@ -237,7 +296,6 @@ export function SettingsModal() {
 
               {renderEndpointConfig('storyAI', 'Story & Logic AI')}
               {renderEndpointConfig('summarizerAI', 'Summarizer & Context AI')}
-              {renderEndpointConfig('imageAI', 'Image Generation AI')}
               {renderEndpointConfig('utilityAI', 'Utility AI (Context Recommender)')}
               {renderEndpointConfig('enemyAI', 'Enemy AI (Adversarial Player)')}
               {renderEndpointConfig('neutralAI', 'Neutral AI (Chaos/Environmental)')}
@@ -332,13 +390,13 @@ export function SettingsModal() {
             <div className="flex items-center justify-between bg-void p-4 border border-border rounded">
               <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">UI Theme</label>
               <div className="flex border border-border overflow-hidden rounded">
-                {['light', 'dark'].map(t => (
+                {(['light', 'system', 'dark'] as const).map(t => (
                   <button
                     key={t}
-                    onClick={() => updateSettings({ theme: t as any })}
-                    className={`px-5 py-2 text-[11px] uppercase tracking-wider transition-colors ${settings.theme === t ? 'bg-terminal text-surface font-bold' : 'bg-void text-text-dim'}`}
+                    onClick={() => updateSettings({ theme: t })}
+                    className={`px-4 py-2 text-[11px] uppercase tracking-wider transition-colors ${settings.theme === t ? 'bg-terminal text-surface font-bold' : 'bg-void text-text-dim'}`}
                   >
-                    {t === 'light' ? '☀ Light' : '☽ Dark'}
+                    {t === 'light' ? 'Light' : t === 'dark' ? 'Dark' : 'System'}
                   </button>
                 ))}
               </div>

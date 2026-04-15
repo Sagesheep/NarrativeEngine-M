@@ -7,6 +7,7 @@ import { EnginesTab } from './context-drawer/EnginesTab';
 import { SaveFileTab } from './context-drawer/SaveFileTab';
 import { ChapterTab } from './context-drawer/ChapterTab';
 import { BookkeepingTab } from './context-drawer/BookkeepingTab';
+import { ResolvedStatePanel } from './context-drawer/ResolvedStatePanel';
 
 const TABS = [
   { id: 'sys',     label: 'System',   icon: ScrollText },
@@ -71,7 +72,7 @@ export function ContextDrawer() {
       {activeTab === 'eng' && <EnginesTab />}
       {activeTab === 'save' && <SaveFileTab />}
       {activeTab === 'chapters' && <ChapterTab />}
-      {activeTab === 'chr' && <BookkeepingTab />}
+      {activeTab === 'chr' && <><ResolvedStatePanel /><BookkeepingTab /></>}
     </>
   );
 

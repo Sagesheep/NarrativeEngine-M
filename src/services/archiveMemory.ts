@@ -1,5 +1,6 @@
 import type { ArchiveIndexEntry, ArchiveScene, ChatMessage, NPCEntry, SemanticFact } from '../types';
 import { countTokens } from './tokenizer';
+import { offlineStorage } from './offlineStorage';
 
 /**
  * archiveMemory.ts
@@ -142,7 +143,8 @@ export function retrieveArchiveMemory(
     npcLedger?: NPCEntry[],
     maxScenes?: number,
     semanticFacts?: SemanticFact[],
-    sceneRanges?: [string, string][]
+    sceneRanges?: [string, string][],
+    semanticCandidateIds?: string[]
 ): string[] {
     if (!index || index.length === 0) {
         console.log('[Archive Retrieval] Index is empty — no recall.');
@@ -171,10 +173,16 @@ export function retrieveArchiveMemory(
     }
 
     const totalScenes = scopedIndex.length;
-    const scored = scopedIndex.map(entry => ({
-        sceneId: entry.sceneId,
-        score: scoreEntry(entry, contextText, contextActivations, totalScenes),
-    }));
+    const scored = scopedIndex.map(entry => {
+        const baseScore = scoreEntry(entry, contextText, contextActivations, totalScenes);
+
+        let semanticBoost = 0;
+        if (semanticCandidateIds && semanticCandidateIds.includes(entry.sceneId)) {
+            semanticBoost = baseScore * 0.5;
+        }
+
+        return { sceneId: entry.sceneId, score: baseScore + semanticBoost };
+    });
 
     const sorted = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score);
     const topScore = sorted[0]?.score ?? 0;
@@ -202,14 +210,7 @@ export async function fetchArchiveScenes(
     if (sceneIds.length === 0) return [];
 
     try {
-        const idsParam = sceneIds.join(',');
-        const res = await fetch(`/api/campaigns/${campaignId}/archive/scenes?ids=${idsParam}`);
-        if (!res.ok) {
-            console.warn('[Archive Retrieval] Failed to fetch scenes:', res.status);
-            return [];
-        }
-
-        const raw: { sceneId: string; content: string }[] = await res.json();
+        const raw = await offlineStorage.archive.getScenes(campaignId, sceneIds);
 
         const sorted = raw.sort((a, b) => parseInt(a.sceneId) - parseInt(b.sceneId));
         const selected: ArchiveScene[] = [];
@@ -218,10 +219,8 @@ export async function fetchArchiveScenes(
         for (const scene of sorted) {
             const tokens = countTokens(scene.content);
             if (usedTokens + tokens > tokenBudget) {
-                // Partially include the scene if there's a meaningful amount of budget remaining
                 const remaining = tokenBudget - usedTokens;
                 if (remaining > 150) {
-                    // ~4 chars per token; truncate to fit remaining budget
                     const maxChars = Math.floor(remaining * 4);
                     const truncated = scene.content.slice(0, maxChars) + '\n[...scene truncated for context budget...]';
                     selected.push({ sceneId: scene.sceneId, content: truncated, tokens: remaining });
@@ -255,9 +254,10 @@ export async function recallArchiveScenes(
     recentMessages: ChatMessage[],
     tokenBudget = 3000,
     npcLedger?: NPCEntry[],
-    semanticFacts?: SemanticFact[]
+    semanticFacts?: SemanticFact[],
+    semanticCandidateIds?: string[]
 ): Promise<ArchiveScene[]> {
-    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts);
+    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds);
     if (matchedIds.length === 0) return [];
     return fetchArchiveScenes(campaignId, matchedIds, tokenBudget);
 }

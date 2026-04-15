@@ -24,7 +24,7 @@ export function LoreTab() {
     };
 
     const renderChunk = (chunk: LoreChunk) => (
-        <div key={chunk.id} className={`bg-void rounded border p-2 transition-colors ${chunk.alwaysInclude ? 'border-terminal/40 shadow-[0_0_10px_rgba(74,222,128,0.05)]' : 'border-border'}`}>
+        <div key={chunk.id} className={`bg-void rounded border p-2 transition-colors ${chunk.alwaysInclude ? 'border-terminal/40' : 'border-border'}`}>
             {/* Header row */}
             <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[10px] text-text-primary font-bold truncate flex-1 mr-2" title={chunk.header}>

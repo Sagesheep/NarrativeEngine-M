@@ -5,8 +5,6 @@ import { encryptSettingsPresets, decryptSettingsPresets } from '../../services/s
 import { uid } from '../../utils/uid';
 import { toast } from '../../components/Toast';
 
-const API = '/api';
-
 // ── DEFAULT constants ──────────────────────────────────────────────────
 
 export const DEFAULT_SURPRISE_TYPES = [
@@ -64,12 +62,13 @@ export const defaultPreset: AIPreset = {
         endpoint: 'http://localhost:11434/v1',
         apiKey: '',
         modelName: 'llama3',
+        apiFormat: 'openai',
     },
-    imageAI: { endpoint: '', apiKey: '', modelName: '' },
     summarizerAI: {
         endpoint: 'http://localhost:11434/v1',
         apiKey: '',
         modelName: 'llama3',
+        apiFormat: 'openai',
     },
     utilityAI: { endpoint: '', apiKey: '', modelName: '' },
     enemyAI: { endpoint: '', apiKey: '', modelName: '' },
@@ -83,13 +82,35 @@ export const defaultSettings: AppSettings = {
     contextLimit: 4096,
     autoCondenseEnabled: true,
     debugMode: false,
-    theme: 'light',
+    theme: 'system',
     showReasoning: true,
     uiScale: 1.0,
 };
 
-export function applyTheme(theme: 'light' | 'dark') {
-    document.documentElement.setAttribute('data-theme', theme);
+export function resolveTheme(theme: 'light' | 'dark' | 'system'): 'light' | 'dark' {
+    if (theme !== 'system') return theme;
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
+        return 'dark';
+    }
+    return 'light';
+}
+
+export function applyTheme(theme: 'light' | 'dark' | 'system') {
+    activeThemeSetting = theme;
+    document.documentElement.setAttribute('data-theme', resolveTheme(theme));
+}
+
+let activeThemeSetting: 'light' | 'dark' | 'system' = 'light';
+let systemThemeUnsubscribe: (() => void) | null = null;
+
+export function watchSystemTheme() {
+    systemThemeUnsubscribe?.();
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => {
+        if (activeThemeSetting === 'system') applyTheme('system');
+    };
+    mq.addEventListener('change', handler);
+    systemThemeUnsubscribe = () => mq.removeEventListener('change', handler);
 }
 
 /** Migrate old single-provider/multi-provider settings to presets format */
@@ -104,7 +125,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
             contextLimit: (raw.contextLimit as number) ?? 4096,
             autoCondenseEnabled: (raw.autoCondenseEnabled as boolean) ?? true,
             debugMode: (raw.debugMode as boolean) ?? false,
-            theme: (raw.theme as 'light' | 'dark') ?? 'light',
+            theme: (raw.theme as 'light' | 'dark' | 'system') ?? 'system',
             showReasoning: (raw.showReasoning as boolean) ?? true,
             uiScale: (raw.uiScale as number) ?? 1.0,
         };
@@ -118,13 +139,15 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         migratedStoryProvider = {
             endpoint: oldActive.endpoint || defaultPreset.storyAI.endpoint,
             apiKey: oldActive.apiKey || '',
-            modelName: oldActive.modelName || defaultPreset.storyAI.modelName
+            modelName: oldActive.modelName || defaultPreset.storyAI.modelName,
+            apiFormat: oldActive.apiFormat || 'openai',
         };
     } else {
         migratedStoryProvider = {
             endpoint: (raw.endpoint as string) || defaultPreset.storyAI.endpoint,
             apiKey: (raw.apiKey as string) || '',
-            modelName: (raw.modelName as string) || defaultPreset.storyAI.modelName
+            modelName: (raw.modelName as string) || defaultPreset.storyAI.modelName,
+            apiFormat: (raw.apiFormat as 'openai' | 'ollama') || 'openai',
         };
     }
 
@@ -133,11 +156,6 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         id: legacyId,
         name: 'Default Preset',
         storyAI: migratedStoryProvider,
-        imageAI: {
-            endpoint: (raw.imageApiEndpoint as string) || '',
-            apiKey: (raw.imageApiKey as string) || '',
-            modelName: (raw.imageApiModel as string) || '',
-        },
         summarizerAI: { ...migratedStoryProvider },
         utilityAI: { endpoint: '', apiKey: '', modelName: '' },
         enemyAI: { endpoint: '', apiKey: '', modelName: '' },
@@ -151,7 +169,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         contextLimit: (raw.contextLimit as number) ?? 4096,
         autoCondenseEnabled: (raw.autoCondenseEnabled as boolean) ?? true,
         debugMode: (raw.debugMode as boolean) ?? false,
-        theme: (raw.theme as 'light' | 'dark') ?? 'light',
+        theme: (raw.theme as 'light' | 'dark' | 'system') ?? 'system',
         showReasoning: (raw.showReasoning as boolean) ?? true,
     };
 }
@@ -166,12 +184,6 @@ export function debouncedSaveSettings(settings: AppSettings, activeCampaignId: s
 
         idbSet('nn_settings', { settings: encryptedSettings, activeCampaignId })
             .catch((e) => { console.error(e); toast.error('Failed to save settings to browser storage'); });
-
-        fetch(`${API}/settings`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ settings, activeCampaignId }),
-        }).catch((e) => { console.error(e); toast.warning('Settings saved locally but server backup failed'); });
     }, 500);
 }
 
@@ -189,7 +201,6 @@ export type SettingsSlice = {
     setActivePreset: (id: string) => void;
     getActivePreset: () => AIPreset | undefined;
     getActiveStoryEndpoint: () => EndpointConfig | undefined;
-    getActiveImageEndpoint: () => EndpointConfig | undefined;
     getActiveSummarizerEndpoint: () => EndpointConfig | undefined;
     getActiveUtilityEndpoint: () => EndpointConfig | undefined;
     getActiveEnemyEndpoint: () => EndpointConfig | undefined;
@@ -214,20 +225,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
                     settings: decrypted,
                     settingsLoaded: true,
                 } as Partial<SettingsSlice>);
-                applyTheme(decrypted.theme ?? 'light');
-                return;
-            }
-
-            const res = await fetch(`${API}/settings`);
-            if (res.ok) {
-                const data = await res.json();
-                const migrated = migrateSettings(data);
-                set({
-                    settings: migrated,
-                    settingsLoaded: true,
-                } as Partial<SettingsSlice>);
-                applyTheme(migrated.theme ?? 'light');
-                debouncedSaveSettings(migrated, null);
+                applyTheme(decrypted.theme ?? 'system');
+                watchSystemTheme();
                 return;
             }
         } catch (e) {
@@ -313,11 +312,6 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
     getActiveStoryEndpoint: () => {
         const preset = get().getActivePreset();
         return preset?.storyAI;
-    },
-
-    getActiveImageEndpoint: () => {
-        const preset = get().getActivePreset();
-        return preset?.imageAI;
     },
 
     getActiveSummarizerEndpoint: () => {
