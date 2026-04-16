@@ -1,6 +1,6 @@
-import type { ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, SemanticFact } from '../types';
+import type { ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, SemanticFact, LLMProvider } from '../types';
 import { extractContextActivations, expandActivationsWithFacts, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
-import { getChatUrl, buildChatHeaders, extractContent } from '../utils/llmApiHelper';
+import { llmCall } from '../utils/llmCall';
 
 const AUTO_SEAL_SCENE_THRESHOLD = 25; // ~25 exchanges is a meaningful arc
 
@@ -125,14 +125,7 @@ export function updateChapterSessionId(
 // Chapter-aware archive retrieval using 3D scoring + iterative LLM validation.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type EndpointConfig = {
-    endpoint: string;
-    apiKey: string;
-    modelName: string;
-    apiFormat?: 'openai' | 'ollama';
-};
 
-export type ProviderConfig = EndpointConfig;
 
 // ─── 3A. Chapter-Level 3D Scoring ───
 
@@ -216,7 +209,7 @@ async function validateChapterRelevance(
     chapter: ArchiveChapter,
     userMessage: string,
     recentContext: string,
-    provider: EndpointConfig | ProviderConfig
+    provider: LLMProvider
 ): Promise<boolean> {
     const prompt = [
         'You are a TTRPG story continuity checker. Given the current situation and a chapter summary, is this chapter relevant?',
@@ -242,27 +235,12 @@ async function validateChapterRelevance(
     const timeoutId = setTimeout(() => controller.abort(), 3000);
 
     try {
-        const url = getChatUrl(provider);
-        const headers = buildChatHeaders(provider);
-
-        const res = await fetch(url, {
-            method: 'POST',
-            headers,
+        const answer = await llmCall(provider, prompt, {
             signal: controller.signal,
-            body: JSON.stringify({
-                model: provider.modelName,
-                messages: [{ role: 'user', content: prompt }],
-                stream: false,
-                max_tokens: 10,
-            }),
+            maxTokens: 10,
         });
-
         clearTimeout(timeoutId);
-        if (!res.ok) return true;
-
-        const data = await res.json();
-        const answer = extractContent(data, provider).trim().toUpperCase();
-        return answer.startsWith('YES');
+        return answer.trim().toUpperCase().startsWith('YES');
     } catch {
         clearTimeout(timeoutId);
         return true; // on timeout/error, assume relevant (fail-open)
@@ -278,7 +256,7 @@ export async function iterativeChapterFilter(
     rankedChapters: ArchiveChapter[],
     userMessage: string,
     recentMessages: ChatMessage[],
-    utilityProvider?: EndpointConfig | ProviderConfig
+    utilityProvider?: LLMProvider
 ): Promise<ArchiveChapter[]> {
     // If no utility AI configured, accept top 3 by 3D score (graceful degradation)
     if (!utilityProvider) {
@@ -327,7 +305,7 @@ export async function recallWithChapterFunnel(
     npcLedger: NPCEntry[],
     semanticFacts: SemanticFact[],
     tokenBudget: number,
-    utilityProvider: EndpointConfig | ProviderConfig,
+    utilityProvider: LLMProvider,
     _countTokens?: (text: string) => number,
     semanticCandidateIds?: string[]
 ): Promise<{ scenes: string; usedTokens: number }> {

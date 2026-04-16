@@ -1,4 +1,4 @@
-import type { EndpointConfig, ProviderConfig } from '../types';
+import type { LLMProvider } from '../types';
 import { uid } from '../utils/uid';
 import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent } from '../utils/llmApiHelper';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
@@ -12,7 +12,7 @@ export type OpenAIMessage = {
 };
 
 export async function sendMessage(
-    provider: EndpointConfig | ProviderConfig,
+    provider: LLMProvider,
     messages: OpenAIMessage[],
     onChunk: (text: string) => void,
     onDone: (text: string, toolCall?: { id: string; name: string; arguments: string }) => void,
@@ -193,7 +193,7 @@ export async function sendMessage(
     }
 }
 
-export async function testConnection(provider: EndpointConfig | ProviderConfig): Promise<{ ok: boolean; detail: string }> {
+export async function testConnection(provider: LLMProvider): Promise<{ ok: boolean; detail: string }> {
     const url = getModelsUrl(provider);
     const headers: Record<string, string> = {};
     if (provider.apiKey) {

@@ -5,7 +5,7 @@ import { scanInventory } from '../../services/inventoryParser';
 import { scanCharacterProfile } from '../../services/characterProfileParser';
 import { TemplateField } from './TemplateField';
 import { toast } from '../Toast';
-import type { EndpointConfig, ProviderConfig } from '../../types';
+import type { LLMProvider } from '../../types';
 
 export function BookkeepingTab() {
     const context = useAppStore((s) => s.context);
@@ -21,7 +21,7 @@ export function BookkeepingTab() {
         try {
             const provider = getActiveStoryEndpoint();
             if (!provider) return;
-            const newInventory = await scanInventory(provider as ProviderConfig | EndpointConfig, messages, context.inventory);
+            const newInventory = await scanInventory(provider as LLMProvider, messages, context.inventory);
             updateContext({ inventory: newInventory });
         } catch (e) {
             console.error('Failed to scan inventory:', e);
@@ -37,7 +37,7 @@ export function BookkeepingTab() {
         try {
             const provider = getActiveStoryEndpoint();
             if (!provider) return;
-            const newProfile = await scanCharacterProfile(provider as ProviderConfig | EndpointConfig, messages, context.characterProfile);
+            const newProfile = await scanCharacterProfile(provider as LLMProvider, messages, context.characterProfile);
             updateContext({ characterProfile: newProfile });
         } catch (e) {
             console.error('Failed to scan character profile:', e);

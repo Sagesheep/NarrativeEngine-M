@@ -285,7 +285,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
                 const state = get();
                 if (!state.activeCampaignId) return;
                 try {
-                    const { offlineStorage } = await import('../../services/offlineStorage');
+                    const { offlineStorage } = await import('../../services/storage');
                     await offlineStorage.backup.create(state.activeCampaignId, {
                         trigger: 'auto',
                         isAuto: true,

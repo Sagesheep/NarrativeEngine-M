@@ -8,8 +8,8 @@
  * Falls back silently on any error (caller handles fallback to substring scan).
  */
 
-import type { EndpointConfig, NPCEntry, LoreChunk, ChatMessage } from '../types';
-import { callLLM } from './callLLM';
+import type { LLMProvider, NPCEntry, LoreChunk, ChatMessage } from '../types';
+import { llmCall } from '../utils/llmCall';
 
 export type RecommenderResult = {
     relevantNPCNames: string[];   // NPC names the model considers relevant
@@ -80,7 +80,7 @@ If nothing is relevant, return: {"npcs": [], "lore": []}`;
  * @throws on network/API errors — caller MUST catch and fall back to substring scan.
  */
 export async function recommendContext(
-    utilityEndpoint: EndpointConfig,
+    utilityEndpoint: LLMProvider,
     npcLedger: NPCEntry[],
     loreChunks: LoreChunk[],
     messages: ChatMessage[],
@@ -105,7 +105,7 @@ Respond with the JSON object now:`;
 
     console.log(`[ContextRecommender] Sending recommendation request to ${utilityEndpoint.modelName}...`);
 
-    const rawContent = await callLLM(utilityEndpoint, userContent, {
+    const rawContent = await llmCall(utilityEndpoint, userContent, {
         temperature: 0.1,
         priority: 'high',
     });

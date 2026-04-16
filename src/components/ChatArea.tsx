@@ -1,15 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
     Send, Save, Loader2, Zap, Scroll, Edit2, RotateCcw, Trash2, Check, X, Square, 
-    Terminal, Dice5, ChevronDown, ChevronUp, FileText
+    Terminal, Dice5, ChevronDown, ChevronUp
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAppStore } from '../store/useAppStore';
-import type { ChatMessage, EndpointConfig, ProviderConfig } from '../types';
+import type { ChatMessage, LLMProvider } from '../types';
 import { condenseHistory } from '../services/condenser';
-import { runSaveFilePipeline, generateChapterSummary } from '../services/saveFileEngine';
+import { runSaveFilePipeline } from '../services/saveFileEngine';
 import { runTurn } from '../services/turnOrchestrator';
-import { shouldAutoSeal, sealChapter as sealChapterEngine } from '../services/archiveChapterEngine';
+// Auto-sealing logic migrated to turnOrchestrator
 import { api } from '../services/apiClient';
 import { set } from 'idb-keyval';
 import { toast } from './Toast';
@@ -84,7 +84,7 @@ export function ChatArea() {
             if (!provider) return;
             const currentCtx = useAppStore.getState().context;
             const uncondensed = messages.slice(condenser.condensedUpToIndex + 1);
-            const saveResult = await runSaveFilePipeline(provider as EndpointConfig | ProviderConfig, uncondensed, currentCtx);
+            const saveResult = await runSaveFilePipeline(provider as LLMProvider, uncondensed, currentCtx);
 
             if (saveResult.canonSuccess) updateContext({ canonState: saveResult.canonState });
             if (saveResult.indexSuccess) updateContext({ headerIndex: saveResult.headerIndex });
@@ -163,6 +163,7 @@ export function ChatArea() {
             incrementBookkeepingTurnCounter: () => useAppStore.getState().incrementBookkeepingTurnCounter(),
             autoBookkeepingInterval: useAppStore.getState().autoBookkeepingInterval,
             resetBookkeepingTurnCounter: () => useAppStore.getState().resetBookkeepingTurnCounter(),
+            timeline: useAppStore.getState().timeline,
         }, {
             onCheckingNotes: setIsCheckingNotes,
             addMessage,
@@ -183,59 +184,9 @@ export function ChatArea() {
 
         setForcedAIs([]);
         setLoadingStatus(null);
-
-        if (activeCampaignId) {
-            const currentState = useAppStore.getState();
-            if (currentState.chapters.length > 0) {
-                const autoSealResult = shouldAutoSeal(currentState.chapters, currentState.context.headerIndex);
-                if (autoSealResult.shouldSeal) {
-                    handleSealChapter();
-                }
-            }
-        }
     };
 
-    const handleSealChapter = async () => {
-        if (!activeCampaignId) return;
-        try {
-            const currentChapters = useAppStore.getState().chapters;
-            const result = sealChapterEngine(currentChapters);
-            const sealed = { ...result.sealedChapter, sealedAt: Date.now() };
-            await api.chapters.update(activeCampaignId, sealed.chapterId, sealed);
-            await api.chapters.create(activeCampaignId);
 
-            const provider = useAppStore.getState().getActiveStoryEndpoint();
-            if (provider) {
-                const allScenes = await api.archive.getIndex(activeCampaignId);
-                const chapterScenes = allScenes.filter(s => {
-                    const sn = parseInt(s.sceneId);
-                    return sn >= parseInt(sealed.sceneRange[0]) && sn <= parseInt(sealed.sceneRange[1]);
-                });
-                if (chapterScenes.length > 0) {
-                    const scenesContent = chapterScenes.map(s => ({ sceneId: s.sceneId, content: s.userSnippet || '' }));
-                    const summary = await generateChapterSummary(provider, scenesContent, sealed.title);
-                    if (summary) {
-                        await api.chapters.update(activeCampaignId, sealed.chapterId, {
-                            title: summary.title,
-                            summary: summary.summary,
-                            keywords: summary.keywords,
-                            npcs: summary.npcs,
-                            majorEvents: summary.majorEvents,
-                            unresolvedThreads: summary.unresolvedThreads,
-                            tone: summary.tone,
-                            themes: summary.themes,
-                        });
-                    }
-                }
-            }
-
-            const updated = await api.chapters.list(activeCampaignId);
-            setChapters(updated);
-            toast.success('Chapter sealed');
-        } catch (err) {
-            toast.error('Failed to seal chapter');
-        }
-    };
 
     const handleRetcon = () => {
         if (!confirm('Retcon: Delete all messages and keep only the summary?')) return;
@@ -547,9 +498,7 @@ export function ChatArea() {
                 <button onClick={() => setShowCondensedPanel(p => !p)} className={`flex items-center gap-1.5 bg-void border ${showCondensedPanel ? 'border-terminal text-terminal' : 'border-ice/30 text-ice'} text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all`}>
                     {showCondensedPanel ? <ChevronUp size={13} /> : <ChevronDown size={13} />} MEMORY
                 </button>
-                <button onClick={handleSealChapter} disabled={!activeCampaignId} className="flex items-center gap-1.5 bg-void border border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-amber-500/5">
-                    <FileText size={13} /> SEAL
-                </button>
+
                 <button onClick={() => api.archive.open(activeCampaignId || '')} className="flex items-center gap-1.5 bg-void border border-ice/30 text-ice text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded ml-auto transition-all hover:bg-ice/5"><Scroll size={13} /> ARCHIVE</button>
                 <button onClick={handleClearArchive} disabled={!activeCampaignId} className="flex items-center gap-1.5 bg-void border border-red-500/20 text-red-500/60 hover:text-red-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-red-500/5 hover:border-red-500/40"><Trash2 size={13} /> CLEAR</button>
             </div>

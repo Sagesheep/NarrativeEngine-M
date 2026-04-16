@@ -1,5 +1,5 @@
 import type { AppSettings, ArchiveChapter, ArchiveIndexEntry, BackupMeta, ChatMessage, CondenserState, EntityEntry, GameContext, NPCEntry, SemanticFact, TimelineEvent } from '../types';
-import { offlineStorage } from './offlineStorage';
+import { offlineStorage } from './storage';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
 
 export const api = {

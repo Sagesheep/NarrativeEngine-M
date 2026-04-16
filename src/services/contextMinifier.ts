@@ -126,15 +126,6 @@ export function minifyLoreChunk(chunk: LoreChunk): string {
 }
 
 /**
- * Minify the entire lore block for injection into the AI payload.
- * Returns a compact string replacing the verbose markdown format.
- */
-export function minifyLoreBlock(chunks: LoreChunk[]): string {
-    const minified = chunks.map(minifyLoreChunk).join('\n');
-    return `[WORLD LORE]\n${minified}\n[/LORE]`;
-}
-
-/**
  * Minify an NPC entry for AI consumption.
  * Drops verbose labels and compresses into a single dense line.
  * 
@@ -157,12 +148,4 @@ export function minifyNPC(npc: NPCEntry): string {
     const axes = `${npc.nature}/${npc.training}/${npc.emotion}/${npc.social}/${npc.belief}/${npc.ego}`;
 
     return `[${name}${aliases}] ${status} aff:${aff} | ${appearance} | ${disposition} | ${goals} | ${axes}`;
-}
-
-/**
- * Minify the entire NPC context block.
- */
-export function minifyNPCBlock(npcs: NPCEntry[]): string {
-    const lines = npcs.map(minifyNPC).join('\n');
-    return `[NPC_CTX]\n${lines}\n[/NPC_CTX]`;
 }

@@ -12,10 +12,7 @@ import { toast } from './Toast';
 import { NPCListView } from './npc-ledger/NPCListView';
 import { NPCGalleryView } from './npc-ledger/NPCGalleryView';
 import { NPCEditForm } from './npc-ledger/NPCEditForm';
-
-function uid(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
+import { uid } from '../utils/uid';
 
 export function NPCLedgerModal() {
   const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC, setNPCLedger, setMobileView, activeCampaignId } = useAppStore();

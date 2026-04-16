@@ -1,6 +1,6 @@
 import type { ArchiveIndexEntry, ArchiveScene, ChatMessage, NPCEntry, SemanticFact } from '../types';
 import { countTokens } from './tokenizer';
-import { offlineStorage } from './offlineStorage';
+import { offlineStorage } from './storage';
 
 /**
  * archiveMemory.ts

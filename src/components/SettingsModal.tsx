@@ -2,12 +2,9 @@ import { useState } from 'react';
 import { X, Loader2, CheckCircle, XCircle, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { testConnection } from '../services/chatEngine';
-import type { AIPreset, EndpointConfig, ApiFormat } from '../types';
+import type { AIPreset, LLMProvider, ApiFormat } from '../types';
 import { toast } from './Toast';
-
-function uid(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
+import { uid } from '../utils/uid';
 
 export function SettingsModal() {
   const { settings, updateSettings, settingsOpen, toggleSettings, addPreset, updatePreset, removePreset, setMobileView } = useAppStore();
@@ -78,7 +75,7 @@ export function SettingsModal() {
     updatePreset(activePreset.id, { name });
   };
 
-  const handleUpdateEndpoint = (section: 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', field: keyof EndpointConfig, value: string | boolean | undefined) => {
+  const handleUpdateEndpoint = (section: 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', field: keyof LLMProvider, value: string | boolean | undefined) => {
     if (!activePreset) return;
     const updatedConfig = { ...activePreset[section], [field]: value };
     updatePreset(activePreset.id, { [section]: updatedConfig });
@@ -115,7 +112,7 @@ export function SettingsModal() {
     setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const renderEndpointConfig = (section: 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', title: string) => {
+  const renderProviderConfig = (section: 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', title: string) => {
     const config = activePreset[section] ?? { endpoint: '', apiKey: '', modelName: '' };
     const isExpanded = expanded[section];
     const isTesting = testingSection === section;
@@ -294,12 +291,12 @@ export function SettingsModal() {
                 )}
               </div>
 
-              {renderEndpointConfig('storyAI', 'Story & Logic AI')}
-              {renderEndpointConfig('summarizerAI', 'Summarizer & Context AI')}
-              {renderEndpointConfig('utilityAI', 'Utility AI (Context Recommender)')}
-              {renderEndpointConfig('enemyAI', 'Enemy AI (Adversarial Player)')}
-              {renderEndpointConfig('neutralAI', 'Neutral AI (Chaos/Environmental)')}
-              {renderEndpointConfig('allyAI', 'Ally AI (Beneficial Player)')}
+              {renderProviderConfig('storyAI', 'Story & Logic AI')}
+              {renderProviderConfig('summarizerAI', 'Summarizer & Context AI')}
+              {renderProviderConfig('utilityAI', 'Utility AI (Context Recommender)')}
+              {renderProviderConfig('enemyAI', 'Enemy AI (Adversarial Player)')}
+              {renderProviderConfig('neutralAI', 'Neutral AI (Chaos/Environmental)')}
+              {renderProviderConfig('allyAI', 'Ally AI (Beneficial Player)')}
             </div>
           )}
 

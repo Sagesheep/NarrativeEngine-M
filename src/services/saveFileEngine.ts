@@ -1,7 +1,7 @@
-import type { ChatMessage, GameContext, ProviderConfig, EndpointConfig, CoreMemorySlot } from '../types';
+import type { ChatMessage, GameContext, LLMProvider, CoreMemorySlot } from '../types';
 import { countTokens } from './tokenizer';
 import { extractJson } from './payloadBuilder';
-import { getChatUrl, buildChatHeaders, extractContent } from '../utils/llmApiHelper';
+import { llmCall } from '../utils/llmCall';
 
 const BATCH_TOKEN_LIMIT = 100_000; // max tokens per LLM call for save engine
 
@@ -56,30 +56,6 @@ export function validateHeaderIndex(output: string): { valid: boolean; missing: 
     return { valid: missing.length === 0, missing };
 }
 
-// ─── LLM Call Helper ───
-
-async function llmCall(provider: ProviderConfig | EndpointConfig, prompt: string): Promise<string> {
-    const url = getChatUrl(provider);
-    const headers = buildChatHeaders(provider);
-
-    const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-            model: provider.modelName,
-            messages: [{ role: 'user', content: prompt }],
-            stream: false,
-        }),
-    });
-
-    if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(`SaveFileEngine API error ${res.status}: ${errBody}`);
-    }
-
-    const data = await res.json();
-    return extractContent(data, provider);
-}
 
 // ─── Canon State Generator (JSON Slot Format) ───
 
@@ -323,7 +299,7 @@ export function mergeHeaderIndex(existing: string, llmOutput: string): string {
 }
 
 export async function generateHeaderIndex(
-    provider: ProviderConfig | EndpointConfig,
+    provider: LLMProvider,
     recentMessages: ChatMessage[],
     existingHeaderIndex: string,
     maxRetries = 1
@@ -376,7 +352,7 @@ export async function generateHeaderIndex(
 // ─── Full Pipeline ───
 
 export async function runSaveFilePipeline(
-    provider: ProviderConfig | EndpointConfig,
+    provider: LLMProvider,
     recentMessages: ChatMessage[],
     context: GameContext,
     existingSlots?: CoreMemorySlot[],
@@ -505,7 +481,7 @@ export function parseChapterSummaryOutput(raw: string): ChapterSummaryOutput | n
 }
 
 export async function generateChapterSummary(
-    provider: ProviderConfig | EndpointConfig,
+    provider: LLMProvider,
     scenes: { sceneId: string; content: string }[],
     chapterTitle?: string,
     maxRetries = 1

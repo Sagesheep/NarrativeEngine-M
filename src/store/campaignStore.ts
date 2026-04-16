@@ -56,7 +56,7 @@ export async function saveLoreChunks(campaignId: string, chunks: LoreChunk[]): P
     await set(`lore_${campaignId}`, chunks);
 
     import('../services/embedder').then(({ embedText }) => {
-        import('../services/offlineStorage').then(({ offlineStorage }) => {
+        import('../services/storage').then(({ offlineStorage }) => {
             for (const chunk of chunks) {
                 embedText(chunk.content.slice(0, 500)).then(vec => {
                     if (vec) offlineStorage.embeddings.store(campaignId, chunk.id, Array.from(vec), 'lore');

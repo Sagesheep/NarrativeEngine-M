@@ -1,6 +1,6 @@
-import type { EndpointConfig, ProviderConfig, ApiFormat } from '../types';
+import type { LLMProvider, ApiFormat } from '../types';
 
-type AnyProvider = EndpointConfig | ProviderConfig;
+type AnyProvider = LLMProvider;
 
 export function getApiFormat(provider: AnyProvider): ApiFormat {
     return provider.apiFormat || 'openai';

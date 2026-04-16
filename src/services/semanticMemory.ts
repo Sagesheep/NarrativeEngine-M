@@ -10,7 +10,8 @@
 
 import type { SemanticFact, NPCEntry } from '../types';
 import { countTokens } from './tokenizer';
-import { offlineStorage } from './offlineStorage';
+import { offlineStorage } from './storage';
+import { PROPER_NOUN_STOP_WORDS } from '../utils/stopWords';
 
 export async function fetchFacts(campaignId: string): Promise<SemanticFact[]> {
     try {
@@ -41,11 +42,8 @@ export function extractContextEntities(
 
     const allText = [userMessage, ...recentMessages.slice(-5).map(m => m.content || '')].join(' ');
     const properNouns = allText.match(/[A-Z][A-Za-z]{2,}(?:\s[A-Z][A-Za-z]{2,})*/g) || [];
-    const stopWords = new Set(['The', 'And', 'For', 'Are', 'But', 'Not', 'You', 'All', 'Can', 'Has',
-        'Was', 'One', 'His', 'Her', 'Had', 'May', 'Who', 'Been', 'Some', 'They', 'Will', 'Each', 'That',
-        'This', 'With', 'From', 'Then', 'When', 'What', 'Where', 'There', 'Those', 'These', 'User', 'Scene']);
     for (const noun of properNouns) {
-        if (!stopWords.has(noun)) entities.add(noun.toLowerCase());
+        if (!PROPER_NOUN_STOP_WORDS.has(noun)) entities.add(noun.toLowerCase());
     }
 
     return entities;

@@ -4,7 +4,7 @@ import {
     DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES, 
     DEFAULT_WORLD_WHAT, DEFAULT_WORLD_WHERE, 
     DEFAULT_WORLD_WHO, DEFAULT_WORLD_WHY 
-} from '../store/useAppStore';
+} from '../store/slices/settingsSlice';
 
 export type EngineRollResult = {
     appendToInput: string;

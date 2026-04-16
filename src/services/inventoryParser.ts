@@ -1,8 +1,8 @@
-import type { ChatMessage, ProviderConfig, EndpointConfig } from '../types';
-import { callLLM } from './callLLM';
+import type { ChatMessage, LLMProvider } from '../types';
+import { llmCall } from '../utils/llmCall';
 
 export async function scanInventory(
-    provider: ProviderConfig | EndpointConfig,
+    provider: LLMProvider,
     messages: ChatMessage[],
     currentInventory: string
 ): Promise<string> {
@@ -30,7 +30,7 @@ ${turns}
 5. DO NOT include any conversational text, explanations, or markdown formatting outside of the list itself. If nothing changed, return the current inventory exactly as is.`;
 
     try {
-        const result = await callLLM(provider, prompt, { priority: 'low' });
+        const result = await llmCall(provider, prompt, { priority: 'low' });
         return result.replace(/^```[\s\S]*?\n/, '').replace(/\n```$/, '').trim();
     } catch (e) {
         console.error('[InventoryParser]', e);

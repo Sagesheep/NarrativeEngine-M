@@ -1,32 +1,29 @@
 export type ApiFormat = 'openai' | 'ollama';
 
-export type EndpointConfig = {
+export type LLMProvider = {
     endpoint: string;
     apiKey: string;
     modelName: string;
     streamingEnabled?: boolean;
     apiFormat?: ApiFormat;
+    id?: string;    // only present in saved presets / legacy migrations
+    label?: string; // only present in saved presets / legacy migrations
 };
+
+/** @deprecated Use LLMProvider */
+export type EndpointConfig = LLMProvider;
+/** @deprecated Use ProviderConfig */
+export type ProviderConfig = LLMProvider;
 
 export type AIPreset = {
     id: string;
     name: string;
-    storyAI: EndpointConfig;
-    summarizerAI: EndpointConfig;
-    utilityAI?: EndpointConfig; // Context recommender — optional, fallback to substring scan if empty
-    enemyAI?: EndpointConfig;
-    neutralAI?: EndpointConfig;
-    allyAI?: EndpointConfig;
-};
-
-export type ProviderConfig = {
-    id: string;
-    label: string;
-    endpoint: string;
-    apiKey: string;
-    modelName: string;
-    streamingEnabled?: boolean;
-    apiFormat?: ApiFormat;
+    storyAI: LLMProvider;
+    summarizerAI: LLMProvider;
+    utilityAI?: LLMProvider; // Context recommender — optional, fallback to substring scan if empty
+    enemyAI?: LLMProvider;
+    neutralAI?: LLMProvider;
+    allyAI?: LLMProvider;
 };
 
 export type AppSettings = {
@@ -40,7 +37,7 @@ export type AppSettings = {
     uiScale?: number;  // 0.75 to 1.25, default 1.0
 
     // Legacy fields kept for migration only
-    providers?: ProviderConfig[];
+    providers?: LLMProvider[];
     activeProviderId?: string;
     endpoint?: string;
     apiKey?: string;
@@ -151,16 +148,6 @@ export type ChatMessage = {
     }[];
     tool_call_id?: string;
     ephemeral?: boolean;
-};
-
-/** @deprecated — replaced by ArchiveIndexEntry + ArchiveScene. Kept for backwards-compat migration. */
-export type ArchiveChunk = {
-    id: string;
-    sceneRange: string;
-    timestamp: number;
-    summary: string;
-    keywords: string[];
-    tokens: number;
 };
 
 /** Search index entry — one per scene, auto-built by server on every turn. */

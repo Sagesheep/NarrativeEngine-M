@@ -1,13 +1,11 @@
 import type { ArchiveIndexEntry, SemanticFact } from '../types';
+import { PROPER_NOUN_STOP_WORDS } from '../utils/stopWords';
 
 export function extractIndexKeywords(text: string): string[] {
     const keywords = new Set<string>();
     const properNouns = text.match(/[A-Z][A-Za-z]{2,}(?:\s[A-Z][A-Za-z]{2,})*/g) || [];
-    const stopWords = new Set(['The', 'And', 'For', 'Are', 'But', 'Not', 'You', 'All', 'Can', 'Has',
-        'Was', 'One', 'His', 'Her', 'Had', 'May', 'Who', 'Been', 'Some', 'They', 'Will', 'Each', 'That',
-        'This', 'With', 'From', 'Then', 'When', 'What', 'Where', 'There', 'Those', 'These', 'User', 'Scene']);
     for (const noun of properNouns) {
-        if (!stopWords.has(noun)) keywords.add(noun.toLowerCase());
+        if (!PROPER_NOUN_STOP_WORDS.has(noun)) keywords.add(noun.toLowerCase());
     }
     const quoted = text.match(/"([^"]{4,60})"/g) || [];
     for (const q of quoted) keywords.add(q.replace(/"/g, '').toLowerCase().trim());
@@ -106,6 +104,18 @@ export function extractNPCFacts(npcNames: string[], text: string): SemanticFact[
         const locMatch = text.match(locPattern);
         if (locMatch) {
             facts.push({ id: '', subject: name, predicate: 'located_in', object: locMatch[2].trim(), importance: 5, sceneId: '', timestamp: 0, source: 'regex' });
+        }
+        // Title extraction (e.g. "Kael, Lord of the Eastern Wastes")
+        const titlePattern = new RegExp(name + ',\\s+((?:King|Queen|Lord|Lady|Duke|Prince|Princess|General|Commander|Archmage|Champion)(?:\\s+of\\s+[A-Za-z\\s]+)?)', 'i');
+        const titleMatch = text.match(titlePattern);
+        if (titleMatch) {
+            facts.push({ id: '', subject: name, predicate: 'title', object: titleMatch[1].trim(), importance: 7, sceneId: '', timestamp: 0, source: 'regex' });
+        }
+        // Faction extraction (e.g. "Kael, leader of the Iron Guard")
+        const factionPattern = new RegExp(name + '[\\s,]+(?:leader\\s+of|member\\s+of|of)\\s+(?:the\\s+)?([A-Z][A-Za-z\\s]{2,30})', 'i');
+        const factionMatch = text.match(factionPattern);
+        if (factionMatch) {
+            facts.push({ id: '', subject: name, predicate: 'member_of', object: factionMatch[1].trim(), importance: 7, sceneId: '', timestamp: 0, source: 'regex' });
         }
     }
     return facts;

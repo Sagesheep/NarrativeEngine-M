@@ -1,8 +1,8 @@
-import type { ChatMessage, GameContext, EndpointConfig, ProviderConfig } from '../types';
+import type { ChatMessage, GameContext, LLMProvider } from '../types';
 
 import { countTokens } from './tokenizer';
 import { llmQueue } from './llmRequestQueue';
-import { getChatUrl, buildChatHeaders, extractContent } from '../utils/llmApiHelper';
+import { llmCall } from '../utils/llmCall';
 
 const VERBATIM_WINDOW = 8;
 const CONDENSE_BUDGET_RATIO = 0.75;
@@ -65,7 +65,7 @@ function buildCondenserPrompt(
 }
 
 export async function condenseHistory(
-    provider: EndpointConfig | ProviderConfig,
+    provider: LLMProvider,
     messages: ChatMessage[],
     context: GameContext,
     condensedUpToIndex: number,
@@ -83,9 +83,6 @@ export async function condenseHistory(
     }
 
     let finalExistingSummary = existingSummary;
-    const url = getChatUrl(provider);
-    const headers = buildChatHeaders(provider);
-
     // --- Phase 4: T3 → T4 Promotion ---
     if (finalExistingSummary && countTokens(finalExistingSummary) > META_SUMMARY_THRESHOLD) {
         console.log('[Archive Memory] Promoting T3 summary to meta-summary...', { tokens: countTokens(finalExistingSummary) });
@@ -94,28 +91,13 @@ export async function condenseHistory(
         console.log('[Condenser] Sending T3 meta-summary request...', { promptTokens: countTokens(metaPrompt) });
 
         await llmQueue.acquireSlot('normal');
-        let metaRes: Response;
         try {
-            metaRes = await fetch(url, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    model: provider.modelName,
-                    messages: [{ role: 'user', content: metaPrompt }],
-                    stream: false,
-                }),
-                signal,
-            });
+            finalExistingSummary = await llmCall(provider, metaPrompt, { signal });
+            console.log('[Archive Memory] T3 successfully meta-summarized.');
+        } catch (err) {
+            console.error('[Archive Memory] Meta-summary API failed, retaining old T3 summary.');
         } finally {
             llmQueue.releaseSlot();
-        }
-
-        if (metaRes.ok) {
-            const metaData = await metaRes.json();
-            finalExistingSummary = extractContent(metaData, provider);
-            console.log('[Archive Memory] T3 successfully meta-summarized.');
-        } else {
-            console.error('[Archive Memory] Meta-summary API failed, retaining old T3 summary.');
         }
     }
 
@@ -161,29 +143,12 @@ export async function condenseHistory(
     });
 
     await llmQueue.acquireSlot('normal');
-    let res: Response;
+    let summary: string;
     try {
-        res = await fetch(url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                model: provider.modelName,
-                messages: [{ role: 'user', content: prompt }],
-                stream: false,
-            }),
-            signal,
-        });
+        summary = await llmCall(provider, prompt, { signal }) || existingSummary;
     } finally {
         llmQueue.releaseSlot();
     }
-
-    if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(`Condenser API error ${res.status}: ${errBody}`);
-    }
-
-    const data = await res.json();
-    const summary = extractContent(data, provider) || existingSummary;
 
     // Use the last message that was actually included in the chunk for correct index alignment
     const newUpToIndex = lastMsgInChunk ? messages.indexOf(lastMsgInChunk) : condensedUpToIndex;

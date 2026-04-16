@@ -9,54 +9,9 @@ import {
 import { chunkLoreFile } from '../services/loreChunker';
 import { extractEngineSeeds } from '../services/loreEngineSeeder';
 import { parseNPCsFromLore } from '../services/loreNPCParser';
-import { dedupeNPCLedger } from '../store/slices/campaignSlice';
+import { dedupeNPCLedger, defaultContext } from '../store/slices/campaignSlice';
 import { api } from '../services/apiClient';
 import type { Campaign } from '../types';
-
-const DEFAULT_CONTEXT = {
-    loreRaw: '',
-    rulesRaw: '',
-    canonState: '',
-    headerIndex: '',
-    starter: '',
-    continuePrompt: '',
-    inventory: '',
-    inventoryLastScene: 'Never',
-    characterProfile: '',
-    characterProfileLastScene: 'Never',
-    surpriseDC: 95,
-    encounterDC: 198,
-    worldEventDC: 498,
-    canonStateActive: false,
-    headerIndexActive: false,
-    starterActive: false,
-    continuePromptActive: false,
-    inventoryActive: false,
-    characterProfileActive: false,
-    surpriseEngineActive: true,
-    encounterEngineActive: true,
-    worldEngineActive: true,
-    diceFairnessActive: true,
-    sceneNote: '',
-    sceneNoteActive: false,
-    sceneNoteDepth: 3,
-    coreMemorySlots: [],
-    notebook: [],
-    notebookActive: true,
-    // --- AI Players (Enemy, Neutral, Ally) ---
-    worldVibe: 'High fantasy, high stakes.',
-    enemyPlayerActive: false,
-    neutralPlayerActive: false,
-    allyPlayerActive: false,
-    enemyPlayerPrompt: '',
-    neutralPlayerPrompt: '',
-    allyPlayerPrompt: '',
-    interventionChance: 20,
-    enemyCooldown: 5,
-    neutralCooldown: 5,
-    allyCooldown: 5,
-    interventionQueue: [] as ('enemy' | 'neutral' | 'ally')[],
-};
 
 const DEFAULT_CONDENSER = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
 
@@ -154,7 +109,7 @@ export function CampaignHub() {
             const seeds = extractEngineSeeds(chunks);
             if (seeds) {
                 const existingState = await loadCampaignState(campaign.id);
-                const ctx = { ...DEFAULT_CONTEXT, ...(existingState?.context ?? {}) };
+                const ctx = { ...defaultContext, ...(existingState?.context ?? {}) };
                 await saveCampaignState(campaign.id, {
                     context: {
                         ...ctx,
@@ -193,12 +148,12 @@ export function CampaignHub() {
         }
 
         // Only write campaign state when a new rules file is actually provided.
-        // Never fall back to DEFAULT_CONTEXT — that would silently erase real data
+        // Never fall back to defaultContext — that would silently erase real data
         // if the modal opens before IndexedDB has finished loading.
         if (rulesFile) {
             const rulesRaw = await rulesFile.text();
             const existingState = await loadCampaignState(campaign.id);
-            const ctx = { ...DEFAULT_CONTEXT, ...(existingState?.context ?? {}) };
+            const ctx = { ...defaultContext, ...(existingState?.context ?? {}) };
             await saveCampaignState(campaign.id, {
                 context: { ...ctx, rulesRaw },
                 messages: existingState?.messages ?? [],
@@ -231,7 +186,7 @@ export function CampaignHub() {
         ]);
 
         useAppStore.setState({
-            context: { ...DEFAULT_CONTEXT, ...(state?.context ?? {}) },
+            context: { ...defaultContext, ...(state?.context ?? {}) },
             messages: state?.messages ?? [],
             condenser: { ...(state?.condenser ?? DEFAULT_CONDENSER), isCondensing: false },
             loreChunks: chunks,

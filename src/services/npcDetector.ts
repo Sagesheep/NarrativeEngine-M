@@ -1,5 +1,6 @@
-import type { NPCEntry, EndpointConfig, ProviderConfig } from '../types';
-import { sendMessage, extractJson } from './chatEngine';
+import type { NPCEntry, LLMProvider } from '../types';
+import { llmCall } from '../utils/llmCall';
+import { extractJson } from './payloadBuilder';
 
 /** Extract NPC names from assistant response text using bracket/system tag patterns */
 export function extractNPCNames(content: string): string[] {
@@ -77,7 +78,7 @@ export function classifyNPCNames(
  * Falls back to original candidates on API error.
  */
 export async function validateNPCCandidates(
-    provider: EndpointConfig | ProviderConfig,
+    provider: LLMProvider,
     candidates: string[],
     narrativeContext: string
 ): Promise<string[]> {
@@ -101,22 +102,11 @@ Respond ONLY with a valid JSON array of strings containing the true character na
 If none are character names, respond with [].
 Example: ["Captain Aldric", "Orin"]`;
 
-    const messages = [{ role: 'user' as const, content: prompt }];
-
     try {
-        let fullJsonStr = '';
-        await new Promise<void>((resolve, reject) => {
-            sendMessage(
-                provider,
-                messages,
-                (chunk) => { fullJsonStr = chunk; },
-                () => resolve(),
-                (err) => reject(new Error(err))
-            );
-        });
+        const raw = await llmCall(provider, prompt, { priority: 'normal', maxTokens: 500 });
 
-        if (fullJsonStr) {
-            const cleanStr = extractJson(fullJsonStr);
+        if (raw) {
+            const cleanStr = extractJson(raw);
             const parsed = JSON.parse(cleanStr);
             if (Array.isArray(parsed)) {
                 // Return only strings that were in the original candidates (case-insensitive) to prevent hallucinations

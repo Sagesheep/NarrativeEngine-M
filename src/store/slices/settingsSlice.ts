@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { AppSettings, ProviderConfig, AIPreset, EndpointConfig } from '../../types';
+import type { AppSettings, LLMProvider, AIPreset } from '../../types';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
 import { encryptSettingsPresets, decryptSettingsPresets } from '../../services/settingsCrypto';
 import { uid } from '../../utils/uid';
@@ -132,10 +132,10 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
     }
 
     // Migration from old provider structure
-    let migratedStoryProvider: EndpointConfig = { ...defaultPreset.storyAI };
+    let migratedStoryProvider: LLMProvider = { ...defaultPreset.storyAI };
 
     if (Array.isArray(raw.providers) && raw.providers.length > 0) {
-        const oldActive = (raw.providers as ProviderConfig[]).find(p => p.id === raw.activeProviderId) || (raw.providers as ProviderConfig[])[0];
+        const oldActive = (raw.providers as LLMProvider[]).find(p => p.id === raw.activeProviderId) || (raw.providers as LLMProvider[])[0];
         migratedStoryProvider = {
             endpoint: oldActive.endpoint || defaultPreset.storyAI.endpoint,
             apiKey: oldActive.apiKey || '',
@@ -200,12 +200,12 @@ export type SettingsSlice = {
     removePreset: (id: string) => void;
     setActivePreset: (id: string) => void;
     getActivePreset: () => AIPreset | undefined;
-    getActiveStoryEndpoint: () => EndpointConfig | undefined;
-    getActiveSummarizerEndpoint: () => EndpointConfig | undefined;
-    getActiveUtilityEndpoint: () => EndpointConfig | undefined;
-    getActiveEnemyEndpoint: () => EndpointConfig | undefined;
-    getActiveNeutralEndpoint: () => EndpointConfig | undefined;
-    getActiveAllyEndpoint: () => EndpointConfig | undefined;
+    getActiveStoryEndpoint: () => LLMProvider | undefined;
+    getActiveSummarizerEndpoint: () => LLMProvider | undefined;
+    getActiveUtilityEndpoint: () => LLMProvider | undefined;
+    getActiveEnemyEndpoint: () => LLMProvider | undefined;
+    getActiveNeutralEndpoint: () => LLMProvider | undefined;
+    getActiveAllyEndpoint: () => LLMProvider | undefined;
 };
 
 // ── Slice creator ──────────────────────────────────────────────────────

@@ -1,6 +1,5 @@
-import type { EndpointConfig, ProviderConfig } from '../types';
-import type { OpenAIMessage } from './llmService';
-import { sendMessage } from './llmService';
+import type { LLMProvider } from '../types';
+import { llmCall } from '../utils/llmCall';
 import { extractJson } from './payloadBuilder';
 
 /**
@@ -8,7 +7,7 @@ import { extractJson } from './payloadBuilder';
  * Sends current tags + world lore to the AI, returns 3-12 contextually relevant tags.
  */
 export async function populateEngineTags(
-    provider: EndpointConfig | ProviderConfig,
+    provider: LLMProvider,
     worldLore: string,
     currentTags: string[],
     field: 'surpriseTypes' | 'surpriseTones' | 'encounterTypes' | 'encounterTones' | 'worldWho' | 'worldWhere' | 'worldWhy' | 'worldWhat'
@@ -44,19 +43,7 @@ RULES:
 
 Example output: ["TAG_ONE", "TAG_TWO", "TAG_THREE"]`;
 
-    const messages: OpenAIMessage[] = [
-        { role: 'user', content: prompt }
-    ];
-
-    let fullJsonStr = '';
-
-    await sendMessage(
-        provider,
-        messages,
-        (chunk) => { fullJsonStr = chunk; },
-        () => { },
-        (err) => console.error('[Tag Populator] Error:', err)
-    );
+    const fullJsonStr = await llmCall(provider, prompt, { priority: 'low' });
 
     if (fullJsonStr) {
         const cleanStr = extractJson(fullJsonStr);

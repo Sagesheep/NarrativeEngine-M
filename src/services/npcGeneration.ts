@@ -1,11 +1,10 @@
-import type { EndpointConfig, ProviderConfig, ChatMessage, NPCEntry } from '../types';
-import type { OpenAIMessage } from './llmService';
-import { sendMessage } from './llmService';
+import type { LLMProvider, ChatMessage, NPCEntry } from '../types';
+import { llmCall } from '../utils/llmCall';
 import { extractJson } from './payloadBuilder';
 import { uid } from '../utils/uid';
 
 export async function generateNPCProfile(
-    provider: EndpointConfig | ProviderConfig,
+    provider: LLMProvider,
     history: ChatMessage[],
     npcName: string,
     addNPCToStore: (npc: NPCEntry) => void
@@ -40,20 +39,9 @@ The JSON must perfectly match this structure:
 }
 Note: the 6 axes (nature...ego) MUST be integers from 1 to 10.`;
 
-        const messages: OpenAIMessage[] = [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `RECENT CHAT HISTORY:\n${recentHistory}\n\nGenerate the JSON profile for "${npcName}".` }
-        ];
+        const fullPrompt = `${systemPrompt}\n\nRECENT CHAT HISTORY:\n${recentHistory}\n\nGenerate the JSON profile for "${npcName}".`;
 
-        let fullJsonStr = '';
-
-        await sendMessage(
-            provider,
-            messages,
-            (chunk) => { fullJsonStr = chunk; },
-            () => { }, // onDone
-            (err) => console.error('[NPC Generator] Error:', err)
-        );
+        const fullJsonStr = await llmCall(provider, fullPrompt, { priority: 'low' });
 
         if (fullJsonStr) {
             const cleanStr = extractJson(fullJsonStr);
@@ -98,7 +86,7 @@ Note: the 6 axes (nature...ego) MUST be integers from 1 to 10.`;
  * Asks the LLM if any relevant attributes have changed based on recent context.
  */
 export async function updateExistingNPCs(
-    provider: EndpointConfig | ProviderConfig,
+    provider: LLMProvider,
     history: ChatMessage[],
     npcsToCheck: NPCEntry[],
     updateNPCStore: (id: string, updates: Partial<NPCEntry>) => void
@@ -145,20 +133,8 @@ Example of an NPC dying and getting angry:
 
 RESPOND ONLY WITH VALID JSON.`;
 
-    const messages: OpenAIMessage[] = [{
-        role: 'user',
-        content: prompt
-    }];
-
     try {
-        let fullJsonStr = '';
-        await sendMessage(
-            provider,
-            messages,
-            (chunk) => { fullJsonStr = chunk; },
-            () => { }, // onDone
-            (err) => console.error('[NPC Updater] Error:', err)
-        );
+        const fullJsonStr = await llmCall(provider, prompt, { priority: 'low' });
 
         if (fullJsonStr) {
             const cleanStr = extractJson(fullJsonStr);
@@ -192,10 +168,6 @@ RESPOND ONLY WITH VALID JSON.`;
                             changes.shiftTurnCount = 0;
                         } else if (targetNpc.shiftTurnCount !== undefined && targetNpc.shiftTurnCount < 3) {
                             changes.shiftTurnCount = (targetNpc.shiftTurnCount || 0) + 1;
-                        }
-
-                        if (hasAxisChange) {
-                            // no-op guard
                         }
 
                         updateNPCStore(targetNpc.id, changes);
