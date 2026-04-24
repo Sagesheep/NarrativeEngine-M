@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { X, Loader2, CheckCircle, XCircle, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { testConnection } from '../services/chatEngine';
-import type { AIPreset, LLMProvider, ApiFormat } from '../types';
+import type { AIPreset, LLMProvider, ApiFormat, SamplingConfig } from '../types';
+import { detectFormatFromEndpoint } from '../utils/llmApiHelper';
 import { toast } from './Toast';
 import { uid } from '../utils/uid';
+import { SamplingPanel } from './SamplingPanel';
 
 export function SettingsModal() {
   const { settings, updateSettings, settingsOpen, toggleSettings, addPreset, updatePreset, removePreset, setMobileView } = useAppStore();
@@ -87,7 +89,7 @@ export function SettingsModal() {
     let endpoint = (config.endpoint || '').replace(/\/+$/, '');
     if (newFormat === 'ollama') {
       endpoint = endpoint.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
-    } else {
+    } else if (newFormat === 'openai' || newFormat === 'claude') {
       if (endpoint && !endpoint.endsWith('/v1') && /localhost:11434|127\.0\.0\.1:11434/.test(endpoint)) {
         endpoint = endpoint + '/v1';
       }
@@ -96,16 +98,34 @@ export function SettingsModal() {
     updatePreset(activePreset.id, { [section]: updatedConfig });
   };
 
+  const handleEndpointBlur = (section: 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', endpoint: string) => {
+    if (!activePreset || !endpoint) return;
+    const detected = detectFormatFromEndpoint(endpoint);
+    if (!detected) return;
+    const config = activePreset[section] ?? { endpoint: '', apiKey: '', modelName: '' };
+    const currentFormat = config.apiFormat || 'openai';
+    if (currentFormat === detected) return;
+    let normalizedEndpoint = endpoint.replace(/\/+$/, '');
+    if (detected === 'ollama') {
+      normalizedEndpoint = normalizedEndpoint.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+    }
+    updatePreset(activePreset.id, { [section]: { ...config, apiFormat: detected, endpoint: normalizedEndpoint } });
+  };
+
   const getEndpointPlaceholder = (apiFormat?: ApiFormat) => {
-    return (apiFormat || 'openai') === 'ollama'
-      ? 'http://localhost:11434  or  https://ollama.com'
-      : 'http://localhost:11434/v1';
+    const fmt = apiFormat || 'openai';
+    if (fmt === 'ollama') return 'http://localhost:11434  or  https://ollama.com';
+    if (fmt === 'claude') return 'https://api.anthropic.com/v1';
+    if (fmt === 'gemini') return 'https://generativelanguage.googleapis.com/v1beta';
+    return 'http://localhost:11434/v1';
   };
 
   const getApiKeyPlaceholder = (apiFormat?: ApiFormat) => {
-    return (apiFormat || 'openai') === 'ollama'
-      ? 'Ollama API key (optional for local)'
-      : 'sk-...';
+    const fmt = apiFormat || 'openai';
+    if (fmt === 'ollama') return 'Ollama API key (optional for local)';
+    if (fmt === 'claude') return 'sk-ant-...';
+    if (fmt === 'gemini') return 'AIza...';
+    return 'sk-...';
   };
 
   const toggleSection = (section: string) => {
@@ -138,6 +158,7 @@ export function SettingsModal() {
                 type="text"
                 value={config.endpoint}
                 onChange={(e) => handleUpdateEndpoint(section, 'endpoint', e.target.value)}
+                onBlur={(e) => handleEndpointBlur(section, e.target.value)}
                 placeholder={getEndpointPlaceholder(config.apiFormat)}
                 className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono focus:border-terminal focus:outline-none"
               />
@@ -149,17 +170,16 @@ export function SettingsModal() {
               </div>
               <div>
                 <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">API Format</label>
-                <div className="flex border border-border overflow-hidden rounded">
-                  {(['openai', 'ollama'] as ApiFormat[]).map(fmt => (
-                    <button
-                      key={fmt}
-                      onClick={() => handleApiFormatChange(section, fmt)}
-                      className={`flex-1 px-4 py-3 md:py-2 text-[11px] md:text-[10px] uppercase tracking-wider transition-colors ${(config.apiFormat || 'openai') === fmt ? 'bg-terminal text-surface font-bold' : 'bg-void text-text-dim hover:text-text-primary'}`}
-                    >
-                      {fmt === 'openai' ? 'OpenAI /v1' : 'Ollama /api'}
-                    </button>
-                  ))}
-                </div>
+                <select
+                  value={config.apiFormat || 'openai'}
+                  onChange={(e) => handleApiFormatChange(section, e.target.value as ApiFormat)}
+                  className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary focus:border-terminal focus:outline-none appearance-none"
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="ollama">Ollama</option>
+                  <option value="claude">Claude (Anthropic)</option>
+                  <option value="gemini">Gemini (Google)</option>
+                </select>
               </div>
             <div>
               <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">Model Name</label>
@@ -187,7 +207,7 @@ export function SettingsModal() {
               <button
                 onClick={() => {
                   if (!activePreset) return;
-                  const updatedConfig = { ...activePreset[section], streamingEnabled: !(config.streamingEnabled !== false) };
+                  const updatedConfig = { ...activePreset[section], streamingEnabled: config.streamingEnabled === false };
                   updatePreset(activePreset.id, { [section]: updatedConfig });
                 }}
                 className={`relative w-11 h-6 shrink-0 rounded-full transition-colors ${config.streamingEnabled !== false ? 'bg-terminal/60' : 'bg-border'}`}
@@ -297,6 +317,11 @@ export function SettingsModal() {
               {renderProviderConfig('enemyAI', 'Enemy AI (Adversarial Player)')}
               {renderProviderConfig('neutralAI', 'Neutral AI (Chaos/Environmental)')}
               {renderProviderConfig('allyAI', 'Ally AI (Beneficial Player)')}
+
+              <SamplingPanel
+                preset={activePreset}
+                onUpdate={(sampling: SamplingConfig) => updatePreset(activePreset.id, { sampling })}
+              />
             </div>
           )}
 
@@ -337,6 +362,7 @@ export function SettingsModal() {
                 { label: 'Auto-Condense', setting: 'autoCondenseEnabled' as const, sub: 'Compress history at 75% limit' },
                 { label: 'Debug Mode', setting: 'debugMode' as const, sub: 'Show raw API payloads' },
                 { label: 'Show Reasoning', setting: 'showReasoning' as const, sub: 'Display model thinking blocks' },
+                { label: 'Deep Archive Search', setting: 'enableDeepArchiveSearch' as const, sub: 'Long-press Send for AI full-archive scan. Requires utility endpoint. ~1-2 min per use.' },
               ].map(({ label, setting, sub }) => (
                 <div key={setting} className="flex items-center justify-between bg-void p-4 border border-border rounded">
                   <div>

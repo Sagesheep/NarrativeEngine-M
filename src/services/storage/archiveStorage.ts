@@ -104,4 +104,8 @@ export const archiveStorage = {
         await idbDel(k(cid, 'archive_index'));
         await idbDel(k(cid, 'chapters'));
     },
+
+    async updateIndex(cid: string, index: import('../../types').ArchiveIndexEntry[]): Promise<void> {
+        await setList(k(cid, 'archive_index'), index);
+    },
 };

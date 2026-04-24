@@ -12,10 +12,14 @@ export const sanitizePayloadForApi = (rawPayload: any[], allowTools: boolean) =>
                 continue;
             }
 
-            const validCalls = msg.tool_calls.filter((tc: any) =>
-                tc && tc.type === 'function' && typeof tc.id === 'string' &&
-                tc.function && typeof tc.function.name === 'string'
-            );
+            const validCalls = msg.tool_calls.filter((tc: any) => {
+                if (!tc || tc.type !== 'function' || typeof tc.id !== 'string' ||
+                    !tc.function || typeof tc.function.name !== 'string') return false;
+                if (tc.function.arguments !== undefined) {
+                    try { JSON.parse(tc.function.arguments); } catch { return false; }
+                }
+                return true;
+            });
 
             if (validCalls.length === 0) {
                 const { tool_calls, ...assistantNoTools } = msg;

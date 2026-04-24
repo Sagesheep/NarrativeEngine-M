@@ -80,6 +80,10 @@ export const offlineStorage = {
             return archiveStorage.getScenes(cid, sceneIds);
         },
 
+        async updateIndex(cid: string, index: import('../../types').ArchiveIndexEntry[]): Promise<void> {
+            return archiveStorage.updateIndex(cid, index);
+        },
+
         async deleteFrom(cid: string, fromSceneId: string) {
             return archiveStorage.deleteFrom(cid, fromSceneId);
         },

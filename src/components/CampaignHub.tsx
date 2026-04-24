@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Play, Clock, BookOpen, Pencil, Settings } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, Trash2, Play, Clock, BookOpen, Pencil, Settings, Download, Upload, Loader2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
     listCampaigns, deleteCampaign, loadCampaignState,
@@ -11,6 +11,8 @@ import { extractEngineSeeds } from '../services/loreEngineSeeder';
 import { parseNPCsFromLore } from '../services/loreNPCParser';
 import { dedupeNPCLedger, defaultContext } from '../store/slices/campaignSlice';
 import { api } from '../services/apiClient';
+import { downloadBundle, importBundle } from '../services/campaignBundle';
+import { toast } from './Toast';
 import type { Campaign } from '../types';
 
 const DEFAULT_CONDENSER = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
@@ -19,6 +21,9 @@ export function CampaignHub() {
     useAppStore(); // state accessed via useAppStore.setState / useAppStore.getState
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+    const [isExporting, setIsExporting] = useState<string | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
+    const importInputRef = useRef<HTMLInputElement>(null);
 
     // Modal state
     const [modalOpen, setModalOpen] = useState(false);
@@ -198,6 +203,37 @@ export function CampaignHub() {
         });
     };
 
+    const handleExport = async (campaignId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setIsExporting(campaignId);
+        try {
+            await downloadBundle(campaignId);
+            toast.success('Campaign saved to Downloads folder');
+        } catch (err) {
+            if (err instanceof Error && err.message === 'Cancelled') return;
+            toast.error('Export failed');
+        } finally {
+            setIsExporting(null);
+        }
+    };
+
+    const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+        setIsImporting(true);
+        try {
+            const bundle = JSON.parse(await file.text());
+            await importBundle(bundle);
+            await refresh();
+            toast.success(`"${bundle.campaign?.name ?? 'Campaign'}" imported — rebuilding search index in background`);
+        } catch {
+            toast.error('Import failed — invalid campaign file');
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
     const handleDelete = async (id: string) => {
         await api.backup.create(id, { trigger: 'pre-delete', isAuto: true }).catch(() => {});
         await deleteCampaign(id);
@@ -219,12 +255,25 @@ export function CampaignHub() {
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-void p-4 md:p-8 relative">
+            <input ref={importInputRef} type="file" accept=".campaign,.json" className="hidden" onChange={handleImportFile} />
+
+            {/* Settings button */}
             <button
                 onClick={() => useAppStore.getState().toggleSettings()}
                 className="absolute top-4 right-4 sm:top-8 sm:right-8 p-3 text-text-dim hover:text-terminal transition-colors bg-surface border border-border rounded-full hover:border-terminal z-50"
                 title="Global Settings"
             >
                 <Settings size={20} />
+            </button>
+
+            {/* Import button */}
+            <button
+                onClick={() => importInputRef.current?.click()}
+                disabled={isImporting}
+                className="absolute top-4 left-4 sm:top-8 sm:left-8 p-3 text-text-dim hover:text-terminal transition-colors bg-surface border border-border rounded-full hover:border-terminal z-50 disabled:opacity-40"
+                title="Import Campaign"
+            >
+                {isImporting ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
             </button>
 
             {/* Title */}
@@ -284,6 +333,16 @@ export function CampaignHub() {
                             title="Delete campaign"
                         >
                             <Trash2 size={16} />
+                        </button>
+
+                        {/* Export button */}
+                        <button
+                            onClick={(e) => handleExport(c.id, e)}
+                            disabled={isExporting === c.id}
+                            className="absolute bottom-2 left-2 p-2 rounded bg-void/90 text-text-dim hover:text-terminal touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-40"
+                            title="Export campaign"
+                        >
+                            {isExporting === c.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                         </button>
                     </div>
                 ))}

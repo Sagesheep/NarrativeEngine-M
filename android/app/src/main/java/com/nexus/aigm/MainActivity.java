@@ -7,8 +7,8 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(SaveFilePlugin.class);
         super.onCreate(savedInstanceState);
-        // Allow WebView to render behind system bars
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
     }
 }

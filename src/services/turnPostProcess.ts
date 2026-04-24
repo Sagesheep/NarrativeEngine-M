@@ -11,6 +11,7 @@ import { loadChapters } from '../store/campaignStore';
 import { backgroundQueue } from './backgroundQueue';
 import { scanCharacterProfile } from './characterProfileParser';
 import { scanInventory } from './inventoryParser';
+import { rateImportance } from './importanceRater';
 
 
 export async function handlePostTurn(
@@ -41,6 +42,31 @@ export async function handlePostTurn(
 
     await handleSealChapter(state, callbacks, activeCampaignId);
 
+    if (appendedSceneId) {
+        const ratingProvider = state.getFreshProvider();
+        if (ratingProvider) {
+            const sceneId = appendedSceneId;
+            const userText = displayInput;
+            const gmText = lastAssistantContent;
+            const recentMsgs = state.getMessages();
+            const cid = activeCampaignId;
+            backgroundQueue.push('Importance-Rate', async () => {
+                try {
+                    const llmImportance = await rateImportance(ratingProvider, userText, gmText, recentMsgs);
+                    const index = await api.archive.getIndex(cid);
+                    const entry = index.find(e => e.sceneId === sceneId);
+                    if (entry && llmImportance !== entry.importance) {
+                        entry.importance = llmImportance;
+                        const { offlineStorage } = await import('./storage');
+                        await offlineStorage.archive.updateIndex(cid, index);
+                        callbacks.setArchiveIndex([...index]);
+                        console.log(`[ImportanceRater] Scene #${sceneId}: heuristic→${entry.importance} → LLM→${llmImportance}`);
+                    }
+                } catch (e) { console.warn('[TurnPostProcess] Importance rating failed:', e); }
+            }).catch((e) => console.warn('[TurnPostProcess] backgroundQueue push failed:', e));
+        }
+    }
+
     if (extractedNames.length > 0) {
         const provider = state.getFreshProvider();
         const validatedNames = provider ?
@@ -55,14 +81,14 @@ export async function handlePostTurn(
                 console.log(`[NPC Auto-Gen] Spawning profile: "${potentialName}"`);
                 const genProvider = state.getFreshProvider();
                 if (genProvider) {
-                    generateNPCProfile(genProvider, allMsgs, potentialName, callbacks.addNPC).catch(() => {});
+                    generateNPCProfile(genProvider, allMsgs, potentialName, callbacks.addNPC).catch((e) => console.warn(`[TurnPostProcess] NPC profile gen failed for "${potentialName}":`, e));
                 }
             }
 
             if (existingNpcsToUpdate.length > 0) {
                 const updateProvider = state.getFreshProvider();
                 if (updateProvider) {
-                    updateExistingNPCs(updateProvider, allMsgs, existingNpcsToUpdate, callbacks.updateNPC);
+                    updateExistingNPCs(updateProvider, allMsgs, existingNpcsToUpdate, callbacks.updateNPC).catch((e) => console.warn('[TurnPostProcess] updateExistingNPCs failed:', e));
                 }
             }
         }
@@ -78,12 +104,12 @@ export async function handlePostTurn(
             backgroundQueue.push('Profile-Scan', async () => {
                 const newProfile = await scanCharacterProfile(bkProvider, allMsgs, state.context.characterProfile);
                 callbacks.updateContext({ characterProfile: newProfile, characterProfileLastScene: sceneId });
-            }).catch(() => {});
+            }).catch((e) => console.warn('[TurnPostProcess] Profile scan failed:', e));
 
             backgroundQueue.push('Inventory-Scan', async () => {
                 const newInventory = await scanInventory(bkProvider, allMsgs, state.context.inventory);
                 callbacks.updateContext({ inventory: newInventory, inventoryLastScene: sceneId });
-            }).catch(() => {});
+            }).catch((e) => console.warn('[TurnPostProcess] Inventory scan failed:', e));
         }
     }
 }

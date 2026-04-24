@@ -130,7 +130,12 @@ export async function generateCanonState(
             messages: messages.length,
         });
 
-        const output = await llmCall(endpoint, prompt);
+        let output: string;
+        try {
+            output = await llmCall(endpoint, prompt);
+        } catch {
+            return { canonState: JSON.stringify(existingSlots || []), slots: existingSlots, success: false };
+        }
         const { valid, slots } = validateCanonState(output);
 
         if (valid) {
@@ -154,7 +159,13 @@ export async function generateCanonState(
             promptTokens: countTokensFn(prompt)
         });
 
-        const output = await llmCall(endpoint, prompt);
+        let output: string;
+        try {
+            output = await llmCall(endpoint, prompt);
+        } catch {
+            console.warn(`[SaveFileEngine] Canon State batch ${ci + 1} LLM call failed`);
+            continue;
+        }
         const { valid, slots } = validateCanonState(output);
 
         if (valid && slots) {
@@ -324,7 +335,13 @@ export async function generateHeaderIndex(
                 promptTokens: countTokens(prompt)
             });
 
-            const output = await llmCall(provider, prompt);
+            let output: string;
+            try {
+                output = await llmCall(provider, prompt);
+            } catch {
+                console.warn(`[SaveFileEngine] Header Index batch ${ci + 1} attempt ${attempt + 1} LLM call failed`);
+                continue;
+            }
             const { valid } = validateHeaderIndex(output);
 
             if (valid) {

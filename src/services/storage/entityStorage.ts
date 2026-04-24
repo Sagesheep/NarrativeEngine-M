@@ -1,5 +1,6 @@
 import type { EntityEntry } from '../../types';
 import { getList, setList, k } from './_helpers';
+import { normalizeEntityName } from '../../utils/entityResolution';
 
 export const entityStorage = {
     async get(cid: string): Promise<EntityEntry[]> {
@@ -13,5 +14,9 @@ export const entityStorage = {
         survivor.aliases = [...new Set([...(survivor.aliases || []), absorbed.name, ...(absorbed.aliases || [])])];
         await setList(k(cid, 'entities'), entities.filter(e => e.id !== absorbedId));
         return { ok: true };
+    },
+    async resolve(cid: string, name: string): Promise<string> {
+        const entities = await getList<EntityEntry>(k(cid, 'entities'));
+        return normalizeEntityName(name, entities);
     },
 };

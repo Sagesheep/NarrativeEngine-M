@@ -5,14 +5,53 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAppStore } from '../store/useAppStore';
-import type { ChatMessage, LLMProvider } from '../types';
-import { condenseHistory } from '../services/condenser';
-import { runSaveFilePipeline } from '../services/saveFileEngine';
+import type { PipelinePhase, StreamingStats } from '../types';
 import { runTurn } from '../services/turnOrchestrator';
-// Auto-sealing logic migrated to turnOrchestrator
+import { GenerationProgress } from './GenerationProgress';
+import { useMessageEditor } from './hooks/useMessageEditor';
+import { useCondenser } from './hooks/useCondenser';
 import { api } from '../services/apiClient';
 import { set } from 'idb-keyval';
 import { toast } from './Toast';
+
+function renderContentWithChips(content: string) {
+    const parts = content.split(/(\[[\s\S]*?\])/g);
+    return parts.map((part, i) => {
+        if (part.startsWith('[') && part.endsWith(']')) {
+            const tag = part.slice(1, -1);
+            const isDice = tag.includes('D20:') || tag.includes('DICE OUTCOMES:');
+            const isEvent = tag.includes('EVENT:') || tag.includes('SURPRISE') || tag.includes('ENCOUNTER');
+            const isWorld = tag.includes('WORLD_EVENT');
+
+            return (
+                <span
+                    key={i}
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 my-0.5 rounded border text-[10px] font-black uppercase tracking-widest leading-none align-middle shadow-sm transition-all hover:scale-105 active:scale-95 cursor-default select-none ${
+                    isDice ? 'bg-terminal/10 border-terminal/30 text-terminal' :
+                        isEvent ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' :
+                            isWorld ? 'bg-red-500/10 border-red-500/30 text-red-500' :
+                                'bg-ice/10 border-ice/30 text-ice'
+                    }`}
+                >
+                    {isDice ? <Dice5 size={10} strokeWidth={3} /> : <Terminal size={10} strokeWidth={3} />}
+                    {tag}
+                </span>
+            );
+        }
+        return (
+            <div key={i} className="text-text-primary/90 leading-relaxed">
+                <ReactMarkdown
+                    components={{
+                        strong: ({children}) => <strong className="text-terminal font-black">{children}</strong>,
+                        em: ({children}) => <em className="text-ice italic opacity-90">{children}</em>
+                    }}
+                >
+                    {part}
+                </ReactMarkdown>
+            </div>
+        );
+    });
+}
 
 export function ChatArea() {
     const {
@@ -36,104 +75,57 @@ export function ChatArea() {
         deleteMessage,
         deleteMessagesFrom,
         getActiveStoryEndpoint,
+        getActiveSummarizerEndpoint,
         getActiveUtilityEndpoint,
         addMessage,
         updateNPC,
         addNPC,
         updateLastMessage,
+        setTimeline,
     } = useAppStore();
 
     const [input, setInput] = useState('');
     const [isStreaming, setStreaming] = useState(false);
     const [isCheckingNotes, setIsCheckingNotes] = useState(false);
     const [visibleCount, setVisibleCount] = useState(10);
-    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
     const [forcedAIs, setForcedAIs] = useState<('enemy' | 'neutral' | 'ally')[]>([]);
     const [showScrollFab, setShowScrollFab] = useState(false);
     const [showCondensedPanel, setShowCondensedPanel] = useState(false);
-    const [editingSummary, setEditingSummary] = useState(false);
-    const [summaryDraft, setSummaryDraft] = useState('');
-    const condenseAbortRef = useRef<AbortController | null>(null);
+    const [streamingStats, setStreamingStatsLocal] = useState<StreamingStats | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [deepArmed, setDeepArmed] = useState(false);
+    const streamStartRef = useRef<number>(0);
     const bottomRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
-
-    useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages.length]);
-
-    useEffect(() => {
-        const el = scrollContainerRef.current;
-        if (!el) return;
-        const handleScroll = () => {
-            const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-            setShowScrollFab(distFromBottom > 400);
-        };
-        el.addEventListener('scroll', handleScroll, { passive: true });
-        return () => el.removeEventListener('scroll', handleScroll);
-    }, []);
-
-    const triggerCondense = async () => {
-        if (condenser.isCondensing) return;
-        setCondensing(true);
-        condenseAbortRef.current = new AbortController();
-        try {
-            const provider = useAppStore.getState().getActiveStoryEndpoint();
-            if (!provider) return;
-            const currentCtx = useAppStore.getState().context;
-            const uncondensed = messages.slice(condenser.condensedUpToIndex + 1);
-            const saveResult = await runSaveFilePipeline(provider as LLMProvider, uncondensed, currentCtx);
-
-            if (saveResult.canonSuccess) updateContext({ canonState: saveResult.canonState });
-            if (saveResult.indexSuccess) updateContext({ headerIndex: saveResult.headerIndex });
-
-            const freshCtx = useAppStore.getState().context;
-            const result = await condenseHistory(
-                provider,
-                messages,
-                freshCtx,
-                condenser.condensedUpToIndex,
-                condenser.condensedSummary,
-                activeCampaignId || '',
-                npcLedger.map(n => n.name),
-                settings.contextLimit,
-                condenseAbortRef.current.signal
-            );
-            setCondensed(result.summary, result.upToIndex);
-
-            if (activeCampaignId) {
-                const fresh = await api.archive.getIndex(activeCampaignId);
-                setArchiveIndex(fresh);
-                const freshFacts = await api.facts.get(activeCampaignId).catch(() => []);
-                setSemanticFacts(freshFacts);
-            }
-        } catch (err) {
-            if ((err as Error).name !== 'AbortError') {
-                console.error('[Condenser]', err);
-                toast.error('Condenser failed');
-            }
-        } finally {
-            setCondensing(false);
-            condenseAbortRef.current = null;
-        }
-    };
-
-    const handleStop = () => {
-        abortControllerRef.current?.abort();
-        abortControllerRef.current = null;
-        setStreaming(false);
-        setIsCheckingNotes(false);
-    };
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const resetTextareaHeight = () => {
         if (inputRef.current) inputRef.current.style.height = '40px';
     };
 
+    const handleSendPressStart = () => {
+        if (!settings.enableDeepArchiveSearch || isStreaming) return;
+        longPressTimer.current = setTimeout(() => {
+            setDeepArmed(true);
+        }, 500);
+    };
+
+    const handleSendPressEnd = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
+
     const handleSend = async (overrideText?: string) => {
         const textToUse = overrideText || input.trim();
         if (!textToUse || isStreaming) return;
+
+        const useDeepScan = deepArmed && !!settings.enableDeepArchiveSearch;
+        setDeepArmed(false);
 
         if (!overrideText) {
             setInput('');
@@ -158,12 +150,16 @@ export function ChatArea() {
             provider: getActiveStoryEndpoint(),
             getMessages: () => useAppStore.getState().messages,
             getFreshProvider: () => getActiveStoryEndpoint(),
+            getFreshSummarizerProvider: () => getActiveSummarizerEndpoint?.() ?? getActiveStoryEndpoint(),
             getUtilityEndpoint: () => getActiveUtilityEndpoint(),
             forcedInterventions: forcedAIs,
             incrementBookkeepingTurnCounter: () => useAppStore.getState().incrementBookkeepingTurnCounter(),
             autoBookkeepingInterval: useAppStore.getState().autoBookkeepingInterval,
             resetBookkeepingTurnCounter: () => useAppStore.getState().resetBookkeepingTurnCounter(),
             timeline: useAppStore.getState().timeline,
+            pinnedChapterIds: useAppStore.getState().pinnedChapterIds,
+            clearPinnedChapters: () => useAppStore.getState().clearPinnedChapters(),
+            deepContextSearch: useDeepScan,
         }, {
             onCheckingNotes: setIsCheckingNotes,
             addMessage,
@@ -179,26 +175,115 @@ export function ChatArea() {
             setCondensing,
             setStreaming,
             setLoadingStatus,
-            setLastPayloadTrace: useAppStore.getState().setLastPayloadTrace
+            setLastPayloadTrace: useAppStore.getState().setLastPayloadTrace,
+            setSemanticFacts,
+            setChapters,
+            setPipelinePhase: (phase: PipelinePhase) => useAppStore.getState().setPipelinePhase(phase),
+            setStreamingStats: (stats: StreamingStats | null) => useAppStore.getState().setStreamingStats(stats),
         }, abortControllerRef.current!);
 
         setForcedAIs([]);
         setLoadingStatus(null);
     };
 
+    const {
+        editingMessageId,
+        startEditing,
+        cancelEditing,
+        handleEditSubmit,
+        handleRegenerate,
+    } = useMessageEditor({
+        messages,
+        input,
+        setInput,
+        inputRef,
+        resetTextareaHeight,
+        activeCampaignId,
+        archiveIndex,
+        condenser,
+        setArchiveIndex,
+        setChapters,
+        setTimeline,
+        resetCondenser,
+        deleteMessagesFrom,
+        onAfterEdit: (text) => handleSend(text),
+        onAfterRegenerate: (text) => handleSend(text),
+    });
 
+    const {
+        triggerCondense,
+        condenseAbortRef,
+        condensePhase,
+        editingSummary,
+        setEditingSummary,
+        summaryDraft,
+        setSummaryDraft,
+        handleRetcon,
+    } = useCondenser({
+        activeCampaignId,
+        isStreaming,
+        messages,
+        condenser,
+        settings,
+        context,
+        npcLedger,
+        setCondensed,
+        setCondensing,
+        resetCondenser,
+        updateContext,
+        setArchiveIndex,
+        setSemanticFacts,
+        getActiveSummarizerEndpoint: () => getActiveSummarizerEndpoint?.() ?? getActiveStoryEndpoint(),
+        getActiveStoryEndpoint: () => getActiveStoryEndpoint(),
+    });
 
-    const handleRetcon = () => {
-        if (!confirm('Retcon: Delete all messages and keep only the summary?')) return;
-        const sysMsg: ChatMessage = {
-            id: Date.now().toString(36),
-            role: 'system',
-            content: condenser.condensedSummary,
-            timestamp: Date.now(),
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages.length]);
+
+    const pipelinePhase = useAppStore(s => s.pipelinePhase);
+
+    useEffect(() => {
+        if (pipelinePhase === 'generating') {
+            streamStartRef.current = Date.now();
+        }
+    }, [pipelinePhase]);
+
+    useEffect(() => {
+        if (pipelinePhase !== 'generating') {
+            setStreamingStatsLocal(null);
+            return;
+        }
+        const interval = setInterval(() => {
+            const msgs = useAppStore.getState().messages;
+            const last = msgs[msgs.length - 1];
+            if (!last || last.role !== 'assistant') return;
+            const tokens = Math.round(last.content.length / 4);
+            const elapsed = Date.now() - streamStartRef.current;
+            const speed = elapsed > 0 ? (tokens / (elapsed / 1000)) : 0;
+            setStreamingStatsLocal({ tokens, elapsed, speed });
+        }, 500);
+        return () => clearInterval(interval);
+    }, [pipelinePhase]);
+
+    useEffect(() => {
+        const el = scrollContainerRef.current;
+        if (!el) return;
+        const handleScroll = () => {
+            const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            setShowScrollFab(distFromBottom > 400);
         };
-        useAppStore.setState({ messages: [sysMsg] });
-        setCondensed('', 0);
-        setEditingSummary(false);
+        el.addEventListener('scroll', handleScroll, { passive: true });
+        return () => el.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    const handleStop = () => {
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = null;
+        setStreaming(false);
+        setIsCheckingNotes(false);
+        useAppStore.getState().setPipelinePhase('idle');
+        useAppStore.getState().setStreamingStats(null);
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -210,14 +295,6 @@ export function ChatArea() {
         }
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            editingMessageId ? handleEditSubmit() : handleSend();
-        }
-    };
-
-    const [isSaving, setIsSaving] = useState(false);
 
     const handleForceSave = () => {
         setIsSaving(true);
@@ -235,23 +312,6 @@ export function ChatArea() {
         setTimeout(() => setIsSaving(false), 2000);
     };
 
-    const rollbackArchiveFrom = async (fromTimestamp: number) => {
-        if (!activeCampaignId) return;
-        const sorted = [...archiveIndex].sort((a, b) => parseInt(a.sceneId) - parseInt(b.sceneId));
-        const target = sorted.find(e => e.timestamp >= fromTimestamp);
-        if (!target) return;
-        try {
-            await api.backup.create(activeCampaignId, { trigger: 'pre-rollback', isAuto: true }).catch(() => {});
-            await api.archive.deleteFrom(activeCampaignId, target.sceneId);
-            const freshIndex = await api.archive.getIndex(activeCampaignId);
-            setArchiveIndex(freshIndex);
-            const updatedChapters = await api.chapters.list(activeCampaignId).catch(() => []);
-            setChapters(updatedChapters);
-        } catch (err) {
-            toast.warning('Archive rollback failed');
-        }
-    };
-
     const handleClearArchive = async () => {
         if (!activeCampaignId || !window.confirm('Delete archive?')) return;
         try {
@@ -260,85 +320,6 @@ export function ChatArea() {
         } catch (err) {
             toast.error('Failed to clear archive');
         }
-    };
-
-    const startEditing = (msg: ChatMessage) => {
-        setEditingMessageId(msg.id);
-        setInput(msg.displayContent || msg.content);
-        inputRef.current?.focus();
-    };
-
-    const handleEditSubmit = () => {
-        if (!editingMessageId) return;
-        const msg = messages.find(m => m.id === editingMessageId);
-        if (!msg) return;
-
-        if (msg.role === 'user') {
-            rollbackArchiveFrom(msg.timestamp);
-            deleteMessagesFrom(msg.id);
-            const textToResend = input.trim();
-            setInput('');
-            resetTextareaHeight();
-            setEditingMessageId(null);
-            setTimeout(() => handleSend(textToResend), 50);
-        } else {
-            useAppStore.getState().updateMessageContent(msg.id, input.trim());
-            setInput('');
-            resetTextareaHeight();
-            setEditingMessageId(null);
-        }
-    };
-
-    const handleRegenerate = (id: string) => {
-        const msgs = useAppStore.getState().messages;
-        const idx = msgs.findIndex(m => m.id === id);
-        if (idx === -1) return;
-        const prevMsgs = msgs.slice(0, idx);
-        const lastUser = [...prevMsgs].reverse().find(m => m.role === 'user');
-        if (lastUser) {
-            rollbackArchiveFrom(lastUser.timestamp);
-            deleteMessagesFrom(lastUser.id);
-            setTimeout(() => handleSend(lastUser.displayContent || lastUser.content), 50);
-        }
-    };
-
-    const renderContentWithChips = (content: string) => {
-        const parts = content.split(/(\[[\s\S]*?\])/g);
-        return parts.map((part, i) => {
-            if (part.startsWith('[') && part.endsWith(']')) {
-                const tag = part.slice(1, -1);
-                const isDice = tag.includes('D20:') || tag.includes('DICE OUTCOMES:');
-                const isEvent = tag.includes('EVENT:') || tag.includes('SURPRISE') || tag.includes('ENCOUNTER');
-                const isWorld = tag.includes('WORLD_EVENT');
-
-                return (
-                    <span 
-                        key={i} 
-                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 my-0.5 rounded border text-[10px] font-black uppercase tracking-widest leading-none align-middle shadow-sm transition-all hover:scale-105 active:scale-95 cursor-default select-none ${
-                        isDice ? 'bg-terminal/10 border-terminal/30 text-terminal' :
-                            isEvent ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' :
-                                isWorld ? 'bg-red-500/10 border-red-500/30 text-red-500' :
-                                    'bg-ice/10 border-ice/30 text-ice'
-                        }`}
-                    >
-                        {isDice ? <Dice5 size={10} strokeWidth={3} /> : <Terminal size={10} strokeWidth={3} />}
-                        {tag}
-                    </span>
-                );
-            }
-            return (
-                <div key={i} className="text-text-primary/90 leading-relaxed">
-                    <ReactMarkdown
-                        components={{
-                            strong: ({children}) => <strong className="text-terminal font-black">{children}</strong>,
-                            em: ({children}) => <em className="text-ice italic opacity-90">{children}</em>
-                        }}
-                    >
-                        {part}
-                    </ReactMarkdown>
-                </div>
-            );
-        });
     };
 
     return (
@@ -535,28 +516,34 @@ export function ChatArea() {
                 </div>
             )}
 
+            <GenerationProgress phase={pipelinePhase} stats={streamingStats} />
+
             <div className="flex-shrink-0 bg-void border-t border-border">
-                {editingMessageId && <div className="bg-terminal/10 border-b border-border px-4 py-2 flex items-center justify-between text-terminal text-[11px] font-bold uppercase"><Edit2 size={12}/> Editing <button onClick={() => { setEditingMessageId(null); setInput(''); }}><X size={12}/></button></div>}
-                
+                {editingMessageId && <div className="bg-terminal/10 border-b border-border px-4 py-2 flex items-center justify-between text-terminal text-[11px] font-bold uppercase"><Edit2 size={12}/> Editing <button onClick={cancelEditing}><X size={12}/></button></div>}
+
+                {condenser.isCondensing && (
+                    <div className="py-1.5 px-4 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
+                        <div className="flex items-center gap-2 animate-pulse">
+                            <Loader2 size={10} className="animate-spin text-amber-500" />
+                            <span className="text-[9px] uppercase tracking-widest text-amber-500 font-bold">
+                                {condensePhase === 'save' ? 'Archiving session state...' : 'Compressing history...'}
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => condenseAbortRef.current?.abort()}
+                            className="text-[9px] text-amber-500/60 hover:text-amber-500 uppercase tracking-wider transition-colors"
+                        >
+                            Stop
+                        </button>
+                    </div>
+                )}
+
                 {loadingStatus && (
                     <div className="py-1.5 px-4 bg-terminal/10 border-b border-terminal/20 flex items-center gap-2 animate-pulse">
                         <Loader2 size={10} className="animate-spin text-terminal" />
                         <span className="text-[9px] uppercase tracking-widest text-terminal font-bold">{loadingStatus}</span>
                     </div>
                 )}
-
-                {/* NPC stance filter buttons — hidden for now
-                <div className="px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar">
-                    {['enemy', 'neutral', 'ally'].map(id => (
-                        <button key={id} onClick={() => setForcedAIs(p => p.includes(id as any) ? p.filter(t => t !== id) : [...p, id as any])}
-                            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[10px] font-black uppercase border transition-all ${forcedAIs.includes(id as any)
-                                ? (id === 'enemy' ? 'border-red-500 bg-red-500/20 text-red-500 animate-pulse-slow' : id === 'neutral' ? 'border-amber-500 bg-amber-500/20 text-amber-500 animate-pulse-slow' : 'border-emerald-500 bg-emerald-500/20 text-emerald-500 animate-pulse-slow')
-                                : 'border-border bg-surface text-text-dim'}`}>
-                            {id}
-                        </button>
-                    ))}
-                </div>
-                */}
 
                 <div className="px-2 sm:px-4 pb-1 pt-1">
                     <div className="flex gap-1 border border-border bg-void focus-within:border-terminal items-center p-1 rounded-sm">
@@ -567,10 +554,24 @@ export function ChatArea() {
                             </select>
                             <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-text-dim pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                         </div>
-                        <textarea ref={inputRef} value={input} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder={editingMessageId ? "Edit..." : "What do you do?"} 
-                            className="flex-1 bg-transparent px-2 py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[40px] leading-5" />
-                        <button onClick={isStreaming ? handleStop : (editingMessageId ? handleEditSubmit : () => handleSend())} disabled={!isStreaming && !input.trim()}
-                            className={`h-[32px] w-[40px] rounded transition-all flex items-center justify-center shrink-0 ${isStreaming ? 'text-amber-500 hover:bg-amber-500/10' : 'text-terminal hover:bg-terminal/10'}`}>
+                        <textarea ref={inputRef} value={input} onChange={handleInputChange} 
+                            disabled={condenser.isCondensing}
+                            placeholder={condenser.isCondensing ? 'Condensing history...' : editingMessageId ? 'Edit...' : 'What do you do?'}
+                            className="flex-1 bg-transparent px-2 py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[40px] leading-5 disabled:opacity-40 disabled:cursor-not-allowed" />
+                        <button
+                            onClick={isStreaming ? handleStop : (editingMessageId ? handleEditSubmit : () => handleSend())}
+                            onMouseDown={!isStreaming && !editingMessageId ? handleSendPressStart : undefined}
+                            onMouseUp={!isStreaming && !editingMessageId ? handleSendPressEnd : undefined}
+                            onMouseLeave={!isStreaming && !editingMessageId ? handleSendPressEnd : undefined}
+                            onTouchStart={!isStreaming && !editingMessageId ? handleSendPressStart : undefined}
+                            onTouchEnd={!isStreaming && !editingMessageId ? handleSendPressEnd : undefined}
+                            disabled={!isStreaming && !input.trim()}
+                            title={deepArmed ? 'Deep Archive Search armed — release to send' : undefined}
+                            className={`h-[32px] w-[40px] rounded transition-all flex items-center justify-center shrink-0 ${
+                                isStreaming ? 'text-amber-500 hover:bg-amber-500/10' :
+                                deepArmed ? 'text-amber-400 bg-amber-400/20 animate-pulse' :
+                                'text-terminal hover:bg-terminal/10'
+                            }`}>
                             {isStreaming ? <Square size={16} fill="currentColor" /> : (editingMessageId ? <Check size={16} /> : <Send size={16} />)}
                         </button>
                     </div>

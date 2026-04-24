@@ -1,7 +1,6 @@
 import type { ChatMessage, GameContext, LLMProvider } from '../types';
 
 import { countTokens } from './tokenizer';
-import { llmQueue } from './llmRequestQueue';
 import { llmCall } from '../utils/llmCall';
 
 const VERBATIM_WINDOW = 8;
@@ -90,14 +89,11 @@ export async function condenseHistory(
 
         console.log('[Condenser] Sending T3 meta-summary request...', { promptTokens: countTokens(metaPrompt) });
 
-        await llmQueue.acquireSlot('normal');
         try {
-            finalExistingSummary = await llmCall(provider, metaPrompt, { signal });
+            finalExistingSummary = await llmCall(provider, metaPrompt, { signal, priority: 'normal' });
             console.log('[Archive Memory] T3 successfully meta-summarized.');
         } catch (err) {
             console.error('[Archive Memory] Meta-summary API failed, retaining old T3 summary.');
-        } finally {
-            llmQueue.releaseSlot();
         }
     }
 
@@ -142,12 +138,12 @@ export async function condenseHistory(
         budgetLimit
     });
 
-    await llmQueue.acquireSlot('normal');
     let summary: string;
     try {
-        summary = await llmCall(provider, prompt, { signal }) || existingSummary;
-    } finally {
-        llmQueue.releaseSlot();
+        summary = await llmCall(provider, prompt, { signal, priority: 'normal' }) || existingSummary;
+    } catch (err) {
+        console.error('[Condenser] Condensation API failed:', err);
+        summary = existingSummary;
     }
 
     // Use the last message that was actually included in the chunk for correct index alignment

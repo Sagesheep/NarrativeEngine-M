@@ -8,7 +8,7 @@
  * Falls back silently on any error (caller handles fallback to substring scan).
  */
 
-import type { LLMProvider, NPCEntry, LoreChunk, ChatMessage } from '../types';
+import type { LLMProvider, NPCEntry, LoreChunk, ChatMessage, ArchiveChapter } from '../types';
 import { llmCall } from '../utils/llmCall';
 
 export type RecommenderResult = {
@@ -61,13 +61,25 @@ function buildConversationExcerpt(messages: ChatMessage[], userMessage: string, 
     return lines.join('\n\n');
 }
 
+function buildPinnedChapterContext(chapters: ArchiveChapter[]): string {
+    return chapters.map(ch => {
+        const parts = [`[${ch.chapterId}] ${ch.title} (Scenes ${ch.sceneRange[0]}–${ch.sceneRange[1]})`];
+        if (ch.summary) parts.push(`  Summary: ${ch.summary.slice(0, 200)}`);
+        if (ch.npcs.length > 0) parts.push(`  NPCs: ${ch.npcs.join(', ')}`);
+        if (ch.keywords.length > 0) parts.push(`  Keywords: ${ch.keywords.slice(0, 10).join(', ')}`);
+        if (ch.majorEvents.length > 0) parts.push(`  Events: ${ch.majorEvents.slice(0, 3).join('; ')}`);
+        return parts.join('\n');
+    }).join('\n\n');
+}
+
 const RECOMMENDER_PROMPT = `You are a context selector for a tabletop RPG game engine. Given a conversation excerpt, a roster of NPCs, and an index of lore entries, determine which NPCs and lore entries are RELEVANT to the current scene.
 
 RULES:
 1. An NPC is relevant if they are: mentioned by name/alias, physically present in the scene, directly referenced, or their faction/goals are materially involved.
 2. A lore entry is relevant if: its subject matter relates to the current location, active quest, mentioned organizations, or ongoing conflict.
 3. Be SELECTIVE — only include truly relevant entries, not everything tangentially related.
-4. Return ONLY valid JSON in exactly this format, no other text:
+4. DM-PINNED CHAPTERS are manually flagged as important by the DM. Strongly favor NPCs and lore entries mentioned in pinned chapters.
+5. Return ONLY valid JSON in exactly this format, no other text:
 
 {"npcs": ["Name1", "Name2"], "lore": ["id1", "id2"]}
 
@@ -84,11 +96,16 @@ export async function recommendContext(
     npcLedger: NPCEntry[],
     loreChunks: LoreChunk[],
     messages: ChatMessage[],
-    userMessage: string
+    userMessage: string,
+    pinnedChapters?: ArchiveChapter[]
 ): Promise<RecommenderResult> {
     const npcRoster = buildNPCRoster(npcLedger);
     const loreIndex = buildLoreIndex(loreChunks);
     const conversation = buildConversationExcerpt(messages, userMessage);
+
+    const pinnedSection = (pinnedChapters && pinnedChapters.length > 0)
+        ? `\n[DM-PINNED CHAPTERS — manually selected as relevant]\n${buildPinnedChapterContext(pinnedChapters)}\n`
+        : '';
 
     const userContent = `${RECOMMENDER_PROMPT}
 
@@ -97,7 +114,7 @@ ${npcRoster}
 
 [LORE INDEX — ${loreChunks.filter(c => !c.alwaysInclude).length} entries]
 ${loreIndex}
-
+${pinnedSection}
 [RECENT CONVERSATION]
 ${conversation}
 

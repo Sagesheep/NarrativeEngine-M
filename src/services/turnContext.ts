@@ -2,10 +2,11 @@ import type { LoreChunk, ArchiveScene } from '../types';
 import type { TurnCallbacks, TurnState } from './turnTypes';
 import { buildPayload } from './chatEngine';
 import { retrieveRelevantLore } from './loreRetriever';
-import { recallArchiveScenes } from './archiveMemory';
+import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
 import { countTokens } from './tokenizer';
 import { offlineStorage } from './storage';
 import { recommendContext } from './contextRecommender';
+import { deepArchiveScan } from './deepArchiveSearch';
 import { queryFacts, formatFactsForContext } from './semanticMemory';
 import { formatResolvedForContext } from './timelineResolver';
 import { recallWithChapterFunnel } from './archiveChapterEngine';
@@ -19,6 +20,7 @@ export type GatheredContext = {
     archiveRecall: ArchiveScene[] | undefined;
     semanticFactText: string;
     recommendedNPCNames: string[] | undefined;
+    deepContextSummary: string | undefined;
     payloadResult: ReturnType<typeof buildPayload>;
 };
 
@@ -68,12 +70,19 @@ export async function gatherContext(
     if (chapters.length > 0 && activeCampaignId) {
         try {
             const utilityEndpoint = state.getUtilityEndpoint?.();
+            if (!utilityEndpoint) throw new Error('No utility endpoint');
             const funnelPromise = recallWithChapterFunnel(
-                activeCampaignId, chapters, archiveIndex, finalInput, messages, npcLedger, semanticFacts, 3000, utilityEndpoint!, undefined, semanticArchiveIds
+                activeCampaignId, chapters, archiveIndex, finalInput, messages, npcLedger, semanticFacts, 3000, utilityEndpoint, undefined, semanticArchiveIds
             );
-            const fallbackPromise = new Promise<{ scenes: string; usedTokens: number } | null>(resolve => setTimeout(resolve, 5000)).then(() => null);
+            let fallbackTimeoutId: ReturnType<typeof setTimeout>;
+            const fallbackPromise = new Promise<{ scenes: string; usedTokens: number } | null>(resolve => {
+                fallbackTimeoutId = setTimeout(resolve, 5000) as unknown as ReturnType<typeof setTimeout>;
+            }).then(() => null);
 
-            const result = await Promise.race([funnelPromise, fallbackPromise]);
+            const result = await Promise.race([
+                funnelPromise.finally(() => clearTimeout(fallbackTimeoutId)),
+                fallbackPromise
+            ]);
             if (result) {
                 archiveResult = { scenes: [] as ArchiveScene[], usedTokens: result.usedTokens };
                 const sceneMatches = (result.scenes as string).match(/--- SCENE (\d+) ---\n([\s\S]*?)(?=\n--- SCENE \d+ ---|$)/g);
@@ -100,6 +109,64 @@ export async function gatherContext(
 
     const archiveRecall = archiveResult.scenes.length > 0 ? archiveResult.scenes : undefined;
 
+    // ── Pinned Chapter Injection ──
+    if (state.pinnedChapterIds.length > 0 && activeCampaignId) {
+        const alreadyCoveredIds = new Set((archiveRecall ?? []).map(s => s.sceneId));
+
+        const pinnedRanges: [string, string][] = state.pinnedChapterIds
+            .map(id => state.chapters.find(c => c.chapterId === id))
+            .filter((c): c is import('../types').ArchiveChapter => !!c)
+            .map(c => c.sceneRange);
+
+        if (pinnedRanges.length > 0) {
+            try {
+                const scoredIds = retrieveArchiveMemory(
+                    archiveIndex, finalInput, messages, npcLedger,
+                    undefined, semanticFacts, pinnedRanges, semanticArchiveIds
+                ).filter(id => !alreadyCoveredIds.has(id));
+
+                if (scoredIds.length > 0) {
+                    const pinnedBudget = Math.floor((settings.contextLimit || 8192) * 0.35);
+                    const pinnedScenes = await fetchArchiveScenes(activeCampaignId, scoredIds, pinnedBudget);
+                    archiveResult.scenes = [...(archiveResult.scenes ?? []), ...pinnedScenes];
+                    console.log(`[Pin] Injected ${pinnedScenes.length} scored scenes from ${pinnedRanges.length} pinned chapter(s)`);
+                }
+            } catch (err) {
+                console.warn('[Pin] Failed to fetch pinned scenes:', err);
+            }
+        }
+        state.clearPinnedChapters();
+    }
+
+    // ── Deep Archive Scan (one-shot when GM long-presses Send) ──
+    let deepContextSummary: string | undefined;
+    if (state.deepContextSearch && activeCampaignId) {
+        const utilityForDeep = state.getUtilityEndpoint?.();
+        if (utilityForDeep?.endpoint) {
+            try {
+                const sealedChapters = (state.chapters ?? []).filter(c => c.sealedAt !== undefined);
+                const deepBudget = Math.floor((settings.contextLimit || 8192) * 0.45);
+                const brief = await deepArchiveScan(
+                    utilityForDeep,
+                    archiveIndex,
+                    sealedChapters,
+                    activeCampaignId,
+                    state.getMessages(),
+                    finalInput,
+                    deepBudget,
+                    (msg) => callbacks.setLoadingStatus?.(msg),
+                );
+                if (brief) deepContextSummary = brief;
+            } catch (err) {
+                console.warn('[DeepArchiveSearch] Failed, using standard recall:', err);
+            }
+        } else {
+            console.warn('[DeepArchiveSearch] No utility endpoint configured — deep scan skipped.');
+        }
+    }
+
+    const finalArchiveRecall = archiveResult.scenes.length > 0 ? archiveResult.scenes : undefined;
+
     let semanticFactText = '';
     try {
         semanticFactText = formatFactsForContext(queryFacts(semanticFacts, finalInput, messages, npcLedger, 500));
@@ -116,11 +183,22 @@ export async function gatherContext(
 
     let recommendedNPCNames: string[] | undefined;
     const utilityEndpoint = state.getUtilityEndpoint?.();
+    const pinnedChaptersForRecommender = state.pinnedChapterIds.length > 0
+        ? state.chapters.filter(c => state.pinnedChapterIds.includes(c.chapterId))
+        : undefined;
     if (utilityEndpoint?.endpoint) {
         callbacks.setLoadingStatus?.('[4/5] Consulting AI Recommender...');
         try {
-            const result = await recommendContext(utilityEndpoint, npcLedger, loreChunks, messages, finalInput);
-            recommendedNPCNames = result.relevantNPCNames;
+            const recommenderResult = await Promise.race([
+                recommendContext(utilityEndpoint, npcLedger, loreChunks, messages, finalInput, pinnedChaptersForRecommender),
+                new Promise<null>(resolve => setTimeout(() => {
+                    console.warn('[TurnContext] Recommender timeout — proceeding without recommendations');
+                    resolve(null);
+                }, 15_000)),
+            ]);
+            if (recommenderResult) {
+                recommendedNPCNames = recommenderResult.relevantNPCNames;
+            }
         } catch (err) {
             console.warn('[TurnOrchestrator] UtilityAI recommender failed:', err);
         }
@@ -133,8 +211,8 @@ export async function gatherContext(
 
     const payloadResult = buildPayload(
         settings, state.context, freshMessages, finalInput, condenser.condensedSummary || undefined,
-        condenser.condensedUpToIndex, relevantLore, npcLedger, archiveRecall, sceneNumber, recommendedNPCNames, semanticFactText
+        condenser.condensedUpToIndex, relevantLore, npcLedger, finalArchiveRecall, sceneNumber, recommendedNPCNames, semanticFactText, deepContextSummary
     );
 
-    return { relevantLore, sceneNumber, archiveRecall, semanticFactText, recommendedNPCNames, payloadResult };
+    return { relevantLore, sceneNumber, archiveRecall: finalArchiveRecall, semanticFactText, recommendedNPCNames, deepContextSummary, payloadResult };
 }

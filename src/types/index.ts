@@ -1,4 +1,4 @@
-export type ApiFormat = 'openai' | 'ollama';
+export type ApiFormat = 'openai' | 'ollama' | 'claude' | 'gemini';
 
 export type LLMProvider = {
     endpoint: string;
@@ -8,6 +8,36 @@ export type LLMProvider = {
     apiFormat?: ApiFormat;
     id?: string;    // only present in saved presets / legacy migrations
     label?: string; // only present in saved presets / legacy migrations
+};
+
+export type SamplingConfig = {
+    temperature?: number;
+    top_p?: number;
+    top_k?: number;
+    min_p?: number;
+    frequency_penalty?: number;
+    presence_penalty?: number;
+    repetition_penalty?: number;
+    dry_multiplier?: number;
+    dry_base?: number;
+    dry_allowed_length?: number;
+    max_tokens?: number;
+};
+
+export type PipelinePhase =
+    | 'idle'
+    | 'rolling-dice'
+    | 'ai-intervention'
+    | 'gathering-context'
+    | 'building-prompt'
+    | 'generating'
+    | 'checking-notes'
+    | 'post-processing';
+
+export type StreamingStats = {
+    tokens: number;
+    elapsed: number;
+    speed: number;
 };
 
 /** @deprecated Use LLMProvider */
@@ -24,6 +54,7 @@ export type AIPreset = {
     enemyAI?: LLMProvider;
     neutralAI?: LLMProvider;
     allyAI?: LLMProvider;
+    sampling?: SamplingConfig;
 };
 
 export type AppSettings = {
@@ -35,6 +66,8 @@ export type AppSettings = {
     theme?: 'light' | 'dark' | 'system';
     showReasoning?: boolean; // Toggles visibility of LLM thinking blocks
     uiScale?: number;  // 0.75 to 1.25, default 1.0
+
+    enableDeepArchiveSearch?: boolean; // Unlocks long-press Send for AI-driven full-archive scan
 
     // Legacy fields kept for migration only
     providers?: LLMProvider[];

@@ -85,6 +85,7 @@ export const defaultSettings: AppSettings = {
     theme: 'system',
     showReasoning: true,
     uiScale: 1.0,
+    enableDeepArchiveSearch: false,
 };
 
 export function resolveTheme(theme: 'light' | 'dark' | 'system'): 'light' | 'dark' {
@@ -128,6 +129,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
             theme: (raw.theme as 'light' | 'dark' | 'system') ?? 'system',
             showReasoning: (raw.showReasoning as boolean) ?? true,
             uiScale: (raw.uiScale as number) ?? 1.0,
+            enableDeepArchiveSearch: (raw.enableDeepArchiveSearch as boolean) ?? false,
         };
     }
 
@@ -171,6 +173,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         debugMode: (raw.debugMode as boolean) ?? false,
         theme: (raw.theme as 'light' | 'dark' | 'system') ?? 'system',
         showReasoning: (raw.showReasoning as boolean) ?? true,
+        enableDeepArchiveSearch: (raw.enableDeepArchiveSearch as boolean) ?? false,
     };
 }
 

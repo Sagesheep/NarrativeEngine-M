@@ -1,6 +1,6 @@
-import type { LLMProvider } from '../types';
+import type { LLMProvider, SamplingConfig } from '../types';
 import { uid } from '../utils/uid';
-import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent } from '../utils/llmApiHelper';
+import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent, extractStreamDelta, extractStreamToolCall } from '../utils/llmApiHelper';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 export type OpenAIMessage = {
@@ -18,24 +18,25 @@ export async function sendMessage(
     onDone: (text: string, toolCall?: { id: string; name: string; arguments: string }) => void,
     onError: (err: string) => void,
     tools?: unknown[],
-    abortController?: AbortController
+    abortController?: AbortController,
+    sampling?: SamplingConfig,
 ) {
-    const url = getChatUrl(provider);
+    const format = getApiFormat(provider);
+    const useStreaming = provider.streamingEnabled !== false;
+    const url = getChatUrl(provider, { stream: useStreaming });
     const headers = buildChatHeaders(provider);
-    const isOllama = getApiFormat(provider) === 'ollama';
 
     try {
-        const useStreaming = provider.streamingEnabled !== false;
-
         // On native with streaming OFF: use CapacitorHttp to bypass WebView CORS restrictions.
-        // (Providers like Ollama cloud don't send CORS headers; CapacitorHttp routes through
-        // the native HTTP client which has no CORS restrictions.)
-        // When streaming is ON, fall through to regular fetch — providers like OpenAI/Anthropic
-        // do support CORS and streaming works fine for them.
         if (Capacitor.isNativePlatform() && !useStreaming) {
-            const nativePayload = buildChatBody(provider, messages, { stream: false, tools });
+            let nativeUrl = url;
+            if (format === 'gemini' && provider.apiKey) {
+                const sep = nativeUrl.includes('?') ? '&' : '?';
+                nativeUrl = `${nativeUrl}${sep}key=${provider.apiKey}`;
+            }
+            const nativePayload = buildChatBody(provider, messages, { stream: false, tools, sampling });
             const nativeRes = await CapacitorHttp.post({
-                url,
+                url: nativeUrl,
                 headers,
                 data: nativePayload,
                 readTimeout: 600000,
@@ -50,15 +51,23 @@ export async function sendMessage(
             onDone(nativeText);
             return;
         }
+
         const payload = buildChatBody(provider, messages, {
             stream: useStreaming,
             tools,
+            sampling,
         });
 
         const controller = abortController || new AbortController();
         let timeoutId = setTimeout(() => controller.abort(), 120000);
 
-        const res = await fetch(url, {
+        let fetchUrl = url;
+        if (format === 'gemini' && provider.apiKey) {
+            const sep = fetchUrl.includes('?') ? '&' : '?';
+            fetchUrl = `${fetchUrl}${sep}key=${provider.apiKey}`;
+        }
+
+        const res = await fetch(fetchUrl, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload),
@@ -110,12 +119,37 @@ export async function sendMessage(
                 const trimmed = line.trim();
                 if (!trimmed) continue;
 
-                if (isOllama) {
+                if (format === 'ollama') {
                     try {
                         const parsed = JSON.parse(trimmed);
                         if (parsed.message?.content) {
                             fullText += parsed.message.content;
                             onChunk(fullText);
+                        }
+                    } catch {
+                        // skip malformed chunks
+                    }
+                    continue;
+                }
+
+                if (format === 'claude' || format === 'gemini') {
+                    if (!trimmed.startsWith('data: ')) continue;
+                    const data = trimmed.slice(6);
+                    if (data === '[DONE]') continue;
+
+                    try {
+                        const parsed = JSON.parse(data);
+                        const delta = extractStreamDelta(parsed, provider);
+                        if (delta) {
+                            fullText += delta;
+                            onChunk(fullText);
+                        }
+
+                        const tc = extractStreamToolCall(parsed, provider);
+                        if (tc) {
+                            if (tc.id) tcId = tc.id;
+                            if (tc.name) tcName = tc.name;
+                            if (tc.arguments) tcArgs += tc.arguments;
                         }
                     } catch {
                         // skip malformed chunks
@@ -150,7 +184,7 @@ export async function sendMessage(
         }
 
         // --- DeepSeek / Local Model Fallback Parsing ---
-        if (!tcName && fullText.includes('<\uFF5CDSML\uFF5C>function_calls>')) {
+        if (format !== 'claude' && format !== 'gemini' && !tcName && fullText.includes('<\uFF5CDSML\uFF5C>function_calls>')) {
             const funcMatch = fullText.match(/<\uFF5CDSML\uFF5C>invoke name="([^"]+)">/);
             if (funcMatch) {
                 tcName = funcMatch[1];
@@ -189,21 +223,29 @@ export async function sendMessage(
             onDone(fullText);
         }
     } catch (err) {
+        const isAbort = (err instanceof DOMException && err.name === 'AbortError')
+            || (err instanceof Error && err.name === 'AbortError')
+            || (err as any)?.name === 'AbortError';
+        if (isAbort) {
+            onError('__ABORT__');
+            return;
+        }
         onError(err instanceof Error ? err.message : 'Unknown network error');
     }
 }
 
 export async function testConnection(provider: LLMProvider): Promise<{ ok: boolean; detail: string }> {
-    const url = getModelsUrl(provider);
-    const headers: Record<string, string> = {};
-    if (provider.apiKey) {
-        headers['Authorization'] = `Bearer ${provider.apiKey}`;
+    const format = getApiFormat(provider);
+    const headers = buildChatHeaders(provider);
+    delete headers['Content-Type'];
+    let url = getModelsUrl(provider);
+
+    if (format === 'gemini' && provider.apiKey) {
+        url = `${url}?key=${provider.apiKey}`;
     }
 
     try {
         if (Capacitor.isNativePlatform()) {
-            // Native HTTP bypasses WebView CORS restrictions; safe here because
-            // testConnection is a simple GET (no streaming involved).
             const res = await CapacitorHttp.get({ url, headers });
             if (res.status >= 200 && res.status < 300) {
                 return { ok: true, detail: 'Connection successful' };
@@ -211,7 +253,6 @@ export async function testConnection(provider: LLMProvider): Promise<{ ok: boole
             return { ok: false, detail: `HTTP ${res.status}: ${JSON.stringify(res.data)}` };
         }
 
-        // Web / dev server path — unchanged
         const res = await fetch(url, { headers });
         if (res.ok) {
             return { ok: true, detail: 'Connection successful' };

@@ -51,19 +51,21 @@ export function buildPayload(
     archiveRecall?: ArchiveScene[],
     sceneNumber?: string,
     recommendedNPCNames?: string[],
-    semanticFactText?: string
+    semanticFactText?: string,
+    deepContextSummary?: string
 ): { messages: OpenAIMessage[]; trace?: PayloadTrace[] } {
     const trace: PayloadTrace[] = [];
     const isDebug = settings.debugMode === true;
     const limit = settings.contextLimit || 8192;
 
     // --- 1. Define Budgets (ST-inspired proportionality) ---
-    // Protect core truth, but ensure history isn't completely starved.
+    // When deep context summary is present, expand world budget at expense of stable/volatile.
+    const hasDeepContext = !!deepContextSummary;
     const budgetMap = {
-        stable: Math.floor(limit * 0.25),   // Rules, Canon, Index, Scene# (Max 25%)
-        summary: Math.floor(limit * 0.10),  // Condensed summary (Max 10%)
-        world: Math.floor(limit * 0.40),    // Lore, NPCs, Archive Recall (Max 40%)
-        volatile: Math.floor(limit * 0.10), // Profile, Inventory (Max 10%)
+        stable:   Math.floor(limit * (hasDeepContext ? 0.15 : 0.25)),
+        summary:  Math.floor(limit * 0.10),
+        world:    Math.floor(limit * (hasDeepContext ? 0.60 : 0.40)),
+        volatile: Math.floor(limit * (hasDeepContext ? 0.07 : 0.10)),
         // History + User message take the remainder
     };
 
@@ -140,6 +142,12 @@ export function buildPayload(
             const text = `[ARCHIVE RECALL — VERBATIM PAST SCENES]\n${filteredRecall.map(s => `[SCENE #${s.sceneId}]\n${s.content}`).join('\n\n')}\n[END ARCHIVE RECALL]`;
             worldBlocks.push({ source: 'Archive Recall', content: text, tokens: countTokens(text), reason: `Verbatim history (${filteredRecall.length} scenes)` });
         }
+    }
+
+    // Deep Archive Context (AI-synthesized brief from full-archive scan)
+    if (deepContextSummary) {
+        const text = `[DEEP ARCHIVE CONTEXT — AI-synthesized from full campaign history]\n${deepContextSummary}\n[END DEEP ARCHIVE CONTEXT]`;
+        worldBlocks.push({ source: 'Deep Archive Brief', content: text, tokens: countTokens(text), reason: 'Deep archive scan (GM long-press)' });
     }
 
     // RAG Lore — minified and grouped by category
@@ -261,13 +269,18 @@ export function buildPayload(
     let historyUsed = 0;
     for (let i = candidateMessages.length - 1; i >= 0; i--) {
         const msg = candidateMessages[i];
-        const textToEstimate = msg.content || JSON.stringify(msg.tool_calls || '') || '';
+        let content = msg.content ?? null;
+        if (msg.role === 'user' && typeof content === 'string') {
+            content = content.replace(/\n?\[(?:DICE OUTCOMES:|SURPRISE EVENT:|ENCOUNTER EVENT:|WORLD_EVENT:)[^\]]*\]/g, '');
+        }
+
+        const textToEstimate = content || JSON.stringify(msg.tool_calls || '') || '';
         const cost = countTokens(textToEstimate);
         if (historyUsed + cost > historyBudget) break;
 
         const openAIMsg: OpenAIMessage = {
             role: msg.role as 'system' | 'user' | 'assistant' | 'tool',
-            content: msg.content ?? null
+            content
         };
         if (msg.name) openAIMsg.name = msg.name;
         if (msg.tool_calls) openAIMsg.tool_calls = msg.tool_calls;

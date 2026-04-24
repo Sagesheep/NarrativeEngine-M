@@ -5,10 +5,11 @@ import { api } from '../../services/apiClient';
 import { ChapterCard } from './ChapterCard';
 import { toast } from '../Toast';
 import { countTokens } from '../../services/tokenizer';
+import { generateChapterSummary } from '../../services/saveFileEngine';
 import type { ArchiveChapter } from '../../types';
 
 export function ChapterTab() {
-    const { chapters, setChapters, activeCampaignId, context, messages, settings, condenser } = useAppStore();
+    const { chapters, setChapters, activeCampaignId, context, messages, settings, condenser, pinnedChapterIds, pinChapter } = useAppStore();
 
     const ctxPct = useMemo(() => {
         const sysText = [
@@ -115,9 +116,50 @@ export function ChapterTab() {
         if (!activeCampaignId) return;
         setIsRegenerating(chapter.chapterId);
         try {
-            await api.chapters.update(activeCampaignId, chapter.chapterId, { invalidated: false });
-            await refreshChapters();
-            toast.success(`Summary refreshed for ${chapter.title}`);
+            const provider = useAppStore.getState().getActiveUtilityEndpoint()
+                ?? useAppStore.getState().getActiveStoryEndpoint();
+            if (!provider) {
+                toast.error('No AI provider available to generate summary');
+                return;
+            }
+
+            const startNum = parseInt(chapter.sceneRange[0], 10);
+            const endNum = parseInt(chapter.sceneRange[1], 10);
+            const sceneIds = Array.from(
+                { length: endNum - startNum + 1 },
+                (_, i) => String(startNum + i).padStart(3, '0')
+            );
+
+            const allScenes = await api.archive.getIndex(activeCampaignId);
+            const chapterIndexEntries = allScenes.filter(s => sceneIds.includes(s.sceneId));
+            const scenesContent = chapterIndexEntries.map(s => ({
+                sceneId: s.sceneId,
+                content: s.userSnippet || '',
+            }));
+
+            if (scenesContent.length === 0) {
+                toast.error('No scenes found for this chapter');
+                return;
+            }
+
+            const summary = await generateChapterSummary(provider, scenesContent, chapter.title);
+            if (summary) {
+                await api.chapters.update(activeCampaignId, chapter.chapterId, {
+                    title: summary.title,
+                    summary: summary.summary,
+                    keywords: summary.keywords,
+                    npcs: summary.npcs,
+                    majorEvents: summary.majorEvents,
+                    unresolvedThreads: summary.unresolvedThreads,
+                    tone: summary.tone,
+                    themes: summary.themes,
+                    invalidated: false,
+                });
+                await refreshChapters();
+                toast.success(`Summary regenerated for ${chapter.title}`);
+            } else {
+                toast.error(`Failed to generate summary for ${chapter.title}`);
+            }
         } catch (err) {
             console.error(err);
             toast.error(`Failed to regenerate summary for ${chapter.title}`);
@@ -140,6 +182,11 @@ export function ChapterTab() {
                     <span className={`text-[10px] font-mono ${ctxColor}`}>
                         CTX {ctxPct}%
                     </span>
+                    {pinnedChapterIds.length > 0 && (
+                        <span className="text-[10px] font-bold uppercase text-amber-400 bg-amber-400/10 border border-amber-400/30 px-1.5 py-0.5 rounded font-mono">
+                            {pinnedChapterIds.length} PINNED
+                        </span>
+                    )}
                 </div>
                 <div className="flex gap-2">
                     <button
@@ -186,6 +233,8 @@ export function ChapterTab() {
                                 isNextAdjacent={isNextAdjacent}
                                 onMergeWithNext={() => nextChapter && handleMerge(ch.chapterId, nextChapter.chapterId)}
                                 isProcessing={isRegenerating === ch.chapterId}
+                                isPinned={pinnedChapterIds.includes(ch.chapterId)}
+                                onTogglePin={() => pinChapter(ch.chapterId)}
                             />
                         );
                     })

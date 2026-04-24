@@ -10,6 +10,8 @@ import type {
     SemanticFact,
     ArchiveChapter,
     TimelineEvent,
+    PipelinePhase,
+    StreamingStats,
 } from '../types';
 
 export type TurnCallbacks = {
@@ -28,6 +30,8 @@ export type TurnCallbacks = {
     setLoadingStatus?: (status: string | null) => void;
     setSemanticFacts?: (facts: SemanticFact[]) => void;
     setChapters?: (chapters: ArchiveChapter[]) => void;
+    setPipelinePhase?: (phase: PipelinePhase) => void;
+    setStreamingStats?: (stats: StreamingStats | null) => void;
 };
 
 export type TurnState = {
@@ -46,10 +50,14 @@ export type TurnState = {
     provider: LLMProvider | undefined;
     getMessages: () => ChatMessage[];
     getFreshProvider: () => LLMProvider | undefined;
+    getFreshSummarizerProvider?: () => LLMProvider | undefined;
     getUtilityEndpoint?: () => LLMProvider | undefined;
     forcedInterventions?: ('enemy' | 'neutral' | 'ally')[];
     incrementBookkeepingTurnCounter: () => number;
     autoBookkeepingInterval: number;
     resetBookkeepingTurnCounter: () => void;
     timeline: TimelineEvent[];
+    pinnedChapterIds: string[];
+    clearPinnedChapters: () => void;
+    deepContextSearch?: boolean; // true when GM long-pressed Send to trigger deep archive scan
 };

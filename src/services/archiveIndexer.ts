@@ -1,5 +1,6 @@
 import type { ArchiveIndexEntry, SemanticFact } from '../types';
 import { PROPER_NOUN_STOP_WORDS } from '../utils/stopWords';
+import { heuristicImportance } from './importanceRater';
 
 export function extractIndexKeywords(text: string): string[] {
     const keywords = new Set<string>();
@@ -22,17 +23,6 @@ export function extractNPCNames(text: string): string[] {
     const matches = text.matchAll(/\[\*{0,2}([A-Za-z][A-Za-z0-9 '-]{1,30})\*{0,2}\]/g);
     for (const m of matches) names.add(m[1].trim());
     return Array.from(names).slice(0, 15);
-}
-
-export function estimateImportance(text: string): number {
-    const lower = text.toLowerCase();
-    let importance = 3;
-    if (/\b(killed|slain|died|defeated|destroyed|executed|murdered|sacrificed)\b/.test(lower)) importance += 3;
-    if (/\[MEMORABLE:/.test(text)) importance += 2;
-    if (/\b(king|queen|emperor|empress|lord|lady|prince|princess|archmage|general|commander|champion)\b/.test(lower)) importance += 1;
-    if (/\b(acquired|obtained|rewarded|treasure|legendary|artifact|enchanted)\b/.test(lower)) importance += 1;
-    if (/\b(quest|mission|objective|prophecy|oath|vow|alliance|betrayal|treaty)\b/.test(lower)) importance += 1;
-    return Math.min(10, importance);
 }
 
 export function extractKeywordStrengths(text: string, keywords: string[]): Record<string, number> {
@@ -137,7 +127,7 @@ export function buildArchiveIndexEntry(
         keywordStrengths: extractKeywordStrengths(combinedText, keywords),
         npcsMentioned: npcNames,
         npcStrengths: extractNPCStrengths(assistantContent, npcNames),
-        importance: estimateImportance(combinedText),
+        importance: heuristicImportance(combinedText),
         userSnippet: userContent.slice(0, 120),
     };
 }
