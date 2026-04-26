@@ -108,16 +108,40 @@ Any OpenAI-compatible API. Configure up to 6 endpoints per preset:
 
 ---
 
-## Setting Up Your First Campaign
+## Quick Start — Example Campaigns
 
-The desktop repo's `Example_Setup/` folder contains a complete ready-to-play campaign (**The Awakening**) with world lore, a GM rulebook, and a starter prompt. You can use those files directly in the mobile app:
+Two ready-to-play campaigns are included in the [`Example_Setup/`](https://github.com/Sagesheep/NarrativeEngine-M/tree/main/Example_Setup) folder:
 
-1. Create a new campaign
-2. Open **World Info (Lore)** and paste `Spirit_Card_World_Lore.md`
-3. Open **Campaign Settings** and paste `Rulebook v2.6.md` into the System Prompt field
-4. Start a chat and paste `starter_prompt.md` as your first message
+| Campaign | Setting |
+|---|---|
+| **Spirit Card World** | Gritty survival fantasy — humanity behind walls, monsters outside, Spirit Cards as power |
+| **Shinobi World** | Naruto-inspired TTRPG with expanded lore and a campaign seed |
 
-See the [desktop README](https://github.com/Sagesheep/NarrativeEngine-p#setting-up-your-first-campaign) for full setup details and lore writing conventions.
+Each folder contains three files you'll copy into the app:
+
+| File | Where it goes in the app |
+|---|---|
+| `AI_GM_OS_v3_0_App_Optimized.md` | **Campaign Settings → System Prompt** |
+| `*_world_lore*.md` / `awakening_world.md` | **World Info (Lore)** tab |
+| `starter_prompt.md` / `campaign_start_seed.md` | Your **first message** in the chat |
+
+### How to load them on your phone
+
+There's no file picker — you copy the text directly from GitHub into the app:
+
+1. On your phone, open the campaign folder on GitHub (link above)
+2. Tap a file → tap the **Raw** button → select all → copy
+3. Open Narrative Engine, create a new campaign, and paste into the right field (see table above)
+4. Repeat for the other two files
+5. Hit send on the starter prompt — the GM will walk you through character creation
+
+**Tip:** Do the lore and system prompt first, then start the chat with the starter prompt as your opening message.
+
+### Writing your own campaign
+
+- **Lore** — Write in Markdown using `##` / `###` headers. Use `[CHUNK: TYPE -- NAME]` prefixes to classify entries. Supported types: `world_overview`, `faction`, `location`, `character`, `power_system`, `economy`, `event`, `relationship`, `rules`, `culture`, `misc`
+- **System Prompt** — Define GM tone, output format, NPC behavior rules, dice resolution. The engine handles memory and recall.
+- **First Message** — Set the opening scene or ask for character creation.
 
 ---
 
