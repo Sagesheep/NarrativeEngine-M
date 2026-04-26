@@ -123,7 +123,7 @@ export async function runTurn(
         callbacks.setStreamingStats?.(null);
 
         const allowTools = toolCallCount < 2 && apiRetryCount < 2;
-        const requestPayload = sanitizePayloadForApi(currentPayload, allowTools);
+        const requestPayload = sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName);
 
         const tools = allowTools ? [...TOOL_DEFINITIONS] : undefined;
 
@@ -147,7 +147,8 @@ export async function runTurn(
                             id: toolCall.id,
                             type: 'function' as const,
                             function: { name: toolCall.name, arguments: toolCall.arguments }
-                        }]
+                        }],
+                        ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
                     });
 
                     currentPayload.push({
@@ -199,7 +200,8 @@ export async function runTurn(
                             id: toolCall.id,
                             type: 'function' as const,
                             function: { name: toolCall.name, arguments: toolCall.arguments }
-                        }]
+                        }],
+                        ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
                     });
 
                     currentPayload.push({
