@@ -18,6 +18,9 @@ export type UISlice = {
     setPipelinePhase: (phase: PipelinePhase) => void;
     setStreamingStats: (stats: StreamingStats | null) => void;
     setMobileView: (view: 'chat' | 'context' | 'npcs' | 'settings') => void;
+    deepArmed: boolean;
+    setDeepArmed: (val: boolean) => void;
+    toggleDeepArmed: () => void;
 };
 
 export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
@@ -36,4 +39,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     setPipelinePhase: (phase) => set({ pipelinePhase: phase }),
     setStreamingStats: (stats) => set({ streamingStats: stats }),
     setMobileView: (view) => set({ mobileView: view }),
+    deepArmed: false,
+    setDeepArmed: (val) => set({ deepArmed: val }),
+    toggleDeepArmed: () => set((s) => ({ deepArmed: !s.deepArmed })),
 });

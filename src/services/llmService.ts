@@ -9,13 +9,14 @@ export type OpenAIMessage = {
     name?: string;
     tool_calls?: unknown[];
     tool_call_id?: string;
+    reasoning_content?: string;
 };
 
 export async function sendMessage(
     provider: LLMProvider,
     messages: OpenAIMessage[],
     onChunk: (text: string) => void,
-    onDone: (text: string, toolCall?: { id: string; name: string; arguments: string }) => void,
+    onDone: (text: string, toolCall?: { id: string; name: string; arguments: string }, reasoningContent?: string) => void,
     onError: (err: string) => void,
     tools?: unknown[],
     abortController?: AbortController,
@@ -47,8 +48,9 @@ export async function sendMessage(
                 return;
             }
             const nativeText = extractContent(nativeRes.data, provider);
+            const nativeReasoning = (nativeRes.data as any)?.choices?.[0]?.message?.reasoning_content as string | undefined;
             onChunk(nativeText);
-            onDone(nativeText);
+            onDone(nativeText, undefined, nativeReasoning || undefined);
             return;
         }
 
@@ -85,8 +87,9 @@ export async function sendMessage(
             clearTimeout(timeoutId);
             const data = await res.json();
             const text = extractContent(data, provider);
+            const reasoning = (data as any)?.choices?.[0]?.message?.reasoning_content as string | undefined;
             onChunk(text);
-            onDone(text);
+            onDone(text, undefined, reasoning || undefined);
             return;
         }
 
@@ -103,6 +106,7 @@ export async function sendMessage(
         let tcId = '';
         let tcName = '';
         let tcArgs = '';
+        let reasoningContent = '';
 
         while (true) {
             const { done, value } = await reader.read();
@@ -166,6 +170,10 @@ export async function sendMessage(
                     const parsed = JSON.parse(data);
                     const delta = parsed.choices?.[0]?.delta;
 
+                    if (delta?.reasoning_content) {
+                        reasoningContent += delta.reasoning_content;
+                    }
+
                     if (delta?.content) {
                         fullText += delta.content;
                         onChunk(fullText);
@@ -218,9 +226,9 @@ export async function sendMessage(
         }
 
         if (tcName) {
-            onDone(fullText, { id: tcId, name: tcName, arguments: tcArgs });
+            onDone(fullText, { id: tcId, name: tcName, arguments: tcArgs }, reasoningContent || undefined);
         } else {
-            onDone(fullText);
+            onDone(fullText, undefined, reasoningContent || undefined);
         }
     } catch (err) {
         const isAbort = (err instanceof DOMException && err.name === 'AbortError')

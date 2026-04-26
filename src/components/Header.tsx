@@ -1,4 +1,4 @@
-import { Settings, PanelLeftOpen, PanelLeftClose, Trash2, LogOut, Users, Save, Archive } from 'lucide-react';
+import { Settings, PanelLeftOpen, PanelLeftClose, Trash2, LogOut, Users, Save, Archive, ScanSearch } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { TokenGauge } from './TokenGauge';
 import { saveCampaignState } from '../store/campaignStore';
@@ -17,6 +17,9 @@ export function Header() {
         context,
         messages,
         condenser,
+        deepArmed,
+        toggleDeepArmed,
+        settings,
     } = useAppStore();
 
     const handleClearChat = async () => {
@@ -97,6 +100,21 @@ export function Header() {
             >
                 <Settings size={18} />
             </button>
+
+            {settings.enableDeepArchiveSearch && (
+                <button
+                    onClick={toggleDeepArmed}
+                    className={`transition-colors p-1 touch-btn md:p-1 md:min-h-0 md:min-w-0 ${
+                        deepArmed
+                            ? 'text-amber-400 animate-pulse'
+                            : 'text-text-dim hover:text-terminal'
+                    }`}
+                    title={deepArmed ? 'Deep Search armed — send to activate' : 'Arm Deep Archive Search'}
+                    aria-label="Toggle Deep Archive Search"
+                >
+                    <ScanSearch size={16} />
+                </button>
+            )}
 
             <button
                 onClick={handleExit}

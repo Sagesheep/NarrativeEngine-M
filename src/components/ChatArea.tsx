@@ -82,6 +82,8 @@ export function ChatArea() {
         addNPC,
         updateLastMessage,
         setTimeline,
+        deepArmed,
+        setDeepArmed,
     } = useAppStore();
 
     const [input, setInput] = useState('');
@@ -94,30 +96,14 @@ export function ChatArea() {
     const [showCondensedPanel, setShowCondensedPanel] = useState(false);
     const [streamingStats, setStreamingStatsLocal] = useState<StreamingStats | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [deepArmed, setDeepArmed] = useState(false);
     const streamStartRef = useRef<number>(0);
     const bottomRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
-    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const resetTextareaHeight = () => {
         if (inputRef.current) inputRef.current.style.height = '40px';
-    };
-
-    const handleSendPressStart = () => {
-        if (!settings.enableDeepArchiveSearch || isStreaming) return;
-        longPressTimer.current = setTimeout(() => {
-            setDeepArmed(true);
-        }, 500);
-    };
-
-    const handleSendPressEnd = () => {
-        if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-        }
     };
 
     const handleSend = async (overrideText?: string) => {
@@ -560,16 +546,9 @@ export function ChatArea() {
                             className="flex-1 bg-transparent px-2 py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[40px] leading-5 disabled:opacity-40 disabled:cursor-not-allowed" />
                         <button
                             onClick={isStreaming ? handleStop : (editingMessageId ? handleEditSubmit : () => handleSend())}
-                            onMouseDown={!isStreaming && !editingMessageId ? handleSendPressStart : undefined}
-                            onMouseUp={!isStreaming && !editingMessageId ? handleSendPressEnd : undefined}
-                            onMouseLeave={!isStreaming && !editingMessageId ? handleSendPressEnd : undefined}
-                            onTouchStart={!isStreaming && !editingMessageId ? handleSendPressStart : undefined}
-                            onTouchEnd={!isStreaming && !editingMessageId ? handleSendPressEnd : undefined}
                             disabled={!isStreaming && !input.trim()}
-                            title={deepArmed ? 'Deep Archive Search armed — release to send' : undefined}
                             className={`h-[32px] w-[40px] rounded transition-all flex items-center justify-center shrink-0 ${
                                 isStreaming ? 'text-amber-500 hover:bg-amber-500/10' :
-                                deepArmed ? 'text-amber-400 bg-amber-400/20 animate-pulse' :
                                 'text-terminal hover:bg-terminal/10'
                             }`}>
                             {isStreaming ? <Square size={16} fill="currentColor" /> : (editingMessageId ? <Check size={16} /> : <Send size={16} />)}

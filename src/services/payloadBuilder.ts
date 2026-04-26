@@ -285,6 +285,7 @@ export function buildPayload(
         if (msg.name) openAIMsg.name = msg.name;
         if (msg.tool_calls) openAIMsg.tool_calls = msg.tool_calls;
         if (msg.tool_call_id) openAIMsg.tool_call_id = msg.tool_call_id;
+        if ((msg as any).reasoning_content) openAIMsg.reasoning_content = (msg as any).reasoning_content;
 
         fitted.unshift(openAIMsg);
         historyUsed += cost;

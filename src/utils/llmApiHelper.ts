@@ -74,7 +74,7 @@ export function buildChatHeaders(provider: AnyProvider): Record<string, string> 
     return headers;
 }
 
-function transformClaudeMessages(messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string }[]): { system?: string; messages: { role: string; content: string | unknown[] }[] } {
+function transformClaudeMessages(messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string; reasoning_content?: string }[]): { system?: string; messages: { role: string; content: string | unknown[] }[] } {
     const systemParts: string[] = [];
     const transformed: { role: string; content: string | unknown[] }[] = [];
 
@@ -121,7 +121,7 @@ function transformClaudeMessages(messages: { role: string; content: string | nul
     return result;
 }
 
-function transformGeminiMessages(messages: { role: string; content: string | null; tool_calls?: unknown[]; tool_call_id?: string; name?: string }[]): { systemInstruction?: { parts: { text: string }[] }; contents: { role: string; parts: unknown[] }[] } {
+function transformGeminiMessages(messages: { role: string; content: string | null; tool_calls?: unknown[]; tool_call_id?: string; name?: string; reasoning_content?: string }[]): { systemInstruction?: { parts: { text: string }[] }; contents: { role: string; parts: unknown[] }[] } {
     const systemParts: string[] = [];
     const contents: { role: string; parts: unknown[] }[] = [];
 
@@ -174,7 +174,7 @@ function transformGeminiTools(tools: unknown[]): unknown[] {
 }
 
 function transformOllamaMessages(
-    messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string }[]
+    messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string; reasoning_content?: string }[]
 ): { role: string; content: string }[] {
     const result: { role: string; content: string }[] = [];
     for (const m of messages) {
@@ -189,7 +189,7 @@ function transformOllamaMessages(
 
 export function buildChatBody(
     provider: AnyProvider,
-    messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string }[],
+    messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string; reasoning_content?: string }[],
     options?: { stream?: boolean; max_tokens?: number; temperature?: number; tools?: unknown[]; sampling?: SamplingConfig }
 ): Record<string, unknown> {
     const format = getApiFormat(provider);

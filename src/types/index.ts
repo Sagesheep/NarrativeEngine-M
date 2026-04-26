@@ -180,6 +180,7 @@ export type ChatMessage = {
         function: { name: string; arguments: string };
     }[];
     tool_call_id?: string;
+    reasoning_content?: string;
     ephemeral?: boolean;
 };
 

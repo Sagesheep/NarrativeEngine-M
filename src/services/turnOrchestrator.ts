@@ -135,7 +135,7 @@ export async function runTurn(
             provider,
             requestPayload,
             (fullText) => callbacks.updateLastAssistant(fullText),
-            async (finalText, toolCall) => {
+            async (finalText, toolCall, reasoningContent) => {
                 if (toolCall && toolCall.name === 'query_campaign_lore') {
                     callbacks.onCheckingNotes(true);
                     callbacks.setPipelinePhase?.('checking-notes');
@@ -153,6 +153,7 @@ export async function runTurn(
                     currentPayload.push({
                         role: 'assistant',
                         content: finalText || "",
+                        reasoning_content: reasoningContent || undefined,
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
                     } as unknown as import('./llmService').OpenAIMessage);
 
@@ -204,6 +205,7 @@ export async function runTurn(
                     currentPayload.push({
                         role: 'assistant',
                         content: finalText || "",
+                        reasoning_content: reasoningContent || undefined,
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
                     } as unknown as import('./llmService').OpenAIMessage);
 
@@ -244,6 +246,9 @@ export async function runTurn(
                 callbacks.onCheckingNotes(false);
                 callbacks.setPipelinePhase?.('post-processing');
                 callbacks.updateLastAssistant(finalText);
+                if (reasoningContent) {
+                    callbacks.updateLastMessage({ reasoning_content: reasoningContent });
+                }
 
                 const allMsgs = state.getMessages();
                 const lastAssistant = allMsgs[allMsgs.length - 1];
