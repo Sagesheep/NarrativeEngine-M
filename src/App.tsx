@@ -123,7 +123,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Header />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden nav-clearance">
         <ContextDrawer />
         <ChatArea />
       </div>

@@ -170,9 +170,8 @@ export async function sendMessage(
                     const parsed = JSON.parse(data);
                     const delta = parsed.choices?.[0]?.delta;
 
-                    if (delta?.reasoning_content) {
-                        reasoningContent += delta.reasoning_content;
-                    }
+                    const reasoningDelta: string = delta?.reasoning_content ?? delta?.reasoning ?? '';
+                    if (reasoningDelta) reasoningContent += reasoningDelta;
 
                     if (delta?.content) {
                         fullText += delta.content;
