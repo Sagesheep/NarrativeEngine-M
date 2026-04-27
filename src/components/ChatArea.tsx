@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-    Send, Save, Loader2, Zap, Scroll, Edit2, RotateCcw, Trash2, Check, X, Square, 
-    Terminal, Dice5, ChevronDown, ChevronUp
+    Send, Save, Loader2, Zap, Scroll, Edit2, RotateCcw, Trash2, Check, X, Square,
+    Terminal, Dice5, ChevronDown, ChevronUp, ChevronRight
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAppStore } from '../store/useAppStore';
@@ -52,6 +52,120 @@ function renderContentWithChips(content: string) {
         );
     });
 }
+
+// ── Engine Trace accordion helpers ───────────────────────────────────────────
+
+type OAIMsg = { role: string; content: string | null; name?: string };
+
+const SystemMsgRow: React.FC<{ content: string | null }> = ({ content }) => {
+    const [open, setOpen] = useState(false);
+    const text = content || '';
+    const preview = text.slice(0, 100).replace(/\n/g, ' ');
+    return (
+        <div>
+            <button onClick={() => setOpen(p => !p)} className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-terminal/5 text-left">
+                {open ? <ChevronDown size={9} className="text-terminal/30 shrink-0" /> : <ChevronRight size={9} className="text-terminal/30 shrink-0" />}
+                <span className="text-text-dim/40 truncate text-[8px]">{preview}{text.length > 100 ? '…' : ''}</span>
+                <span className="ml-2 text-text-dim/30 shrink-0 text-[8px]">~{Math.round(text.length / 4)}t</span>
+            </button>
+            {open && (
+                <div className="px-2 pb-2 text-[9px] text-text-dim/60 whitespace-pre-wrap break-words max-h-48 overflow-y-auto bg-void border-t border-terminal/5">
+                    {text}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const HistoryMsgRow: React.FC<{ msg: OAIMsg }> = ({ msg }) => {
+    const [open, setOpen] = useState(false);
+    const text = msg.content || '';
+    const preview = text.slice(0, 80).replace(/\n/g, ' ');
+    const roleColor = msg.role === 'user' ? 'text-terminal/50' : 'text-sky-400/50';
+    const roleLabel = msg.role === 'user' ? 'YOU' : 'GM';
+    return (
+        <div>
+            <button onClick={() => setOpen(p => !p)} className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-terminal/5 text-left">
+                {open ? <ChevronDown size={9} className="text-terminal/30 shrink-0" /> : <ChevronRight size={9} className="text-terminal/30 shrink-0" />}
+                <span className={`text-[8px] font-bold shrink-0 ${roleColor}`}>{roleLabel}</span>
+                <span className="text-text-dim/40 truncate ml-1 text-[8px]">{preview}{text.length > 80 ? '…' : ''}</span>
+            </button>
+            {open && (
+                <div className="px-2 pb-2 text-[9px] text-text-dim/60 whitespace-pre-wrap break-words max-h-40 overflow-y-auto bg-void border-t border-terminal/5">
+                    {text}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const EngineTraceView: React.FC<{ payload: unknown }> = ({ payload }) => {
+    const messages = (payload as OAIMsg[]) || [];
+    const [open, setOpen] = useState({ system: false, history: false, turn: true });
+    const toggle = (k: keyof typeof open) => setOpen(p => ({ ...p, [k]: !p[k] }));
+
+    const systemMsgs = messages.filter(m => m.role === 'system');
+    const nonSystem = messages.filter(m => m.role !== 'system');
+    const historyMsgs = nonSystem.slice(0, -1);
+    const thisTurn = nonSystem[nonSystem.length - 1] ?? null;
+
+    return (
+        <div className="mt-3 border-t border-border/10 pt-3 font-mono text-[9px] space-y-1.5">
+            <div className="text-[8px] text-text-dim/30 uppercase tracking-[0.3em] flex items-center gap-1.5 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+                Engine Trace Data
+            </div>
+
+            {/* System Context */}
+            <div className="border border-terminal/10 rounded overflow-hidden">
+                <button onClick={() => toggle('system')} className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-terminal/5 text-left">
+                    {open.system ? <ChevronDown size={10} className="text-terminal/40 shrink-0" /> : <ChevronRight size={10} className="text-terminal/40 shrink-0" />}
+                    <span className="text-terminal/50 uppercase tracking-widest">System Context</span>
+                    <span className="ml-auto text-text-dim/30">{systemMsgs.length} msg{systemMsgs.length !== 1 ? 's' : ''}</span>
+                </button>
+                {open.system && (
+                    <div className="border-t border-terminal/10 divide-y divide-terminal/5">
+                        {systemMsgs.map((m, i) => <SystemMsgRow key={i} content={m.content} />)}
+                    </div>
+                )}
+            </div>
+
+            {/* History */}
+            {historyMsgs.length > 0 && (
+                <div className="border border-terminal/10 rounded overflow-hidden">
+                    <button onClick={() => toggle('history')} className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-terminal/5 text-left">
+                        {open.history ? <ChevronDown size={10} className="text-terminal/40 shrink-0" /> : <ChevronRight size={10} className="text-terminal/40 shrink-0" />}
+                        <span className="text-terminal/50 uppercase tracking-widest">History</span>
+                        <span className="ml-auto text-text-dim/30">{historyMsgs.length} msg{historyMsgs.length !== 1 ? 's' : ''}</span>
+                    </button>
+                    {open.history && (
+                        <div className="border-t border-terminal/10 divide-y divide-terminal/5">
+                            {historyMsgs.map((m, i) => <HistoryMsgRow key={i} msg={m} />)}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* This Turn */}
+            {thisTurn && (
+                <div className="border border-terminal/10 rounded overflow-hidden">
+                    <button onClick={() => toggle('turn')} className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-terminal/5 text-left">
+                        {open.turn ? <ChevronDown size={10} className="text-terminal/40 shrink-0" /> : <ChevronRight size={10} className="text-terminal/40 shrink-0" />}
+                        <span className="text-terminal/50 uppercase tracking-widest">This Turn</span>
+                        <span className="ml-auto text-text-dim/30">{thisTurn.role}</span>
+                    </button>
+                    {open.turn && (
+                        <div className="border-t border-terminal/10 p-2 text-[9px] text-text-dim/60 whitespace-pre-wrap break-words max-h-40 overflow-y-auto bg-void">
+                            {thisTurn.content}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function ChatArea() {
     const {
@@ -427,13 +541,7 @@ export function ChatArea() {
                                 )}
 
                                 {settings.debugMode && msg.debugPayload && (
-                                    <details className="mt-3 border-t border-border/10 pt-3 group/debug">
-                                        <summary className="cursor-pointer text-[9px] text-text-dim/30 hover:text-terminal transition-colors uppercase tracking-[0.3em] list-none flex items-center gap-1.5">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
-                                            Engine Trace Data
-                                        </summary>
-                                        <pre className="mt-2 bg-void p-2 text-[9px] font-mono text-terminal/60 overflow-x-auto rounded border border-terminal/5 whitespace-pre-wrap break-all">{JSON.stringify(msg.debugPayload, null, 2)}</pre>
-                                    </details>
+                                    <EngineTraceView payload={msg.debugPayload} />
                                 )}
                             </div>
                         </div>
