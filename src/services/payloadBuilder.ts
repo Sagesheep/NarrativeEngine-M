@@ -269,12 +269,18 @@ export function buildPayload(
     let historyUsed = 0;
     for (let i = candidateMessages.length - 1; i >= 0; i--) {
         const msg = candidateMessages[i];
+
+        // Skip completed tool-call exchanges — only the final narrative response matters.
+        // reasoning_content overhead is not needed in fitted history.
+        if (msg.role === 'tool') continue;
+        if (msg.role === 'assistant' && Array.isArray((msg as any).tool_calls) && (msg as any).tool_calls.length > 0) continue;
+
         let content = msg.content ?? null;
         if (msg.role === 'user' && typeof content === 'string') {
             content = content.replace(/\n?\[(?:DICE OUTCOMES:|SURPRISE EVENT:|ENCOUNTER EVENT:|WORLD_EVENT:)[^\]]*\]/g, '');
         }
 
-        const textToEstimate = content || JSON.stringify(msg.tool_calls || '') || '';
+        const textToEstimate = content || '';
         const cost = countTokens(textToEstimate);
         if (historyUsed + cost > historyBudget) break;
 
@@ -283,9 +289,7 @@ export function buildPayload(
             content
         };
         if (msg.name) openAIMsg.name = msg.name;
-        if (msg.tool_calls) openAIMsg.tool_calls = msg.tool_calls;
         if (msg.tool_call_id) openAIMsg.tool_call_id = msg.tool_call_id;
-        if ((msg as any).reasoning_content) openAIMsg.reasoning_content = (msg as any).reasoning_content;
 
         fitted.unshift(openAIMsg);
         historyUsed += cost;

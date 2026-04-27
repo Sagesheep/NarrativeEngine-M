@@ -387,21 +387,13 @@ export function SettingsModal() {
                   {Math.round((settings.uiScale ?? 1) * 100)}%
                 </span>
               </div>
-              <input
-                type="range"
-                min={0.75}
-                max={1.25}
-                step={0.05}
-                value={settings.uiScale ?? 1}
-                onChange={(e) => updateSettings({ uiScale: parseFloat(e.target.value) })}
-                className="w-full accent-terminal"
-              />
-              <div className="flex gap-2 mt-3">
-                {[0.75, 0.85, 1.0, 1.1].map(v => (
+              <p className="text-[10px] text-text-dim mb-3">100% is recommended for mobile. Changes apply immediately.</p>
+              <div className="grid grid-cols-4 gap-2">
+                {[0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3].map(v => (
                   <button
                     key={v}
                     onClick={() => updateSettings({ uiScale: v })}
-                    className={`px-3 py-2 text-[10px] font-mono border rounded transition-colors ${(settings.uiScale ?? 1) === v ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim'}`}
+                    className={`py-3 text-[11px] font-mono font-bold border rounded transition-colors min-h-[48px] ${Math.round((settings.uiScale ?? 1) * 100) === Math.round(v * 100) ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:border-terminal/50'}`}
                   >
                     {Math.round(v * 100)}%
                   </button>
