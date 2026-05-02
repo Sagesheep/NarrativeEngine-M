@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { X, Loader2, CheckCircle, XCircle, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
+import { X, Plus, Trash2, ArrowLeft } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { testConnection } from '../services/chatEngine';
-import type { AIPreset, LLMProvider, ApiFormat, SamplingConfig } from '../types';
+import type { AIPreset, CondenseAggressiveness, LLMProvider, ApiFormat, SamplingConfig } from '../types';
 import { detectFormatFromEndpoint } from '../utils/llmApiHelper';
 import { toast } from './Toast';
 import { uid } from '../utils/uid';
 import { SamplingPanel } from './SamplingPanel';
+import { ProviderConfigSection } from './settings/ProviderConfigSection';
 
 export function SettingsModal() {
   const { settings, updateSettings, settingsOpen, toggleSettings, addPreset, updatePreset, removePreset, setMobileView } = useAppStore();
@@ -112,129 +113,25 @@ export function SettingsModal() {
     updatePreset(activePreset.id, { [section]: { ...config, apiFormat: detected, endpoint: normalizedEndpoint } });
   };
 
-  const getEndpointPlaceholder = (apiFormat?: ApiFormat) => {
-    const fmt = apiFormat || 'openai';
-    if (fmt === 'ollama') return 'http://localhost:11434  or  https://ollama.com';
-    if (fmt === 'claude') return 'https://api.anthropic.com/v1';
-    if (fmt === 'gemini') return 'https://generativelanguage.googleapis.com/v1beta';
-    return 'http://localhost:11434/v1';
-  };
-
-  const getApiKeyPlaceholder = (apiFormat?: ApiFormat) => {
-    const fmt = apiFormat || 'openai';
-    if (fmt === 'ollama') return 'Ollama API key (optional for local)';
-    if (fmt === 'claude') return 'sk-ant-...';
-    if (fmt === 'gemini') return 'AIza...';
-    return 'sk-...';
-  };
-
   const toggleSection = (section: string) => {
     setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
   const renderProviderConfig = (section: 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI', title: string) => {
-    const config = activePreset[section] ?? { endpoint: '', apiKey: '', modelName: '' };
-    const isExpanded = expanded[section];
-    const isTesting = testingSection === section;
-    const result = testResults[section];
-
     return (
-      <div className="border border-border rounded mb-3 bg-void-lighter overflow-hidden">
-        <button
-          onClick={() => toggleSection(section)}
-          className="w-full flex items-center justify-between p-3 bg-void hover:bg-surface transition-colors min-h-[48px]"
-        >
-          <div className="flex items-center gap-2 text-sm font-bold text-text-primary uppercase tracking-wider">
-            {isExpanded ? <ChevronDown size={16} className="text-terminal" /> : <ChevronRight size={16} className="text-text-dim" />}
-            {title}
-          </div>
-        </button>
-
-        {isExpanded && (
-          <div className="p-4 space-y-4 border-t border-border bg-void">
-            <div>
-              <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">API Endpoint</label>
-              <input
-                type="text"
-                value={config.endpoint}
-                onChange={(e) => handleUpdateEndpoint(section, 'endpoint', e.target.value)}
-                onBlur={(e) => handleEndpointBlur(section, e.target.value)}
-                placeholder={getEndpointPlaceholder(config.apiFormat)}
-                className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono focus:border-terminal focus:outline-none"
-              />
-              {(config.apiFormat || 'openai') === 'ollama' && (
-                <p className="text-[10px] text-text-dim mt-1">
-                  Local: <span className="font-mono">http://localhost:11434</span> &middot; Cloud: <span className="font-mono">https://ollama.com</span> (needs API key)
-                </p>
-              )}
-              </div>
-              <div>
-                <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">API Format</label>
-                <select
-                  value={config.apiFormat || 'openai'}
-                  onChange={(e) => handleApiFormatChange(section, e.target.value as ApiFormat)}
-                  className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary focus:border-terminal focus:outline-none appearance-none"
-                >
-                  <option value="openai">OpenAI</option>
-                  <option value="ollama">Ollama</option>
-                  <option value="claude">Claude (Anthropic)</option>
-                  <option value="gemini">Gemini (Google)</option>
-                </select>
-              </div>
-            <div>
-              <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">Model Name</label>
-              <input
-                type="text"
-                value={config.modelName}
-                onChange={(e) => handleUpdateEndpoint(section, 'modelName', e.target.value)}
-                placeholder="llama3"
-                className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono focus:border-terminal focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">API Key</label>
-              <input
-                type="password"
-                value={config.apiKey}
-                onChange={(e) => handleUpdateEndpoint(section, 'apiKey', e.target.value)}
-                placeholder={getApiKeyPlaceholder(config.apiFormat)}
-                className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono focus:border-terminal focus:outline-none"
-              />
-            </div>
-
-            <div className="flex items-center justify-between gap-3 py-2">
-              <label className="text-[11px] text-text-dim uppercase tracking-wider truncate">Enable Streaming</label>
-              <button
-                onClick={() => {
-                  if (!activePreset) return;
-                  const updatedConfig = { ...activePreset[section], streamingEnabled: config.streamingEnabled === false };
-                  updatePreset(activePreset.id, { [section]: updatedConfig });
-                }}
-                className={`relative w-11 h-6 shrink-0 rounded-full transition-colors ${config.streamingEnabled !== false ? 'bg-terminal/60' : 'bg-border'}`}
-                title={config.streamingEnabled !== false ? 'Streaming on — click to disable (use for cloud models like GLM-5.1:cloud)' : 'Streaming off — click to enable'}
-              >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${config.streamingEnabled !== false ? 'translate-x-5' : 'translate-x-0'}`} />
-              </button>
-            </div>
-
-            <div className="pt-2">
-              <button
-                onClick={() => handleTest(section)}
-                disabled={isTesting || !config.endpoint}
-                className="w-full bg-surface border border-terminal/40 hover:border-terminal text-terminal text-xs uppercase tracking-widest py-3 transition-all hover:glow-border disabled:opacity-50 flex items-center justify-center gap-2 min-h-[48px]"
-              >
-                {isTesting ? <><Loader2 size={14} className="animate-spin" /> Testing...</> : 'Test Connection'}
-              </button>
-              {result && (
-                <div className={`flex items-center gap-2 text-xs px-3 py-2 border mt-2 ${result.ok ? 'border-terminal/30 text-terminal bg-terminal/5' : 'border-danger/30 text-danger bg-danger/5'}`}>
-                  {result.ok ? <CheckCircle size={14} /> : <XCircle size={14} />}
-                  {result.detail}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      <ProviderConfigSection
+        section={section}
+        title={title}
+        activePreset={activePreset}
+        isExpanded={expanded[section]}
+        isTesting={testingSection === section}
+        testResult={testResults[section] || null}
+        onToggle={() => toggleSection(section)}
+        onUpdateEndpoint={handleUpdateEndpoint}
+        onApiFormatChange={handleApiFormatChange}
+        onEndpointBlur={handleEndpointBlur}
+        onTest={handleTest}
+      />
     );
   };
 
@@ -356,10 +253,92 @@ export function SettingsModal() {
               </div>
             </div>
 
+            {/* Auto-Condense — separate card with strategy selector */}
+            <div className="bg-void p-4 border border-border rounded">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Auto-Condense</label>
+                  <p className="text-[10px] text-text-dim">
+                    Compress history at {Math.round((settings.condenseAggressiveness === 'aggressive' ? 50 : settings.condenseAggressiveness === 'quality' ? 90 : 75))}% limit
+                  </p>
+                </div>
+                <button
+                  onClick={() => updateSettings({ autoCondenseEnabled: !settings.autoCondenseEnabled })}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${settings.autoCondenseEnabled ? 'bg-terminal' : 'bg-border'}`}
+                >
+                  <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.autoCondenseEnabled ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                </button>
+              </div>
+
+              {settings.autoCondenseEnabled && (
+                <div className="mt-4 pt-4 border-t border-border/60">
+                  <label className="block text-[10px] text-text-dim uppercase tracking-widest mb-3">Context Strategy</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      { value: 'aggressive' as const, label: 'Tight', pct: 50, desc: 'Lower cost' },
+                      { value: 'balanced' as const, label: 'Smart', pct: 75, desc: 'Best default' },
+                      { value: 'quality' as const, label: 'Deep', pct: 90, desc: 'Higher cost' },
+                    ] as { value: CondenseAggressiveness; label: string; pct: number; desc: string }[]).map(({ value, label, pct, desc }) => (
+                      <button
+                        key={value}
+                        onClick={() => updateSettings({ condenseAggressiveness: value })}
+                        className={`py-3 text-center border rounded transition-colors ${
+                          (settings.condenseAggressiveness || 'balanced') === value
+                            ? 'bg-terminal border-terminal text-void'
+                            : 'bg-surface border-border text-text-dim hover:border-terminal/50'
+                        }`}
+                      >
+                        <div className="text-[11px] font-bold">{label}</div>
+                        <div className="text-[16px] font-mono font-bold">{pct}%</div>
+                        <div className="text-[9px] text-current opacity-60">{desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Divergence Register */}
+            <div className="bg-void p-4 border border-amber-500/20 rounded">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-[11px] text-amber-400 uppercase tracking-wider font-bold mb-1">Divergence Register</label>
+                  <p className="text-[10px] text-text-dim">Auto-extract campaign-altering facts from each turn</p>
+                </div>
+                <button
+                  onClick={() => updateSettings({ autoExtractDivergences: !settings.autoExtractDivergences })}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${settings.autoExtractDivergences !== false ? 'bg-amber-500' : 'bg-border'}`}
+                >
+                  <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.autoExtractDivergences !== false ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                </button>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-border/60">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-[10px] text-text-dim uppercase tracking-widest">Register Token Budget</label>
+                  <span className="text-amber-400 font-bold font-mono bg-amber-500/10 px-2 py-0.5 rounded text-xs">
+                    {(settings.divergenceTokenBudget ?? 2000).toLocaleString()}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={500}
+                  max={6000}
+                  step={100}
+                  value={settings.divergenceTokenBudget ?? 2000}
+                  onChange={(e) => updateSettings({ divergenceTokenBudget: parseInt(e.target.value) })}
+                  className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-amber-500"
+                />
+                <div className="flex justify-between text-[9px] text-text-dim mt-1">
+                  <span>500</span>
+                  <span>6000</span>
+                </div>
+              </div>
+            </div>
+
             {/* Toggles */}
             <div className="space-y-4">
               {[
-                { label: 'Auto-Condense', setting: 'autoCondenseEnabled' as const, sub: 'Compress history at 75% limit' },
                 { label: 'Debug Mode', setting: 'debugMode' as const, sub: 'Show raw API payloads' },
                 { label: 'Show Reasoning', setting: 'showReasoning' as const, sub: 'Display model thinking blocks' },
                 { label: 'Deep Archive Search', setting: 'enableDeepArchiveSearch' as const, sub: 'Long-press Send for AI full-archive scan. Requires utility endpoint. ~1-2 min per use.' },

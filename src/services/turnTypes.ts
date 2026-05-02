@@ -12,6 +12,7 @@ import type {
     TimelineEvent,
     PipelinePhase,
     StreamingStats,
+    DivergenceRegister,
 } from '../types';
 
 export type TurnCallbacks = {
@@ -32,6 +33,8 @@ export type TurnCallbacks = {
     setChapters?: (chapters: ArchiveChapter[]) => void;
     setPipelinePhase?: (phase: PipelinePhase) => void;
     setStreamingStats?: (stats: StreamingStats | null) => void;
+    setDivergenceRegister?: (register: DivergenceRegister) => void;
+    updateMessageDivergence?: (messageId: string, divergenceIds: string[]) => void;
 };
 
 export type TurnState = {
@@ -59,5 +62,6 @@ export type TurnState = {
     timeline: TimelineEvent[];
     pinnedChapterIds: string[];
     clearPinnedChapters: () => void;
-    deepContextSearch?: boolean; // true when GM long-pressed Send to trigger deep archive scan
+    deepContextSearch?: boolean;
+    divergenceRegister?: DivergenceRegister;
 };

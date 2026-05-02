@@ -12,6 +12,7 @@ import { backgroundQueue } from './backgroundQueue';
 import { scanCharacterProfile } from './characterProfileParser';
 import { scanInventory } from './inventoryParser';
 import { rateImportance } from './importanceRater';
+import { extractDivergences, mergeEntries, EMPTY_REGISTER } from './divergenceRegister';
 
 
 export async function handlePostTurn(
@@ -64,6 +65,31 @@ export async function handlePostTurn(
                     }
                 } catch (e) { console.warn('[TurnPostProcess] Importance rating failed:', e); }
             }).catch((e) => console.warn('[TurnPostProcess] backgroundQueue push failed:', e));
+        }
+    }
+
+    if (appendedSceneId && state.settings.autoExtractDivergences !== false) {
+        const divProvider = state.getFreshProvider();
+        if (divProvider && callbacks.setDivergenceRegister) {
+            const sid = appendedSceneId;
+            const userText = displayInput;
+            const gmText = lastAssistantContent;
+            const currentRegister = state.divergenceRegister || EMPTY_REGISTER;
+            backgroundQueue.push('Divergence-Extract', async () => {
+                try {
+                    const sceneText = `[User]: ${userText.slice(0, 600)}\n[GM]: ${gmText.slice(0, 1200)}`;
+                    const { entries } = await extractDivergences(divProvider, sceneText, sid, currentRegister);
+                    if (entries.length > 0) {
+                        const merged = mergeEntries(currentRegister, entries, sid);
+                        callbacks.setDivergenceRegister!(merged);
+                        const msgId = state.getMessages().slice().reverse().find(m => m.role === 'assistant')?.id;
+                        if (msgId && callbacks.updateMessageDivergence) {
+                            callbacks.updateMessageDivergence(msgId, entries.map(e => e.id));
+                        }
+                        console.log(`[DivergenceRegister] Scene #${sid}: ${entries.length} entries extracted`);
+                    }
+                } catch (e) { console.warn('[TurnPostProcess] Divergence extraction failed:', e); }
+            }).catch((e) => console.warn('[TurnPostProcess] Divergence queue push failed:', e));
         }
     }
 

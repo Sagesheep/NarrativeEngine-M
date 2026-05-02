@@ -4,7 +4,8 @@ import { useAppStore } from '../store/useAppStore';
 import {
     listCampaigns, deleteCampaign, loadCampaignState,
     saveCampaign, saveCampaignState, saveLoreChunks, getLoreChunks,
-    getNPCLedger, saveNPCLedger, loadArchiveIndex, loadChapters, loadSemanticFacts
+    getNPCLedger, saveNPCLedger, loadArchiveIndex, loadChapters, loadSemanticFacts,
+    loadDivergenceRegister
 } from '../store/campaignStore';
 import { chunkLoreFile } from '../services/loreChunker';
 import { extractEngineSeeds } from '../services/loreEngineSeeder';
@@ -185,6 +186,7 @@ export function CampaignHub() {
         const chunks = await getLoreChunks(campaign.id);
         const npcs = await getNPCLedger(campaign.id);
         const archiveIndex = await loadArchiveIndex(campaign.id);
+        const divReg = await loadDivergenceRegister(campaign.id);
         const [facts, chaps] = await Promise.all([
             loadSemanticFacts(campaign.id).catch(() => []),
             loadChapters(campaign.id).catch(() => []),
@@ -200,6 +202,7 @@ export function CampaignHub() {
             semanticFacts: facts,
             chapters: chaps,
             activeCampaignId: campaign.id,
+            divergenceRegister: divReg ?? { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 },
         });
     };
 

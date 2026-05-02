@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { ChatMessage, CondenserState, GameContext, LoreCheckSelection, LoreCheckResult } from '../../types';
+import type { ChatMessage, CondenserState, GameContext, LoreCheckSelection, LoreCheckResult, DivergenceRegister } from '../../types';
 import { debouncedSaveCampaignState } from './campaignSlice';
 
 // ── Slice type ─────────────────────────────────────────────────────────
@@ -23,6 +23,11 @@ export type ChatSlice = {
     setCondenser: (state: CondenserState) => void;
     setCondensing: (v: boolean) => void;
     resetCondenser: () => void;
+
+    divergenceRegister: DivergenceRegister;
+    setDivergenceRegister: (register: DivergenceRegister) => void;
+    updateMessageDivergence: (messageId: string, divergenceIds: string[]) => void;
+    resetDivergenceRegister: () => void;
 
     loreCheckOpen: boolean;
     loreCheckLoading: boolean;
@@ -65,6 +70,22 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
         set((s) => ({ condenser: { ...s.condenser, isCondensing: v } })),
     resetCondenser: () =>
         set({ condenser: { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false } } as Partial<ChatDeps>),
+
+    divergenceRegister: { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 },
+    setDivergenceRegister: (register) =>
+        set((s) => {
+            debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser });
+            return { divergenceRegister: register };
+        }),
+    updateMessageDivergence: (messageId, divergenceIds) =>
+        set((s) => {
+            const msgs = s.messages.map(m =>
+                m.id === messageId ? { ...m, divergenceIds } : m
+            );
+            return { messages: msgs };
+        }),
+    resetDivergenceRegister: () =>
+        set({ divergenceRegister: { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 } } as Partial<ChatDeps>),
 
     // Chat defaults
     messages: [],
@@ -128,8 +149,9 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
     setStreaming: (v) => set({ isStreaming: v } as Partial<ChatDeps>),
     clearChat: () => set((s) => {
         const newCondenser = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
+        const newDivReg = { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 };
         debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: [], condenser: newCondenser });
-        return { messages: [], condenser: newCondenser };
+        return { messages: [], condenser: newCondenser, divergenceRegister: newDivReg };
     }),
     clearArchive: () => set({ archiveIndex: [] } as unknown as Partial<ChatDeps>),
 

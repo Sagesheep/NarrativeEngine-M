@@ -14,7 +14,7 @@ import { ToastContainer } from './components/Toast';
 import { MobileNavBar } from './components/MobileNavBar';
 import {
   loadCampaignState, getLoreChunks, getNPCLedger, loadArchiveIndex,
-  loadChapters, loadSemanticFacts,
+  loadChapters, loadSemanticFacts, loadDivergenceRegister,
 } from './store/campaignStore';
 
 const DEFAULT_CONDENSER = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
@@ -68,11 +68,12 @@ export default function App() {
     setCampaignLoaded(false);
 
     (async () => {
-      const [state, chunks, npcs, archiveIndex] = await Promise.all([
+      const [state, chunks, npcs, archiveIndex, divReg] = await Promise.all([
         loadCampaignState(activeCampaignId),
         getLoreChunks(activeCampaignId),
         getNPCLedger(activeCampaignId),
         loadArchiveIndex(activeCampaignId),
+        loadDivergenceRegister(activeCampaignId),
       ]);
       if (cancelled) return;
 
@@ -91,6 +92,7 @@ export default function App() {
         archiveIndex,
         chapters,
         semanticFacts: facts,
+        divergenceRegister: divReg ?? { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 },
       });
       setCampaignLoaded(true);
     })();

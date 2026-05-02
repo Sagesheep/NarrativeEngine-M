@@ -70,7 +70,9 @@ export type AppSettings = {
     showReasoning?: boolean; // Toggles visibility of LLM thinking blocks
     uiScale?: number;  // 0.75 to 1.25, default 1.0
 
-    enableDeepArchiveSearch?: boolean; // Unlocks long-press Send for AI-driven full-archive scan
+    enableDeepArchiveSearch?: boolean;
+    autoExtractDivergences?: boolean;
+    divergenceTokenBudget?: number;
 
     // Legacy fields kept for migration only
     providers?: LLMProvider[];
@@ -169,13 +171,40 @@ export type GameContext = {
 };
 
 
+export type DivergenceCategory =
+    | 'canon_override'
+    | 'world_change'
+    | 'entity_state'
+    | 'player_state'
+    | 'obligation';
+
+export type DivergenceEntry = {
+    id: string;
+    category: DivergenceCategory;
+    subject: string;
+    divergence: string;
+    sceneRef: string;
+    linkedSceneIds: string[];
+    importance: number;
+    supersedes?: string;
+    resolved?: boolean;
+    source: 'auto' | 'manual';
+};
+
+export type DivergenceRegister = {
+    entries: DivergenceEntry[];
+    lastUpdatedSceneId: string;
+    lastUpdatedAt: number;
+    version: number;
+};
+
 export type ChatMessage = {
     id: string;
     role: 'system' | 'user' | 'assistant' | 'tool';
     content: string;
-    displayContent?: string; // Clean text for UI (without dice/surprise blocks)
+    displayContent?: string;
     timestamp: number;
-    debugPayload?: unknown; // Stores the exact JSON LLM payload
+    debugPayload?: unknown;
     name?: string;
     tool_calls?: {
         id: string;
@@ -185,6 +214,7 @@ export type ChatMessage = {
     tool_call_id?: string;
     reasoning_content?: string;
     ephemeral?: boolean;
+    divergenceIds?: string[];
 };
 
 /** Search index entry — one per scene, auto-built by server on every turn. */

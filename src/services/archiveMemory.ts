@@ -16,7 +16,8 @@ function scoreEntry(
     entry: ArchiveIndexEntry,
     contextText: string,
     contextActivations: Record<string, number>,
-    totalScenes: number
+    totalScenes: number,
+    divergenceSceneIds?: Set<string>
 ): number {
     // D1: Recency bonus (always positive, logarithmic — never zero)
     const sceneNum = parseInt(entry.sceneId, 10) || 0;
@@ -54,8 +55,13 @@ function scoreEntry(
         }
     }
 
-    // Weighted additive: (0.5 × recency) + (1.0 × importance) + (2.0 × activation)
-    return (0.5 * recencyBonus) + (1.0 * importance) + (2.0 * activation);
+    // Weighted additive: (0.5 × recency) + (1.0 × importance) + (2.0 × activation) + D4
+    let divergenceBoost = 0;
+    if (divergenceSceneIds?.has(entry.sceneId)) {
+        divergenceBoost = 5.0;
+    }
+
+    return (0.5 * recencyBonus) + (1.0 * importance) + (2.0 * activation) + divergenceBoost;
 }
 
 /**
@@ -144,7 +150,8 @@ export function retrieveArchiveMemory(
     maxScenes?: number,
     semanticFacts?: SemanticFact[],
     sceneRanges?: [string, string][],
-    semanticCandidateIds?: string[]
+    semanticCandidateIds?: string[],
+    divergenceSceneIds?: Set<string>
 ): string[] {
     if (!index || index.length === 0) {
         console.log('[Archive Retrieval] Index is empty — no recall.');
@@ -174,7 +181,7 @@ export function retrieveArchiveMemory(
 
     const totalScenes = scopedIndex.length;
     const scored = scopedIndex.map(entry => {
-        const baseScore = scoreEntry(entry, contextText, contextActivations, totalScenes);
+        const baseScore = scoreEntry(entry, contextText, contextActivations, totalScenes, divergenceSceneIds);
 
         let semanticBoost = 0;
         if (semanticCandidateIds && semanticCandidateIds.includes(entry.sceneId)) {
@@ -255,9 +262,10 @@ export async function recallArchiveScenes(
     tokenBudget = 3000,
     npcLedger?: NPCEntry[],
     semanticFacts?: SemanticFact[],
-    semanticCandidateIds?: string[]
+    semanticCandidateIds?: string[],
+    divergenceSceneIds?: Set<string>
 ): Promise<ArchiveScene[]> {
-    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds);
+    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds, divergenceSceneIds);
     if (matchedIds.length === 0) return [];
     return fetchArchiveScenes(campaignId, matchedIds, tokenBudget);
 }

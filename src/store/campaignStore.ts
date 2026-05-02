@@ -1,5 +1,5 @@
 import { get, set, del } from 'idb-keyval';
-import type { Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, ArchiveChapter, SemanticFact, TimelineEvent, EntityEntry } from '../types';
+import type { Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, ArchiveChapter, SemanticFact, TimelineEvent, EntityEntry, DivergenceRegister } from '../types';
 
 export type CampaignState = {
     context: GameContext;
@@ -37,6 +37,7 @@ export async function deleteCampaign(id: string): Promise<void> {
     await del(`lore_${id}`);
     await del(`npcs_${id}`);
     await del(`archive_index_${id}`);
+    await del(`divergence_${id}`);
 }
 
 // ─── Campaign State ───
@@ -111,4 +112,13 @@ export async function loadTimeline(campaignId: string): Promise<TimelineEvent[]>
 export async function loadEntities(campaignId: string): Promise<EntityEntry[]> {
     const { api } = await import('../services/apiClient');
     return api.entities.get(campaignId);
+}
+
+export async function saveDivergenceRegister(campaignId: string, register: DivergenceRegister): Promise<void> {
+    await set(`divergence_${campaignId}`, register);
+}
+
+export async function loadDivergenceRegister(campaignId: string): Promise<DivergenceRegister | null> {
+    const register = await get(`divergence_${campaignId}`);
+    return register || null;
 }

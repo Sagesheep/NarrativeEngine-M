@@ -81,11 +81,14 @@ export const defaultSettings: AppSettings = {
     activePresetId: defaultPreset.id,
     contextLimit: 4096,
     autoCondenseEnabled: true,
+    condenseAggressiveness: 'balanced',
     debugMode: false,
     theme: 'system',
     showReasoning: true,
     uiScale: 1.0,
     enableDeepArchiveSearch: false,
+    autoExtractDivergences: true,
+    divergenceTokenBudget: 2000,
 };
 
 export function resolveTheme(theme: 'light' | 'dark' | 'system'): 'light' | 'dark' {
@@ -125,11 +128,14 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
             activePresetId: (raw.activePresetId as string) || (raw.presets as AIPreset[])[0].id,
             contextLimit: (raw.contextLimit as number) ?? 4096,
             autoCondenseEnabled: (raw.autoCondenseEnabled as boolean) ?? true,
+            condenseAggressiveness: (raw.condenseAggressiveness as AppSettings['condenseAggressiveness']) ?? 'balanced',
             debugMode: (raw.debugMode as boolean) ?? false,
             theme: (raw.theme as 'light' | 'dark' | 'system') ?? 'system',
             showReasoning: (raw.showReasoning as boolean) ?? true,
             uiScale: (raw.uiScale as number) ?? 1.0,
             enableDeepArchiveSearch: (raw.enableDeepArchiveSearch as boolean) ?? false,
+            autoExtractDivergences: (raw.autoExtractDivergences as boolean) ?? true,
+            divergenceTokenBudget: (raw.divergenceTokenBudget as number) ?? 2000,
         };
     }
 
@@ -170,10 +176,13 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         activePresetId: legacyId,
         contextLimit: (raw.contextLimit as number) ?? 4096,
         autoCondenseEnabled: (raw.autoCondenseEnabled as boolean) ?? true,
+        condenseAggressiveness: (raw.condenseAggressiveness as AppSettings['condenseAggressiveness']) ?? 'balanced',
         debugMode: (raw.debugMode as boolean) ?? false,
         theme: (raw.theme as 'light' | 'dark' | 'system') ?? 'system',
         showReasoning: (raw.showReasoning as boolean) ?? true,
         enableDeepArchiveSearch: (raw.enableDeepArchiveSearch as boolean) ?? false,
+        autoExtractDivergences: (raw.autoExtractDivergences as boolean) ?? true,
+        divergenceTokenBudget: (raw.divergenceTokenBudget as number) ?? 2000,
     };
 }
 

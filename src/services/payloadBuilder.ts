@@ -1,8 +1,9 @@
-import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace } from '../types';
+import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister } from '../types';
 import type { OpenAIMessage } from './llmService';
 import { countTokens } from './tokenizer';
 import { buildBehaviorDirective, buildDriftAlert } from './npcBehaviorDirective';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
+import { renderRegisterForPayload } from './divergenceRegister';
 
 
 /**
@@ -52,7 +53,8 @@ export function buildPayload(
     sceneNumber?: string,
     recommendedNPCNames?: string[],
     semanticFactText?: string,
-    deepContextSummary?: string
+    deepContextSummary?: string,
+    divergenceRegister?: DivergenceRegister,
 ): { messages: OpenAIMessage[]; trace?: PayloadTrace[] } {
     const trace: PayloadTrace[] = [];
     const isDebug = settings.debugMode === true;
@@ -117,6 +119,13 @@ export function buildPayload(
     }
     const summaryTokens = countTokens(summaryContent);
     addTrace({ source: 'Condensed Summary', classification: 'summary', tokens: summaryTokens, reason: 'Compressed session history', included: !!summaryContent, position: 'system_summary' });
+
+    let divergenceContent = '';
+    if (divergenceRegister && divergenceRegister.entries.length > 0) {
+        divergenceContent = renderRegisterForPayload(divergenceRegister);
+    }
+    const divergenceTokens = countTokens(divergenceContent);
+    addTrace({ source: 'Divergence Register', classification: 'stable_truth', tokens: divergenceTokens, reason: `Campaign canon overrides (${divergenceRegister?.entries.length ?? 0} entries)`, included: !!divergenceContent, position: 'system_static' });
 
     // --- 3. Gather trimmable World Context (Medium Priority) ---
     const worldBlocks: { source: string; content: string; tokens: number; reason: string }[] = [];
@@ -258,7 +267,7 @@ export function buildPayload(
 
     // --- 6. Fit History ---
     const userTokens = countTokens(userMessage);
-    const reservedTotal = stableTokens + summaryTokens + currentWorldTokens + volatileTokens + userTokens;
+    const reservedTotal = stableTokens + summaryTokens + divergenceTokens + currentWorldTokens + volatileTokens + userTokens;
     const historyBudget = limit - reservedTotal - 200; // Small safety margin of 200 tokens
 
     const candidateMessages = (condensedSummary && condensedUpToIndex !== undefined && condensedUpToIndex >= 0)
@@ -328,6 +337,7 @@ export function buildPayload(
     const messages: OpenAIMessage[] = [];
     if (stableContent) messages.push({ role: 'system', content: stableContent });
     if (summaryContent) messages.push({ role: 'system', content: summaryContent });
+    if (divergenceContent) messages.push({ role: 'system', content: divergenceContent });
     if (worldContent || volatileContent) {
         messages.push({ role: 'system', content: [worldContent, volatileContent].filter(Boolean).join('\n\n') });
     }

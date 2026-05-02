@@ -1,10 +1,7 @@
-import { useRef } from 'react';
-import { Edit2, RotateCcw, Trash2, Loader2, Terminal } from 'lucide-react';
+import { Edit2, RotateCcw, Trash2, Loader2, Terminal, Zap } from 'lucide-react';
 import type { ChatMessage } from '../../types';
-import { useAppStore } from '../../store/useAppStore';
 import { EngineTraceView } from '../engine-trace/EngineTraceView';
 import { ContentWithChips } from './ContentWithChips';
-import { SelectionToolbar } from './SelectionToolbar';
 
 type MessageBubbleProps = {
     msg: ChatMessage;
@@ -15,11 +12,10 @@ type MessageBubbleProps = {
     onDelete: (id: string) => void;
     showReasoning: boolean;
     debugMode: boolean;
+    onTagDivergence?: (msg: ChatMessage) => void;
 };
 
-export function MessageBubble({ msg, isStreaming, isLastMessage, onEdit, onRegenerate, onDelete, showReasoning, debugMode }: MessageBubbleProps) {
-    const proseRef = useRef<HTMLDivElement>(null);
-    const openLoreCheck = useAppStore(s => s.openLoreCheck);
+export function MessageBubble({ msg, isStreaming, isLastMessage, onEdit, onRegenerate, onDelete, showReasoning, debugMode, onTagDivergence }: MessageBubbleProps) {
     const markdownContent = typeof msg.displayContent === 'string' ? msg.displayContent : (typeof msg.content === 'string' ? msg.content : '');
     let thinkingBlock = '';
     const thinkMatch = markdownContent.match(/<think>([\s\S]*?)<\/think>/i);
@@ -44,6 +40,9 @@ export function MessageBubble({ msg, isStreaming, isLastMessage, onEdit, onRegen
                 isAlly ? 'bg-emerald-500/5 border-l-2 border-emerald-500 text-text-primary' :
                 'bg-void-lighter border-l-2 border-border text-text-primary'
             }`}>
+                {msg.divergenceIds && msg.divergenceIds.length > 0 && (
+                    <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Divergence tracked" />
+                )}
                 <div className={`absolute -top-3 ${msg.role === 'user' ? 'left-2' : 'right-2'} flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-void-darker border border-border p-[2px] rounded z-10`}>
                     {msg.role !== 'system' && (
                         <button title="Edit" onClick={() => onEdit(msg)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
@@ -53,6 +52,17 @@ export function MessageBubble({ msg, isStreaming, isLastMessage, onEdit, onRegen
                     {msg.role === 'assistant' && (
                         <button title="Regenerate" onClick={() => onRegenerate(msg.id)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
                             <RotateCcw size={10} />
+                        </button>
+                    )}
+                    {msg.role === 'assistant' && onTagDivergence && (
+                        <button
+                            title="Tag as Divergence"
+                            onClick={() => onTagDivergence(msg)}
+                            className={`text-text-dim hover:text-amber-400 p-1 bg-void-lighter rounded ${
+                                (msg.divergenceIds && msg.divergenceIds.length > 0) ? 'text-amber-400' : ''
+                            }`}
+                        >
+                            <Zap size={10} />
                         </button>
                     )}
                     <button title="Delete" onClick={() => onDelete(msg.id)} className="text-text-dim hover:text-red-400 p-1 bg-void-lighter rounded">
@@ -67,7 +77,10 @@ export function MessageBubble({ msg, isStreaming, isLastMessage, onEdit, onRegen
                     <span className="text-[9px] text-text-dim">{new Date(msg.timestamp).toLocaleTimeString()}</span>
                 </div>
 
-                <div ref={proseRef} className="gm-prose prose-sm leading-relaxed overflow-hidden">
+                <div
+                    className="gm-prose prose-sm leading-relaxed overflow-hidden"
+                    {...(msg.role === 'assistant' ? { 'data-lore-checkable': 'true', 'data-message-id': msg.id } : {})}
+                >
                     {thinkingBlock && showReasoning && (
                         <details className="mb-3 bg-void-darker border border-terminal/20 rounded overflow-hidden group/think">
                             <summary className="cursor-pointer p-2 text-[10px] text-terminal/60 uppercase tracking-widest flex items-center gap-2 bg-terminal/5">
@@ -81,24 +94,6 @@ export function MessageBubble({ msg, isStreaming, isLastMessage, onEdit, onRegen
                     )}
                     <ContentWithChips content={cleanContent} />
                 </div>
-
-                {msg.role === 'assistant' && (
-                    <SelectionToolbar
-                        container={proseRef.current}
-                        onTrigger={(sel) => {
-                            const fullText = proseRef.current?.textContent ?? '';
-                            const before = fullText.slice(Math.max(0, sel.start - 200), sel.start);
-                            const after = fullText.slice(sel.end, Math.min(fullText.length, sel.end + 200));
-                            openLoreCheck({
-                                messageId: msg.id,
-                                selectedText: sel.text,
-                                start: sel.start,
-                                end: sel.end,
-                                surroundingContext: `${before}[[HIGHLIGHTED]]${sel.text}[[/HIGHLIGHTED]]${after}`,
-                            });
-                        }}
-                    />
-                )}
 
                 {hasSummary && (
                     <div className="mt-4 bg-terminal/5 border border-terminal/20 rounded p-3 relative overflow-hidden group/summary animate-in fade-in zoom-in duration-300">

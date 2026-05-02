@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { countTokens } from '../services/tokenizer';
+import { countRegisterTokens } from '../services/divergenceRegister';
 
 export function TokenGauge() {
-    const { context, messages, settings, condenser } = useAppStore();
+    const { context, messages, settings, condenser, divergenceRegister } = useAppStore();
 
     const systemText = useMemo(() => {
         const parts: string[] = [];
@@ -21,6 +22,13 @@ export function TokenGauge() {
 
     const systemTokens = useMemo(() => countTokens(systemText), [systemText]);
 
+    const divTokens = useMemo(() => {
+        if (!divergenceRegister || divergenceRegister.entries.length === 0) return 0;
+        return countRegisterTokens(divergenceRegister);
+    }, [divergenceRegister]);
+
+    const totalSystemTokens = systemTokens + divTokens;
+
     const historyText = useMemo(() => {
         const activeMessages = (condenser.condensedUpToIndex !== undefined && condenser.condensedUpToIndex >= 0)
             ? messages.slice(condenser.condensedUpToIndex + 1)
@@ -31,9 +39,9 @@ export function TokenGauge() {
     const historyTokens = useMemo(() => countTokens(historyText), [historyText]);
 
     const total = settings.contextLimit;
-    const remaining = Math.max(0, total - systemTokens - historyTokens);
+    const remaining = Math.max(0, total - totalSystemTokens - historyTokens);
 
-    const pctSystem = Math.min((systemTokens / total) * 100, 100);
+    const pctSystem = Math.min((totalSystemTokens / total) * 100, 100);
     const pctHistory = Math.min((historyTokens / total) * 100, 100 - pctSystem);
     const pctFree = 100 - pctSystem - pctHistory;
 
@@ -59,7 +67,7 @@ export function TokenGauge() {
             </div>
 
             <div className="flex gap-3 text-[10px] shrink-0">
-                <span className="text-ember">SYS:{systemTokens}</span>
+                <span className="text-ember">SYS:{totalSystemTokens}{divTokens > 0 ? <span className="text-amber-400">+{divTokens}</span> : ''}</span>
                 <span className="text-ice">HIS:{historyTokens}</span>
                 <span className="text-text-dim">FREE:{remaining}</span>
             </div>
