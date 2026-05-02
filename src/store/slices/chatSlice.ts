@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { ChatMessage, CondenserState, GameContext } from '../../types';
+import type { ChatMessage, CondenserState, GameContext, LoreCheckSelection, LoreCheckResult } from '../../types';
 import { debouncedSaveCampaignState } from './campaignSlice';
 
 // ── Slice type ─────────────────────────────────────────────────────────
@@ -11,6 +11,7 @@ export type ChatSlice = {
     updateLastAssistant: (content: string) => void;
     updateLastMessage: (patch: Partial<ChatMessage>) => void;
     updateMessageContent: (id: string, content: string) => void;
+    replaceMessageText: (id: string, oldText: string, newText: string) => void;
     deleteMessage: (id: string) => void;
     deleteMessagesFrom: (id: string) => void;
     setStreaming: (v: boolean) => void;
@@ -22,6 +23,18 @@ export type ChatSlice = {
     setCondenser: (state: CondenserState) => void;
     setCondensing: (v: boolean) => void;
     resetCondenser: () => void;
+
+    loreCheckOpen: boolean;
+    loreCheckLoading: boolean;
+    loreCheckSelection: LoreCheckSelection | null;
+    loreCheckResult: LoreCheckResult | null;
+    loreCheckStatus: string;
+    loreCheckError: string | null;
+    openLoreCheck: (selection: LoreCheckSelection) => void;
+    setLoreCheckStatus: (status: string) => void;
+    setLoreCheckResult: (result: LoreCheckResult) => void;
+    setLoreCheckError: (err: string) => void;
+    closeLoreCheck: () => void;
 };
 
 // ── Cross-slice dependencies ───────────────────────────────────────────
@@ -82,6 +95,22 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: msgs, condenser: s.condenser });
             return { messages: msgs };
         }),
+    replaceMessageText: (id, oldText, newText) =>
+        set((s) => {
+            const msgs = s.messages.map(m => {
+                if (m.id !== id) return m;
+                const next = { ...m };
+                if (typeof m.content === 'string' && m.content.includes(oldText)) {
+                    next.content = m.content.replace(oldText, newText);
+                }
+                if (typeof m.displayContent === 'string' && m.displayContent.includes(oldText)) {
+                    next.displayContent = m.displayContent.replace(oldText, newText);
+                }
+                return next;
+            });
+            debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: msgs, condenser: s.condenser });
+            return { messages: msgs };
+        }),
     deleteMessage: (id) =>
         set((s) => {
             const msgs = s.messages.filter(m => m.id !== id);
@@ -103,4 +132,34 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
         return { messages: [], condenser: newCondenser };
     }),
     clearArchive: () => set({ archiveIndex: [] } as unknown as Partial<ChatDeps>),
+
+    loreCheckOpen: false,
+    loreCheckLoading: false,
+    loreCheckSelection: null,
+    loreCheckResult: null,
+    loreCheckStatus: '',
+    loreCheckError: null,
+    openLoreCheck: (selection) =>
+        set({
+            loreCheckOpen: true,
+            loreCheckLoading: true,
+            loreCheckSelection: selection,
+            loreCheckResult: null,
+            loreCheckStatus: 'Preparing...',
+            loreCheckError: null,
+        }),
+    setLoreCheckStatus: (status) => set({ loreCheckStatus: status }),
+    setLoreCheckResult: (result) =>
+        set({ loreCheckResult: result, loreCheckLoading: false, loreCheckStatus: '' }),
+    setLoreCheckError: (err) =>
+        set({ loreCheckError: err, loreCheckLoading: false, loreCheckStatus: '' }),
+    closeLoreCheck: () =>
+        set({
+            loreCheckOpen: false,
+            loreCheckLoading: false,
+            loreCheckSelection: null,
+            loreCheckResult: null,
+            loreCheckStatus: '',
+            loreCheckError: null,
+        }),
 });

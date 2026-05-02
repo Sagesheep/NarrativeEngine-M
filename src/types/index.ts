@@ -57,11 +57,14 @@ export type AIPreset = {
     sampling?: SamplingConfig;
 };
 
+export type CondenseAggressiveness = 'aggressive' | 'balanced' | 'quality';
+
 export type AppSettings = {
     presets: AIPreset[];
     activePresetId: string;
     contextLimit: number;
     autoCondenseEnabled: boolean;
+    condenseAggressiveness?: CondenseAggressiveness;
     debugMode?: boolean; // Toggles inline payload viewer
     theme?: 'light' | 'dark' | 'system';
     showReasoning?: boolean; // Toggles visibility of LLM thinking blocks
@@ -394,5 +397,28 @@ export type TimelineEvent = {
     summary: string;
     importance: number;
     source: 'regex' | 'llm' | 'manual';
+};
+
+export type LoreCheckVerdict = 'consistent' | 'unsupported' | 'contradicts';
+
+export type LoreCheckSelection = {
+    messageId: string;
+    selectedText: string;
+    start: number;
+    end: number;
+    surroundingContext: string;
+};
+
+export type LoreCheckCitation = {
+    ref: string;
+    label: string;
+};
+
+export type LoreCheckResult = {
+    verdict: LoreCheckVerdict;
+    issues: string[];
+    citations: LoreCheckCitation[];
+    suggestedRewrite: string | null;
+    originalText: string;
 };
 
