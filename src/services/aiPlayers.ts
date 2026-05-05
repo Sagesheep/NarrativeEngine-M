@@ -105,7 +105,7 @@ async function generateAIPlayerAction(
 
     const npcContext = relevantNPCs.length > 0
         ? "\n\nRELEVANT NPCs IN SCENE:\n" + relevantNPCs.map(n =>
-            `- ${n.name} (Status: ${n.status}) | Goals: ${n.goals} | Stats: N:${n.nature} T:${n.training} E:${n.emotion} S:${n.social} B:${n.belief} G:${n.ego}`
+            `- ${n.name} (Status: ${n.status}) | Goals: ${n.goals} | Personality: ${n.personality || n.disposition || '?'}`
           ).join('\n')
         : "";
 

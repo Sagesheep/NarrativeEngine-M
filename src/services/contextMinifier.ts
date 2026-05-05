@@ -138,14 +138,15 @@ export function minifyNPC(npc: NPCEntry): string {
     const status = npc.status || 'Alive';
     const aff = npc.affinity ?? 50;
 
-    // Compact appearance: trim to first 80 chars if very long
     const appearance = (npc.appearance || '?').length > 80
         ? (npc.appearance || '?').substring(0, 80) + '…'
         : (npc.appearance || '?');
 
-    const disposition = npc.disposition || '?';
-    const goals = npc.goals || '?';
-    const axes = `${npc.nature}/${npc.training}/${npc.emotion}/${npc.social}/${npc.belief}/${npc.ego}`;
+    const personality = (npc.personality || npc.disposition || '?').length > 60
+        ? (npc.personality || npc.disposition || '?').substring(0, 60) + '…'
+        : (npc.personality || npc.disposition || '?');
 
-    return `[${name}${aliases}] ${status} aff:${aff} | ${appearance} | ${disposition} | ${goals} | ${axes}`;
+    const goals = npc.goals || '?';
+
+    return `[${name}${aliases}] ${status} aff:${aff} | ${appearance} | ${personality} | ${goals}`;
 }

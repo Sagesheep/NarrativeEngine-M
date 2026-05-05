@@ -26,7 +26,7 @@ export function NPCLedgerModal() {
   const importRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<Partial<NPCEntry>>({
-    status: 'Alive', nature: 5, training: 1, emotion: 5, social: 5, belief: 5, ego: 5,
+    status: 'Alive', voice: '', personality: '', exampleOutput: '',
   });
 
   if (!npcLedgerOpen) return null;
@@ -51,7 +51,7 @@ export function NPCLedgerModal() {
     setSelectedId(null);
     setForm({
       name: '', aliases: '', appearance: '', faction: '', storyRelevance: '', disposition: '',
-      status: 'Alive', goals: '', nature: 5, training: 1, emotion: 5, social: 5, belief: 5, ego: 5,
+      status: 'Alive', goals: '', voice: '', personality: '', exampleOutput: '',
     });
     setIsEditing(true);
   };
@@ -135,12 +135,9 @@ export function NPCLedgerModal() {
             disposition: d.disposition || '',
             status: d.status || 'Alive',
             goals: d.goals || '',
-            nature: d.nature ?? 5,
-            training: d.training ?? 1,
-            emotion: d.emotion ?? 5,
-            social: d.social ?? 5,
-            belief: d.belief ?? 5,
-            ego: d.ego ?? 5,
+            voice: d.voice || '',
+            personality: d.personality || '',
+            exampleOutput: d.exampleOutput || '',
             affinity: d.affinity ?? 50,
           } as NPCEntry));
           const merged = dedupeNPCLedger([...npcLedger, ...imported]);

@@ -42,16 +42,6 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
             const n = parseInt(match[0], 10);
             return isNaN(n) ? fallback : n;
         };
-        
-        // Handle Axes format explicitly if present (e.g. "Nature(8) Training(5)...")
-        const axesMatch = body.match(/\*\*Axes:\*\*\s*(.+)/i);
-        let axesStr = axesMatch ? axesMatch[1] : '';
-        const parseAxis = (label: string, fallback: number): number => {
-            if (!axesStr) return getNum(label, fallback);
-            const ref = new RegExp(`${label}\\s*\\((\\d+)\\)`, 'i');
-            const m = axesStr.match(ref);
-            return m ? parseInt(m[1], 10) : getNum(label, fallback);
-        }
 
         npcs.push({
             id: uid(),
@@ -63,13 +53,10 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
             faction: get('Faction'),
             storyRelevance: get('StoryRelevance'),
             status: (get('Status') as NPCEntry['status']) || 'Alive',
-            affinity: parseAxis('Affinity', 50),
-            nature: parseAxis('Nature', 5),
-            training: parseAxis('Training', 5),
-            emotion: parseAxis('Emotion', 5),
-            social: parseAxis('Social', 5),
-            belief: parseAxis('Belief', 5),
-            ego: parseAxis('Ego', 5),
+            affinity: getNum('Affinity', 50),
+            voice: get('Voice'),
+            personality: get('Personality'),
+            exampleOutput: get('ExampleOutput') || get('Example'),
         });
     }
 

@@ -14,6 +14,7 @@ import { set } from 'idb-keyval';
 import { toast } from './Toast';
 import { MessageBubble } from './chat/MessageBubble';
 import { CondensedMemoryPanel } from './chat/CondensedMemoryPanel';
+import { NPCPressureInspector } from './NPCPressureInspector';
 import { ChatInput } from './chat/ChatInput';
 import { extractDivergences, mergeEntries, EMPTY_REGISTER } from '../services/divergenceRegister';
 
@@ -170,6 +171,7 @@ export function ChatArea() {
         triggerCondense,
         condenseAbortRef,
         condensePhase,
+        saveProgress,
         editingSummary,
         setEditingSummary,
         summaryDraft,
@@ -285,15 +287,32 @@ export function ChatArea() {
 
         toast.info('Scanning for divergences...');
         try {
-            const gmText = msg.content || '';
-            const userMsg = messages.slice().reverse().find(m => m.role === 'user' && m.timestamp < msg.timestamp);
-            const userText = userMsg?.content || '';
-            const sceneText = `[User]: ${userText.slice(0, 600)}\n[GM]: ${gmText.slice(0, 1200)}`;
+            const clickedIdx = messages.findIndex(m => m.id === msg.id);
+            if (clickedIdx === -1) { toast.error('Message not found'); return; }
+            const startIdx = Math.max(0, clickedIdx - 10);
+            const windowMessages = messages.slice(startIdx, clickedIdx + 1);
+
+            const archiveIndexData = await api.archive.getIndex(activeCampaignId);
+            const { buildSceneMap: buildSceneMapFn } = await import('../services/divergenceRegister');
+            const { sceneIdsByMessageId } = buildSceneMapFn(archiveIndexData, messages);
+
+            const sceneText = windowMessages.map(m => {
+                const sid = sceneIdsByMessageId[m.id] || 'manual';
+                return `[Scene #${sid}][${m.role.toUpperCase()}]: ${m.content || ''}`;
+            }).join('\n\n');
+
+            const clickedSceneId = sceneIdsByMessageId[msg.id] || 'manual';
             const currentRegister = divergenceRegister || EMPTY_REGISTER;
 
-            const { entries } = await extractDivergences(provider, sceneText, 'manual', currentRegister, { forceExtract: true });
+            const { entries } = await extractDivergences(
+                provider,
+                sceneText,
+                clickedSceneId,
+                currentRegister,
+                { forceExtract: true, multiScene: true }
+            );
             if (entries.length > 0) {
-                const merged = mergeEntries(currentRegister, entries, 'manual');
+                const merged = mergeEntries(currentRegister, entries, clickedSceneId);
                 setDivergenceRegister(merged);
                 updateMessageDivergence(msg.id, entries.map(e => e.id));
                 const { saveDivergenceRegister } = await import('../store/campaignStore');
@@ -379,7 +398,7 @@ export function ChatArea() {
                 <button onClick={handleForceSave} disabled={isSaving} className="flex items-center gap-1.5 bg-void border border-emerald-500/30 text-emerald-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
                     {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} SAVE
                 </button>
-                {condenser.isCondensing ? (
+                {(settings.enableLegacyCondenser !== false) && (condenser.isCondensing ? (
                     <button onClick={() => condenseAbortRef.current?.abort()} className="flex items-center gap-1.5 bg-void border border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
                         <Square size={13} /> STOP
                     </button>
@@ -387,7 +406,7 @@ export function ChatArea() {
                     <button onClick={triggerCondense} disabled={messages.length < 6} className="flex items-center gap-1.5 bg-void border border-terminal/30 text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
                         <Zap size={13} /> CONDENSE
                     </button>
-                )}
+                ))}
                 <button onClick={() => setShowCondensedPanel(p => !p)} className={`flex items-center gap-1.5 bg-void border ${showCondensedPanel ? 'border-terminal text-terminal' : 'border-ice/30 text-ice'} text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all`}>
                     {showCondensedPanel ? <ChevronUp size={13} /> : <ChevronDown size={13} />} MEMORY
                 </button>
@@ -419,6 +438,8 @@ export function ChatArea() {
                 }}
             />
 
+            <NPCPressureInspector />
+
             <GenerationProgress phase={pipelinePhase} stats={streamingStats} />
 
             {condenser.isCondensing && (
@@ -426,7 +447,13 @@ export function ChatArea() {
                     <div className="flex items-center gap-2 animate-pulse">
                         <Loader2 size={10} className="animate-spin text-amber-500" />
                         <span className="text-[9px] uppercase tracking-widest text-amber-500 font-bold">
-                            {condensePhase === 'save' ? 'Archiving session state...' : 'Compressing history...'}
+                            {condensePhase === 'save'
+                                ? saveProgress
+                                    ? `Archiving session state... (${saveProgress.phase} ${saveProgress.batch}/${saveProgress.totalBatches})`
+                                    : 'Archiving session state...'
+                                : condensePhase === 'extract'
+                                    ? 'Scanning for divergences...'
+                                    : 'Compressing history...'}
                         </span>
                     </div>
                     <button

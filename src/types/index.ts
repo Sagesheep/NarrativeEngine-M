@@ -73,6 +73,9 @@ export type AppSettings = {
     enableDeepArchiveSearch?: boolean;
     autoExtractDivergences?: boolean;
     divergenceTokenBudget?: number;
+    enableLegacyCondenser?: boolean; // default true; OFF disables prose condenser entirely (injection + button + auto-condense)
+    injectProseSummary?: boolean; // default true. When false, prose condensed summary is NOT shipped to AI in payload (still generated and visible in panel for inspection).
+    divergenceScanBudget?: number; // 0 or undefined = auto (75% of contextLimit). Otherwise the explicit max-tokens-per-chunk for divergence extraction.
 
     // Legacy fields kept for migration only
     providers?: LLMProvider[];
@@ -123,8 +126,6 @@ export type WorldEventConfig = {
 export type GameContext = {
     loreRaw: string;
     rulesRaw: string;
-    canonState: string;
-    headerIndex: string;
     starter: string;
     continuePrompt: string;
     inventory: string;
@@ -137,8 +138,6 @@ export type GameContext = {
     diceConfig?: DiceConfig;
     worldEventConfig?: WorldEventConfig;
     // Toggles: whether each field is appended to context
-    canonStateActive: boolean;
-    headerIndexActive: boolean;
     starterActive: boolean;
     continuePromptActive: boolean;
     inventoryActive: boolean;
@@ -189,6 +188,7 @@ export type DivergenceEntry = {
     supersedes?: string;
     resolved?: boolean;
     source: 'auto' | 'manual';
+    parseError?: boolean;
 };
 
 export type DivergenceRegister = {
@@ -283,24 +283,51 @@ export type EngineSeed = {
     worldWhat: string[];
 };
 
+export type NPCDrives = {
+    coreWant: string;
+    sessionWant: string;
+    sceneWant: string;
+};
+
+export type NPCBehavioralTrigger = {
+    keyword: string;
+    shift: string;
+};
+
+export type NPCPressureHistory = {
+    turn: number;
+    type: 'ignored' | 'engaged';
+    delta: number;
+    reason: string;
+};
+
+export type NPCPressure = {
+    ignored: number;
+    engaged: number;
+    lastDecayTurn: number;
+    history: NPCPressureHistory[];
+};
+
 export type NPCEntry = {
     id: string;
     name: string;
     aliases: string;
-    appearance: string; // Legacy fallback or raw notes
+    appearance: string;
     faction: string;
     storyRelevance: string;
     disposition: string;
     status: string;
     goals: string;
-    nature: number;   // 1-10
-    training: number; // 1-10
-    emotion: number;  // 1-10
-    social: number;   // 1-10
-    belief: number;   // 1-10
-    ego: number;      // 1-10
-    affinity: number; // 0-100
-    previousAxes?: { nature?: number; training?: number; emotion?: number; social?: number; belief?: number; ego?: number; affinity?: number; };
+    voice: string;
+    personality: string;
+    exampleOutput: string;
+    affinity: number;
+    drives?: NPCDrives;
+    behavioralTriggers?: NPCBehavioralTrigger[];
+    hardBoundaries?: string[];
+    softBoundaries?: string[];
+    pressure?: NPCPressure;
+    previousSnapshot?: { personality: string; voice: string; affinity: number };
     shiftNote?: string;
     shiftTurnCount?: number;
 };
@@ -329,6 +356,7 @@ export type PayloadTrace = {
     preview?: string;
     included: boolean;
     position?: string;
+    childMessages?: Array<{ role: string; tokens: number; preview: string }>;
 };
 
 export type CoreMemorySlot = {
@@ -364,7 +392,6 @@ export type ArchiveChapter = {
     sceneCount: number;
     sealedAt?: number;
     invalidated?: boolean;
-    _lastSeenSessionId?: string;
 };
 
 export type NotebookNote = {
@@ -450,5 +477,7 @@ export type LoreCheckResult = {
     citations: LoreCheckCitation[];
     suggestedRewrite: string | null;
     originalText: string;
+    /** Raw LLM output, populated on parse failure for debugging */
+    rawResponse?: string;
 };
 

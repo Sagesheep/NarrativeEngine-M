@@ -1,6 +1,6 @@
 import type { NPCEntry } from '../types';
 import type { TurnCallbacks, TurnState } from './turnTypes';
-import { generateNPCProfile, updateExistingNPCs } from './chatEngine';
+import { generateNPCProfile, updateExistingNPCs, backfillNPCDrives } from './chatEngine';
 import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from './npcDetector';
 import { api } from './apiClient';
 import { toast } from '../components/Toast';
@@ -12,8 +12,7 @@ import { backgroundQueue } from './backgroundQueue';
 import { scanCharacterProfile } from './characterProfileParser';
 import { scanInventory } from './inventoryParser';
 import { rateImportance } from './importanceRater';
-import { extractDivergences, mergeEntries, EMPTY_REGISTER } from './divergenceRegister';
-
+import { scanPressure, buildPressurePatch } from './npcPressureTracker';
 
 export async function handlePostTurn(
     state: TurnState,
@@ -68,31 +67,6 @@ export async function handlePostTurn(
         }
     }
 
-    if (appendedSceneId && state.settings.autoExtractDivergences !== false) {
-        const divProvider = state.getFreshProvider();
-        if (divProvider && callbacks.setDivergenceRegister) {
-            const sid = appendedSceneId;
-            const userText = displayInput;
-            const gmText = lastAssistantContent;
-            const currentRegister = state.divergenceRegister || EMPTY_REGISTER;
-            backgroundQueue.push('Divergence-Extract', async () => {
-                try {
-                    const sceneText = `[User]: ${userText.slice(0, 600)}\n[GM]: ${gmText.slice(0, 1200)}`;
-                    const { entries } = await extractDivergences(divProvider, sceneText, sid, currentRegister);
-                    if (entries.length > 0) {
-                        const merged = mergeEntries(currentRegister, entries, sid);
-                        callbacks.setDivergenceRegister!(merged);
-                        const msgId = state.getMessages().slice().reverse().find(m => m.role === 'assistant')?.id;
-                        if (msgId && callbacks.updateMessageDivergence) {
-                            callbacks.updateMessageDivergence(msgId, entries.map(e => e.id));
-                        }
-                        console.log(`[DivergenceRegister] Scene #${sid}: ${entries.length} entries extracted`);
-                    }
-                } catch (e) { console.warn('[TurnPostProcess] Divergence extraction failed:', e); }
-            }).catch((e) => console.warn('[TurnPostProcess] Divergence queue push failed:', e));
-        }
-    }
-
     if (extractedNames.length > 0) {
         const provider = state.getFreshProvider();
         const validatedNames = provider ?
@@ -116,6 +90,14 @@ export async function handlePostTurn(
                 if (updateProvider) {
                     updateExistingNPCs(updateProvider, allMsgs, existingNpcsToUpdate, callbacks.updateNPC).catch((e) => console.warn('[TurnPostProcess] updateExistingNPCs failed:', e));
                 }
+
+                const npcsNeedingDrives = existingNpcsToUpdate.filter(n => !n.drives);
+                if (npcsNeedingDrives.length > 0) {
+                    const backfillProvider = state.getFreshProvider();
+                    if (backfillProvider) {
+                        backgroundQueue.push('NPC-Drives-Backfill', () => backfillNPCDrives(backfillProvider, allMsgs, npcsNeedingDrives, callbacks.updateNPC)).catch((e) => console.warn('[TurnPostProcess] NPC drives backfill failed:', e));
+                    }
+                }
             }
         }
     }
@@ -138,13 +120,32 @@ export async function handlePostTurn(
             }).catch((e) => console.warn('[TurnPostProcess] Inventory scan failed:', e));
         }
     }
+
+    if (npcLedger && npcLedger.length > 0) {
+        const archiveIndex = state.archiveIndex;
+        const sceneNumber = archiveIndex.length > 0
+            ? parseInt(archiveIndex[archiveIndex.length - 1].sceneId, 10) || 0
+            : 0;
+
+        const pressureUpdates = scanPressure(displayInput, npcLedger);
+        if (pressureUpdates.length > 0) {
+            for (const update of pressureUpdates) {
+                const npc = npcLedger.find(n => n.id === update.npcId);
+                if (!npc) continue;
+                const patch = buildPressurePatch(npc, update, sceneNumber);
+                callbacks.updateNPC(npc.id, patch);
+                if (update.reasons.length > 0) {
+                    console.log(`[PressureTracker] ${npc.name}: ignored=${patch.pressure?.ignored?.toFixed(1)}, engaged=${patch.pressure?.engaged?.toFixed(1)} — ${update.reasons.join(', ')}`);
+                }
+            }
+        }
+    }
 }
 
 async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, activeCampaignId: string) {
     const currentChapters = state.chapters;
-    const headerIndex = state.context.headerIndex;
 
-    if (currentChapters.length > 0 && shouldAutoSeal(currentChapters, headerIndex).shouldSeal) {
+    if (currentChapters.length > 0 && shouldAutoSeal(currentChapters).shouldSeal) {
         try {
             const result = await sealChapter(currentChapters);
             if (!result) return;
