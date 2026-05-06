@@ -384,7 +384,7 @@ export async function runSaveFilePipeline(
     // Run canonState and headerIndex in PARALLEL
     const [canonResult, indexResult] = await Promise.all([
         generateCanonState(recentMessages, provider, existingSlots, countTokensFn),
-        generateHeaderIndex(provider, recentMessages, context.headerIndex)
+        generateHeaderIndex(provider, recentMessages, context.headerIndex ?? '')
     ]);
 
     return {

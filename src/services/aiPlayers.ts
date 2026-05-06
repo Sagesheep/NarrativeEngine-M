@@ -97,6 +97,7 @@ async function generateAIPlayerAction(
     else if (d20 >= (context.diceConfig?.triumph ?? 19)) tier = "Triumph";
 
     const relevantNPCs = npcLedger.filter(npc => {
+        if (npc.archived) return false;
         const d = npc.disposition.toLowerCase();
         if (type === 'enemy') return d.includes('hostile') || d.includes('enemy');
         if (type === 'ally') return d.includes('ally') || d.includes('friendly');

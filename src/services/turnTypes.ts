@@ -35,6 +35,8 @@ export type TurnCallbacks = {
     setStreamingStats?: (stats: StreamingStats | null) => void;
     setDivergenceRegister?: (register: DivergenceRegister) => void;
     updateMessageDivergence?: (messageId: string, divergenceIds: string[]) => void;
+    archiveNPC?: (id: string, turn: number, reason: string) => void;
+    restoreNPC?: (id: string) => void;
 };
 
 export type TurnState = {

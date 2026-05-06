@@ -15,7 +15,7 @@ import { NPCEditForm } from './npc-ledger/NPCEditForm';
 import { uid } from '../utils/uid';
 
 export function NPCLedgerModal() {
-  const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC, setNPCLedger, setMobileView, activeCampaignId } = useAppStore();
+  const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC, restoreNPC, setNPCLedger, setMobileView, activeCampaignId } = useAppStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'gallery'>('list');
@@ -164,6 +164,14 @@ export function NPCLedgerModal() {
     toast.success(`Deleted ${checkedIds.size} NPCs`);
   };
 
+  const activeNPCList = npcLedger.filter(n => !n.archived);
+  const archivedNPCList = npcLedger.filter(n => n.archived);
+
+  const handleRestore = (id: string) => {
+    restoreNPC(id);
+    if (selectedId === id) { setSelectedId(null); setIsEditing(false); }
+  };
+
   const showDetail = !!selectedId || (isEditing && !selectedId);
 
   return (
@@ -212,7 +220,7 @@ export function NPCLedgerModal() {
             </div>
             {selectMode && (
               <div className="flex gap-1.5 h-10">
-                <button onClick={() => setCheckedIds(new Set(npcLedger.map(n => n.id)))} className="flex-1 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim">
+                <button onClick={() => setCheckedIds(new Set(activeNPCList.map(n => n.id)))} className="flex-1 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim">
                   All
                 </button>
                 <button onClick={() => setCheckedIds(new Set())} className="flex-1 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim">
@@ -227,9 +235,28 @@ export function NPCLedgerModal() {
 
           <div className="flex-1 overflow-y-auto">
             {viewMode === 'list'
-              ? <NPCListView npcLedger={npcLedger} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })} onDelete={handleDelete} />
-              : <NPCGalleryView npcLedger={npcLedger} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })} onDelete={handleDelete} />
+              ? <NPCListView npcLedger={activeNPCList} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })} onDelete={handleDelete} />
+              : <NPCGalleryView npcLedger={activeNPCList} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })} onDelete={handleDelete} />
             }
+            {archivedNPCList.length > 0 && (
+              <div className="border-t border-border/40 mt-2">
+                <p className="px-3 pt-2 pb-1 text-[9px] text-text-dim uppercase tracking-widest opacity-60">Archived ({archivedNPCList.length})</p>
+                {archivedNPCList.map(npc => (
+                  <div key={npc.id} className="flex items-center justify-between px-3 py-2 opacity-50 hover:opacity-70 transition-opacity">
+                    <div className="truncate min-w-0">
+                      <p className="text-[13px] text-text-dim truncate">{npc.name}</p>
+                      {npc.archivedReason && <p className="text-[10px] text-text-dim/60 truncate">{npc.archivedReason}</p>}
+                    </div>
+                    <button
+                      onClick={() => handleRestore(npc.id)}
+                      className="ml-2 shrink-0 text-[10px] px-2 py-1 border border-terminal/30 text-terminal/70 rounded hover:border-terminal hover:text-terminal transition-colors"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

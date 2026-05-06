@@ -89,6 +89,7 @@ export const defaultSettings: AppSettings = {
     enableDeepArchiveSearch: false,
     autoExtractDivergences: true,
     divergenceTokenBudget: 2000,
+    autoArchiveStaleNPCsTurns: 15,
 };
 
 export function resolveTheme(theme: 'light' | 'dark' | 'system'): 'light' | 'dark' {

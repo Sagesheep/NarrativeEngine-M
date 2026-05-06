@@ -16,11 +16,11 @@ export function SaveFileTab() {
                 icon={<Database size={13} />}
                 label="Canon State"
                 color="text-ember"
-                value={context.canonState}
+                value={context.canonState ?? ''}
                 onChange={(v) => updateContext({ canonState: v })}
                 placeholder="Paste canon state data..."
                 rows={6}
-                active={context.canonStateActive}
+                active={context.canonStateActive ?? false}
                 onToggle={() => updateContext({ canonStateActive: !context.canonStateActive })}
             />
 
@@ -28,11 +28,11 @@ export function SaveFileTab() {
                 icon={<List size={13} />}
                 label="Header Index"
                 color="text-ice"
-                value={context.headerIndex}
+                value={context.headerIndex ?? ''}
                 onChange={(v) => updateContext({ headerIndex: v })}
                 placeholder="Paste header index..."
                 rows={4}
-                active={context.headerIndexActive}
+                active={context.headerIndexActive ?? false}
                 onToggle={() => updateContext({ headerIndexActive: !context.headerIndexActive })}
             />
         </div>

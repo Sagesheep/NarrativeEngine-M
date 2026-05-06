@@ -336,6 +336,32 @@ export function SettingsModal() {
               </div>
             </div>
 
+            {/* NPC Auto-Archive */}
+            <div className="bg-void p-4 border border-border rounded">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">NPC Auto-Archive</label>
+                  <p className="text-[10px] text-text-dim">Archive NPCs with no engagement after N turns. 0 = disabled. Archived NPCs auto-restore on mention.</p>
+                </div>
+                <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs ml-3 shrink-0">
+                  {(settings.autoArchiveStaleNPCsTurns ?? 15) === 0 ? 'off' : `${settings.autoArchiveStaleNPCsTurns ?? 15}t`}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={50}
+                step={5}
+                value={settings.autoArchiveStaleNPCsTurns ?? 15}
+                onChange={(e) => updateSettings({ autoArchiveStaleNPCsTurns: parseInt(e.target.value) })}
+                className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-terminal"
+              />
+              <div className="flex justify-between text-[9px] text-text-dim mt-1">
+                <span>off</span>
+                <span>50 turns</span>
+              </div>
+            </div>
+
             {/* Toggles */}
             <div className="space-y-4">
               {[

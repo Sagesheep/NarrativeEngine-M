@@ -28,7 +28,8 @@ export function useCondenser(deps: UseCondenserDeps) {
     const condenseAbortRef = useRef<AbortController | null>(null);
     const [editingSummary, setEditingSummary] = useState(false);
     const [summaryDraft, setSummaryDraft] = useState('');
-    const [condensePhase, setCondensePhase] = useState<'save' | 'compress' | null>(null);
+    const [condensePhase, setCondensePhase] = useState<'save' | 'compress' | 'extract' | null>(null);
+    const [saveProgress, setSaveProgress] = useState<{ phase: string; batch: number; totalBatches: number } | null>(null);
 
     const triggerCondense = async () => {
         if (deps.condenser.isCondensing) return;
@@ -59,7 +60,7 @@ export function useCondenser(deps: UseCondenserDeps) {
                 deps.condenser.condensedUpToIndex,
                 deps.condenser.condensedSummary,
                 deps.activeCampaignId || '',
-                deps.npcLedger.map(n => n.name),
+                deps.npcLedger.filter((n: any) => !n.archived).map((n: any) => n.name),
                 deps.settings.contextLimit,
                 condenseAbortRef.current.signal
             );
@@ -100,6 +101,8 @@ export function useCondenser(deps: UseCondenserDeps) {
         triggerCondense,
         condenseAbortRef,
         condensePhase,
+        saveProgress,
+        setSaveProgress,
         editingSummary,
         setEditingSummary,
         summaryDraft,

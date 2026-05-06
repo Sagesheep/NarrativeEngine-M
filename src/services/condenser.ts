@@ -101,7 +101,7 @@ export async function condenseHistory(
     const budgetLimit = Math.floor(contextLimit * CONDENSE_BUDGET_RATIO);
 
     // Calculate invariant prompt overhead (rules + canon + existing summary)
-    const basePromptPart = buildCondenserPrompt([], context.canonState, context.headerIndex, finalExistingSummary);
+    const basePromptPart = buildCondenserPrompt([], context.canonState ?? '', context.headerIndex ?? '', finalExistingSummary);
     const baseTokens = countTokens(basePromptPart);
 
     let toCondense: ChatMessage[] = [];
@@ -127,8 +127,8 @@ export async function condenseHistory(
 
     const prompt = buildCondenserPrompt(
         toCondense,
-        context.canonState,
-        context.headerIndex,
+        context.canonState ?? '',
+        context.headerIndex ?? '',
         finalExistingSummary
     );
 
