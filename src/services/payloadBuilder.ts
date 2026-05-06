@@ -204,6 +204,7 @@ export function buildPayload(
     // Active NPCs
     if (npcLedger && npcLedger.length > 0) {
         const loreHeadersSet = new Set((relevantLore ?? []).map(l => l.header.toLowerCase()));
+        const nonArchivedLedger = npcLedger.filter(npc => !npc.archived);
 
         let activeNPCs: NPCEntry[];
 
@@ -211,7 +212,7 @@ export function buildPayload(
             // ── Utility AI Recommender mode ──
             // Use the pre-computed list from contextRecommender.ts
             const recommendedSet = new Set(recommendedNPCNames.map(n => n.toLowerCase()));
-            activeNPCs = npcLedger.filter(npc => {
+            activeNPCs = nonArchivedLedger.filter(npc => {
                 if (!npc.name || loreHeadersSet.has(npc.name.toLowerCase())) return false;
                 const aliases = (npc.aliases || '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean);
                 const allNames = [npc.name.toLowerCase(), ...aliases];
@@ -221,7 +222,7 @@ export function buildPayload(
         } else {
             // ── Legacy substring scan mode ──
             const scanHistory = history.slice(-10).map(m => m.content || '').join(' ') + ' ' + userMessage;
-            activeNPCs = npcLedger.filter(npc => {
+            activeNPCs = nonArchivedLedger.filter(npc => {
                 if (!npc.name || loreHeadersSet.has(npc.name.toLowerCase())) return false;
                 const aliases = (npc.aliases || '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean);
                 const patterns = [npc.name.toLowerCase(), ...aliases];

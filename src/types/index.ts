@@ -76,6 +76,7 @@ export type AppSettings = {
     enableLegacyCondenser?: boolean; // default true; OFF disables prose condenser entirely (injection + button + auto-condense)
     injectProseSummary?: boolean; // default true. When false, prose condensed summary is NOT shipped to AI in payload (still generated and visible in panel for inspection).
     divergenceScanBudget?: number; // 0 or undefined = auto (75% of contextLimit). Otherwise the explicit max-tokens-per-chunk for divergence extraction.
+    autoArchiveStaleNPCsTurns?: number; // 0 disables auto-archive; default 15
 
     // Legacy fields kept for migration only
     providers?: LLMProvider[];
@@ -167,6 +168,10 @@ export type GameContext = {
     neutralCooldown: number;
     allyCooldown: number;
     interventionQueue: ('enemy' | 'neutral' | 'ally')[];
+    canonState?: string;
+    canonStateActive?: boolean;
+    headerIndex?: string;
+    headerIndexActive?: boolean;
 };
 
 
@@ -189,10 +194,20 @@ export type DivergenceEntry = {
     resolved?: boolean;
     source: 'auto' | 'manual';
     parseError?: boolean;
+    reviewFlag?: boolean;
+};
+
+export type PrunedEntry = {
+    originalEntry: DivergenceEntry;
+    prunedAt: number;
+    chapterId: string;
+    verdict: 'auto_pruned' | 'user_deleted_review';
+    reason: string;
 };
 
 export type DivergenceRegister = {
     entries: DivergenceEntry[];
+    prunedLog?: PrunedEntry[];
     lastUpdatedSceneId: string;
     lastUpdatedAt: number;
     version: number;
@@ -330,6 +345,9 @@ export type NPCEntry = {
     previousSnapshot?: { personality: string; voice: string; affinity: number };
     shiftNote?: string;
     shiftTurnCount?: number;
+    archived?: boolean;
+    archivedAtTurn?: number;
+    archivedReason?: string;
 };
 
 
@@ -392,6 +410,7 @@ export type ArchiveChapter = {
     sceneCount: number;
     sealedAt?: number;
     invalidated?: boolean;
+    _lastSeenSessionId?: string;
 };
 
 export type NotebookNote = {

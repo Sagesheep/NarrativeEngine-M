@@ -52,7 +52,7 @@ export async function gatherContext(
 
     const messages = state.getMessages();
     const relevantLore = loreChunks.length > 0
-        ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex, finalInput, 1200, messages, semanticLoreIds)
+        ? retrieveRelevantLore(loreChunks, context.canonState ?? '', context.headerIndex ?? '', finalInput, 1200, messages, semanticLoreIds)
         : undefined;
 
     let sceneNumber: string | undefined;
