@@ -120,5 +120,6 @@ export async function saveDivergenceRegister(campaignId: string, register: Diver
 
 export async function loadDivergenceRegister(campaignId: string): Promise<DivergenceRegister | null> {
     const register = await get(`divergence_${campaignId}`);
-    return register || null;
+    if (!register) return null;
+    return { ...register, prunedLog: register.prunedLog ?? [] };
 }

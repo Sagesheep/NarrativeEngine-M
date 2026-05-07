@@ -186,6 +186,7 @@ export function mergeEntries(
 
     return {
         entries: merged,
+        prunedLog: register.prunedLog ?? [],
         lastUpdatedSceneId: sceneId,
         lastUpdatedAt: Date.now(),
         version: register.version,
@@ -296,6 +297,7 @@ OUTPUT: JSON array of entries: [{ "category": "...", "subject": "...", "divergen
 
         return {
             entries: merged,
+            prunedLog: register.prunedLog ?? [],
             lastUpdatedSceneId: register.lastUpdatedSceneId,
             lastUpdatedAt: Date.now(),
             version: register.version + 1,
@@ -626,4 +628,174 @@ export function buildSceneMap(
         sceneIdsByMessageId,
         index: archiveIndex.map(e => ({ sceneId: e.sceneId, importance: e.importance })),
     };
+}
+
+export function confirmReviewEntry(register: DivergenceRegister, entryId: string): DivergenceRegister {
+    const entries = register.entries.map(e =>
+        e.id === entryId ? { ...e, reviewFlag: false } : e
+    );
+    return { ...register, entries, lastUpdatedAt: Date.now() };
+}
+
+export function deleteReviewedEntry(register: DivergenceRegister, entryId: string): DivergenceRegister {
+    const entry = register.entries.find(e => e.id === entryId);
+    if (!entry) return register;
+
+    const entries = register.entries.filter(e => e.id !== entryId);
+    const newPruned: PrunedEntry = {
+        originalEntry: entry,
+        prunedAt: Date.now(),
+        chapterId: '',
+        verdict: 'user_deleted_review',
+        reason: 'User manually deleted after review',
+    };
+    const prunedLog = [...(register.prunedLog ?? []), newPruned];
+
+    return { ...register, entries, prunedLog, lastUpdatedAt: Date.now() };
+}
+
+export function restorePrunedEntry(register: DivergenceRegister, prunedIndex: number): DivergenceRegister {
+    const prunedLog = register.prunedLog ?? [];
+    if (prunedIndex < 0 || prunedIndex >= prunedLog.length) return register;
+
+    const restored = prunedLog[prunedIndex];
+    const entry: DivergenceEntry = { ...restored.originalEntry, reviewFlag: false };
+
+    const newLog = prunedLog.filter((_, i) => i !== prunedIndex);
+    const entries = [...register.entries, entry];
+    entries.sort((a, b) => parseInt(a.sceneRef) - parseInt(b.sceneRef));
+
+    return { ...register, entries, prunedLog: newLog, lastUpdatedAt: Date.now() };
+}
+
+function repairTruncatedJson(str: string): string {
+    let s = str.trim();
+    const lastBrace = s.lastIndexOf('}');
+    const lastBracket = s.lastIndexOf(']');
+    const cut = Math.max(lastBrace, lastBracket);
+    if (cut !== -1) {
+        s = s.substring(0, cut + 1).trim();
+    }
+    if (!s.endsWith(']')) s += ']';
+    s = s.replace(/,\s*]/g, ']');
+    s = s.replace(/,\s*}/g, '}');
+    s = s.replace(/}\s*\{/g, '},{');
+    return s;
+}
+
+export async function mergeSimilarEntries(
+    provider: LLMProvider,
+    register: DivergenceRegister
+): Promise<DivergenceRegister> {
+    if (register.entries.length === 0) return register;
+
+    const entryLines = register.entries.map(e =>
+        `${e.id} | ${e.category} | ${e.subject}: ${e.divergence} [Scene #${e.sceneRef}]`
+    ).join('\n');
+
+    const prompt = `Merge adjacent or same-subject divergence entries into fewer, denser entries. This is a CAMPAIGN TRUTH register — not a story log. Clusters of micro-beat entries about the same character/subject should collapse into one entry capturing the final state.
+
+ENTRIES:
+${entryLines}
+
+RULES:
+- Identify clusters sharing the same subject. Group them.
+- For each cluster, keep only the entry(s) that represent the CURRENT final state. If 7 entries trace an emotional arc, output 1 entry summarizing the arc's outcome.
+- Merge transient micro-beats into their parent entry. "Bram was nervous" + "Bram's hands dropped" + "Bram asked hopefully" → "Bram is emotionally fragile but drawn to Soren's encouragement"
+- Drop entries fully superseded: if entry A says "shallow reserves" and entry B says "true depth concealed," keep B, drop A.
+- Preserve ALL proper nouns. Keep the earliest sceneRef in the cluster.
+- If only 1 entry exists for a subject, keep it as-is unless it's clearly a transient moment (one-time state no longer true).
+- Output EVERY entry from the input. For entries you merge, omit them and add a new merged entry. For entries you keep unchanged, include them verbatim.
+
+OUTPUT: JSON array of entries. List ALL entries that should remain in the register — kept originals + new merged entries. Drop entries that are consumed by a merge.
+[{ "category": "...", "subject": "...", "divergence": "...", "sceneRef": "...", "importance": <number>, "linkedSceneIds": ["..."], "source": "auto" }]`;
+
+    try {
+        const entryCount = register.entries.length;
+        const outputTokens = Math.min(64000, Math.max(8000, entryCount * 120));
+        const raw = await llmCall(provider, prompt, { priority: 'low', maxTokens: outputTokens });
+        const cleaned = stripReasoning(raw);
+        const jsonStr = extractJson(cleaned);
+
+        let merged: Array<Partial<DivergenceEntry>> = [];
+        try {
+            merged = JSON.parse(jsonStr) as typeof merged;
+            if (!Array.isArray(merged)) merged = [];
+        } catch {
+            const repaired = repairTruncatedJson(jsonStr);
+            try {
+                merged = JSON.parse(repaired) as typeof merged;
+                if (!Array.isArray(merged)) merged = [];
+            } catch {
+                console.warn('[DivergenceMerge] JSON repair failed, raw output:', cleaned.slice(0, 500));
+            }
+        }
+
+        if (!Array.isArray(merged) || merged.length === 0) {
+            return register;
+        }
+
+        const newEntries: DivergenceEntry[] = merged.map(ce => ({
+            id: `div_${uid()}`,
+            category: ce.category || 'entity_state',
+            subject: ce.subject || '',
+            divergence: ce.divergence || '',
+            sceneRef: ce.sceneRef || '000',
+            linkedSceneIds: ce.linkedSceneIds || [ce.sceneRef || '000'],
+            importance: ce.importance ?? 5,
+            source: ce.source || 'auto',
+        }));
+
+        newEntries.sort((a, b) => parseInt(a.sceneRef) - parseInt(b.sceneRef));
+
+        console.log(`[DivergenceMerge] ${register.entries.length} entries → ${newEntries.length} entries`);
+
+        return {
+            entries: newEntries,
+            prunedLog: register.prunedLog ?? [],
+            lastUpdatedSceneId: register.lastUpdatedSceneId,
+            lastUpdatedAt: Date.now(),
+            version: register.version + 1,
+        };
+    } catch (err) {
+        console.warn('[DivergenceMerge] Merge failed, register unchanged:', err);
+        return register;
+    }
+}
+
+export function backfillParseErrors(register: DivergenceRegister): DivergenceRegister {
+    if (!register.entries.some(e => e.parseError)) return register;
+
+    const allSceneIds = Array.from(getDivergenceSceneIds(register));
+    let changed = false;
+
+    const entries = register.entries.map(e => {
+        if (!e.parseError) return e;
+
+        const reconstructed = `- ${e.category} | ${e.subject} | scene:${e.sceneRef} | ${e.divergence}`;
+        const parsed = parseBulletDivergences(reconstructed, allSceneIds.length > 0 ? allSceneIds : [e.sceneRef]);
+
+        if (parsed.length === 1 && !parsed[0].parseError) {
+            changed = true;
+            const p = parsed[0];
+            return {
+                ...e,
+                category: p.category,
+                subject: p.subject,
+                divergence: p.divergence,
+                sceneRef: p.sceneRef,
+                supersedes: p.supersedes ?? e.supersedes,
+                parseError: false,
+            };
+        }
+
+        if (e.divergence && e.subject === e.divergence.slice(0, 40)) {
+            changed = true;
+            return { ...e, subject: '(unparsed)' };
+        }
+
+        return e;
+    });
+
+    return changed ? { ...register, entries, lastUpdatedAt: Date.now() } : register;
 }

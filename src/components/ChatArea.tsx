@@ -4,7 +4,7 @@ import {
     ChevronDown, ChevronUp, X
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import type { PipelinePhase, StreamingStats, ChatMessage } from '../types';
+import type { PipelinePhase, StreamingStats, ChatMessage, DivergenceEntry, DivergenceRegister } from '../types';
 import { runTurn } from '../services/turnOrchestrator';
 import { GenerationProgress } from './GenerationProgress';
 import { useMessageEditor } from './hooks/useMessageEditor';
@@ -14,9 +14,14 @@ import { set } from 'idb-keyval';
 import { toast } from './Toast';
 import { MessageBubble } from './chat/MessageBubble';
 import { CondensedMemoryPanel } from './chat/CondensedMemoryPanel';
+import { DivergenceReviewModal } from './chat/DivergenceReviewModal';
 import { NPCPressureInspector } from './NPCPressureInspector';
 import { ChatInput } from './chat/ChatInput';
-import { extractDivergences, mergeEntries, EMPTY_REGISTER } from '../services/divergenceRegister';
+import { mergeEntries, pruneChapterEntries, mergeSimilarEntries, EMPTY_REGISTER } from '../services/divergenceRegister';
+
+const saveReg = (campaignId: string, reg: DivergenceRegister) => {
+    import('../store/campaignStore').then(m => m.saveDivergenceRegister(campaignId, reg)).catch(() => {});
+};
 
 export function ChatArea() {
     const {
@@ -53,7 +58,11 @@ export function ChatArea() {
         setDeepArmed,
         divergenceRegister,
         setDivergenceRegister,
+        editDivergenceEntry,
         updateMessageDivergence,
+        confirmReviewEntry,
+        deleteReviewedEntry,
+        restorePrunedEntry,
     } = useAppStore();
 
     const [input, setInput] = useState('');
@@ -66,6 +75,7 @@ export function ChatArea() {
     const [showCondensedPanel, setShowCondensedPanel] = useState(false);
     const [streamingStats, setStreamingStatsLocal] = useState<StreamingStats | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [divergenceReviewMessages, setDivergenceReviewMessages] = useState<ChatMessage[] | null>(null);
     const streamStartRef = useRef<number>(0);
     const bottomRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -284,51 +294,100 @@ export function ChatArea() {
         }
     };
 
-    const handleTagDivergence = async (msg: ChatMessage) => {
-        if (!activeCampaignId) return;
-        const provider = getActiveStoryEndpoint();
-        if (!provider) { toast.error('No story AI endpoint configured'); return; }
+    const handleTagDivergence = (msg: ChatMessage) => {
+        const clickedIdx = messages.findIndex(m => m.id === msg.id);
+        if (clickedIdx === -1) return;
+        const startIdx = Math.max(0, clickedIdx - 10);
+        setDivergenceReviewMessages(messages.slice(startIdx, clickedIdx + 1));
+    };
 
-        toast.info('Scanning for divergences...');
-        try {
-            const clickedIdx = messages.findIndex(m => m.id === msg.id);
-            if (clickedIdx === -1) { toast.error('Message not found'); return; }
-            const startIdx = Math.max(0, clickedIdx - 10);
-            const windowMessages = messages.slice(startIdx, clickedIdx + 1);
-
-            const archiveIndexData = await api.archive.getIndex(activeCampaignId);
-            const { buildSceneMap: buildSceneMapFn } = await import('../services/divergenceRegister');
-            const { sceneIdsByMessageId } = buildSceneMapFn(archiveIndexData, messages);
-
-            const sceneText = windowMessages.map(m => {
-                const sid = sceneIdsByMessageId[m.id] || 'manual';
-                return `[Scene #${sid}][${m.role.toUpperCase()}]: ${m.content || ''}`;
-            }).join('\n\n');
-
-            const clickedSceneId = sceneIdsByMessageId[msg.id] || 'manual';
-            const currentRegister = divergenceRegister || EMPTY_REGISTER;
-
-            const { entries } = await extractDivergences(
-                provider,
-                sceneText,
-                clickedSceneId,
-                currentRegister,
-                { forceExtract: true, multiScene: true }
-            );
-            if (entries.length > 0) {
-                const merged = mergeEntries(currentRegister, entries, clickedSceneId);
-                setDivergenceRegister(merged);
-                updateMessageDivergence(msg.id, entries.map(e => e.id));
-                const { saveDivergenceRegister } = await import('../store/campaignStore');
-                await saveDivergenceRegister(activeCampaignId, merged);
-                toast.success(`${entries.length} divergence${entries.length > 1 ? 's' : ''} captured`);
-            } else {
-                toast.info('No divergences found');
-            }
-        } catch (err) {
-            console.warn('[TagDivergence] failed:', err);
-            toast.error('Divergence scan failed');
+    const handleAcceptReviewDivergences = (entries: DivergenceEntry[]) => {
+        if (entries.length === 0) {
+            setDivergenceReviewMessages(null);
+            return;
         }
+        const currentReg = divergenceRegister || EMPTY_REGISTER;
+        const merged = mergeEntries(currentReg, entries, entries[0].sceneRef);
+        setDivergenceRegister(merged);
+        if (activeCampaignId) {
+            saveReg(activeCampaignId, merged);
+        }
+        toast.success(`Merged ${entries.length} divergence${entries.length > 1 ? 's' : ''}`);
+        setDivergenceReviewMessages(null);
+    };
+
+    const handleDeleteDivergence = (id: string) => {
+        const currentReg = useAppStore.getState().divergenceRegister || EMPTY_REGISTER;
+        const updated: DivergenceRegister = {
+            ...currentReg,
+            entries: currentReg.entries.filter(e => e.id !== id),
+            lastUpdatedAt: Date.now(),
+        };
+        setDivergenceRegister(updated);
+        if (activeCampaignId) saveReg(activeCampaignId, updated);
+    };
+
+    const handleEditDivergence = (id: string, patch: Partial<DivergenceEntry>) => {
+        editDivergenceEntry(id, patch);
+        if (activeCampaignId) {
+            const updated = useAppStore.getState().divergenceRegister;
+            saveReg(activeCampaignId, updated);
+        }
+    };
+
+    const handleConfirmReviewEntry = (id: string) => {
+        confirmReviewEntry(id);
+        if (activeCampaignId) {
+            const updated = useAppStore.getState().divergenceRegister;
+            saveReg(activeCampaignId, updated);
+        }
+    };
+
+    const handleDeleteReviewedEntry = (id: string) => {
+        deleteReviewedEntry(id);
+        if (activeCampaignId) {
+            const updated = useAppStore.getState().divergenceRegister;
+            saveReg(activeCampaignId, updated);
+        }
+    };
+
+    const handleRestorePrunedEntry = (prunedIndex: number) => {
+        restorePrunedEntry(prunedIndex);
+        if (activeCampaignId) {
+            const updated = useAppStore.getState().divergenceRegister;
+            saveReg(activeCampaignId, updated);
+        }
+    };
+
+    const handleManualPrune = async () => {
+        if (!activeCampaignId) return;
+        const provider = getActiveUtilityEndpoint();
+        if (!provider) return;
+
+        const currentReg = useAppStore.getState().divergenceRegister || EMPTY_REGISTER;
+        if (currentReg.entries.length === 0) return;
+
+        const allChapters = await api.chapters.list(activeCampaignId);
+        const lastSealed = [...allChapters].reverse().find(c => c.sealedAt && (c.summary || c.unresolvedThreads?.length));
+        const chapterForPrune = lastSealed || allChapters.find(c => !c.sealedAt) || allChapters[0];
+        if (!chapterForPrune) return;
+
+        const pruned = await pruneChapterEntries(provider, chapterForPrune, currentReg, allChapters);
+        setDivergenceRegister(pruned);
+        await saveReg(activeCampaignId, pruned);
+    };
+
+    const handleMergeSimilar = async () => {
+        if (!activeCampaignId) return;
+        const provider = getActiveUtilityEndpoint();
+        if (!provider) return;
+
+        const currentReg = useAppStore.getState().divergenceRegister || EMPTY_REGISTER;
+        if (currentReg.entries.length < 2) return;
+
+        const merged = await mergeSimilarEntries(provider, currentReg);
+        setDivergenceRegister(merged);
+        await saveReg(activeCampaignId, merged);
     };
 
     const visibleMessages = messages.filter(msg => msg.role !== 'tool').slice(-visibleCount);
@@ -440,9 +499,27 @@ export function ChatArea() {
                         import('../store/campaignStore').then(m => m.saveDivergenceRegister(activeCampaignId, useAppStore.getState().divergenceRegister));
                     }
                 }}
+                onDeleteDivergence={handleDeleteDivergence}
+                onEditDivergence={handleEditDivergence}
+                onConfirmReviewEntry={handleConfirmReviewEntry}
+                onDeleteReviewedEntry={handleDeleteReviewedEntry}
+                onRestorePrunedEntry={handleRestorePrunedEntry}
+                onManualPrune={handleManualPrune}
+                onMergeSimilar={handleMergeSimilar}
             />
 
             <NPCPressureInspector />
+
+            {divergenceReviewMessages && activeCampaignId && (
+                <DivergenceReviewModal
+                    messages={divergenceReviewMessages}
+                    archiveIndex={archiveIndex}
+                    currentRegister={divergenceRegister || EMPTY_REGISTER}
+                    provider={getActiveStoryEndpoint()!}
+                    onAccept={handleAcceptReviewDivergences}
+                    onClose={() => setDivergenceReviewMessages(null)}
+                />
+            )}
 
             <GenerationProgress phase={pipelinePhase} stats={streamingStats} />
 

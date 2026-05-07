@@ -207,7 +207,7 @@ export type PrunedEntry = {
 
 export type DivergenceRegister = {
     entries: DivergenceEntry[];
-    prunedLog?: PrunedEntry[];
+    prunedLog: PrunedEntry[];
     lastUpdatedSceneId: string;
     lastUpdatedAt: number;
     version: number;

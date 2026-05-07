@@ -92,7 +92,7 @@ export default function App() {
         archiveIndex,
         chapters,
         semanticFacts: facts,
-        divergenceRegister: divReg ?? { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 },
+        divergenceRegister: divReg ?? { entries: [], prunedLog: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 },
       });
       setCampaignLoaded(true);
     })();
