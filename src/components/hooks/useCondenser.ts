@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import type { AppSettings, ChatMessage, LLMProvider } from '../../types';
 import type { SaveProgress } from '../../services/saveFileEngine';
 import { useAppStore } from '../../store/useAppStore';
@@ -33,8 +33,7 @@ export function useCondenser(deps: UseCondenserDeps) {
     const [condensePhase, setCondensePhase] = useState<'save' | 'extract' | 'compress' | null>(null);
     const [saveProgress, setSaveProgress] = useState<SaveProgress | null>(null);
 
-    const triggerCondense = async () => {
-        if (deps.settings.enableLegacyCondenser === false) return;
+    const triggerCondense = useCallback(async () => {
         if (deps.condenser.isCondensing) return;
         deps.setCondensing(true);
         condenseAbortRef.current = new AbortController();
@@ -125,10 +124,18 @@ export function useCondenser(deps: UseCondenserDeps) {
             deps.setCondensed(result.summary, result.upToIndex);
 
             if (deps.activeCampaignId) {
-                const fresh = await api.archive.getIndex(deps.activeCampaignId);
-                deps.setArchiveIndex(fresh);
-                const freshFacts = await api.facts.get(deps.activeCampaignId).catch(() => []);
-                deps.setSemanticFacts(freshFacts);
+                const [indexResult, factsResult] = await Promise.allSettled([
+                    api.archive.getIndex(deps.activeCampaignId),
+                    api.facts.get(deps.activeCampaignId).catch(() => [])
+                ]);
+
+                if (indexResult.status === 'fulfilled') {
+                    deps.setArchiveIndex(indexResult.value);
+                }
+
+                if (factsResult.status === 'fulfilled') {
+                    deps.setSemanticFacts(factsResult.value);
+                }
             }
         } catch (err) {
             if ((err as Error).name !== 'AbortError') {
@@ -141,10 +148,25 @@ export function useCondenser(deps: UseCondenserDeps) {
             deps.setCondensing(false);
             condenseAbortRef.current = null;
         }
-    };
+    }, [
+        deps.condenser.isCondensing,
+        deps.condenser.condensedUpToIndex,
+        deps.condenser.condensedSummary,
+        deps.activeCampaignId,
+        deps.messages,
+        deps.context,
+        deps.npcLedger,
+        deps.settings.contextLimit,
+        deps.setCondensing,
+        deps.getActiveSummarizerEndpoint,
+        deps.getActiveStoryEndpoint,
+        deps.updateContext,
+        deps.setCondensed,
+        deps.setArchiveIndex,
+        deps.setSemanticFacts,
+    ]);
 
-    const handleRetcon = () => {
-        if (deps.settings.enableLegacyCondenser === false) return;
+    const handleRetcon = useCallback(() => {
         if (!confirm('Retcon: Delete all messages and keep only the summary?')) return;
         const sysMsg: ChatMessage = {
             id: Date.now().toString(36),
@@ -155,9 +177,9 @@ export function useCondenser(deps: UseCondenserDeps) {
         useAppStore.setState({ messages: [sysMsg] });
         deps.setCondensed('', 0);
         setEditingSummary(false);
-    };
+    }, [deps.condenser.condensedSummary, deps.setCondensed, setEditingSummary]);
 
-    return {
+    return useMemo(() => ({
         triggerCondense,
         condenseAbortRef,
         condensePhase,
@@ -167,5 +189,11 @@ export function useCondenser(deps: UseCondenserDeps) {
         summaryDraft,
         setSummaryDraft,
         handleRetcon,
-    };
+    }), [
+        triggerCondense,
+        condensePhase,
+        editingSummary,
+        summaryDraft,
+        handleRetcon
+    ]);
 }

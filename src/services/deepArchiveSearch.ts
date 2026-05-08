@@ -17,6 +17,7 @@
 import type { LLMProvider, ArchiveIndexEntry, ArchiveChapter, ChatMessage } from '../types';
 import { llmCall } from '../utils/llmCall';
 import { getList, k, type SceneRecord } from './storage/_helpers';
+import { stripThink } from '../utils/stripThink';
 
 const EST_TOKENS = (text: string) => Math.ceil(text.length / 4);
 
@@ -81,8 +82,8 @@ function buildConversationExcerpt(messages: ChatMessage[], userMessage: string):
 
 // ── JSON parsers ──
 
-function parseChapterIds(raw: string): string[] {
-    let clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
+async function parseChapterIds(raw: string): Promise<string[]> {
+    let clean = await stripThink(raw);
     const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (mdMatch) clean = mdMatch[1];
     const start = clean.indexOf('{');
@@ -96,8 +97,8 @@ function parseChapterIds(raw: string): string[] {
     } catch { return []; }
 }
 
-function parseSceneIds(raw: string): string[] {
-    let clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
+async function parseSceneIds(raw: string): Promise<string[]> {
+    let clean = await stripThink(raw);
     const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (mdMatch) clean = mdMatch[1];
     const start = clean.indexOf('{');
@@ -175,19 +176,16 @@ Write the narrative context brief now:`;
     }
 
     const partitionQuota = Math.floor(targetTokens / partitions.length);
-    const partitionSummaries: string[] = [];
 
-    for (let i = 0; i < partitions.length; i++) {
-        onStatus(`[3/5] Deep Archive — summarizing part ${i + 1}/${partitions.length}...`);
+    onStatus(`[3/5] Deep Archive — summarizing ${partitions.length} parts...`);
+    const partitionSummaries: string[] = await Promise.all(partitions.map((partition) => {
         const prompt = `Compress these narrative scenes to ~${partitionQuota} tokens. Preserve NPC names, key decisions, outcomes, unresolved threads.
 
-${partitions[i]}
+${partition}
 
 Summary:`;
-        partitionSummaries.push(
-            await llmCall(utilityEndpoint, prompt, { temperature: 0.2, priority: 'high' })
-        );
-    }
+        return llmCall(utilityEndpoint, prompt, { temperature: 0.2, priority: 'high' });
+    }));
 
     onStatus('[3/5] Deep Archive — combining summaries...');
     const combinedPrompt = `Merge these narrative summaries into one coherent context brief. Target approximately ${targetTokens} tokens. Preserve all critical lore, NPC states, and unresolved threads.
@@ -238,7 +236,7 @@ Respond ONLY with JSON: {"chapters": ["ch01", "ch03", ...]}`;
             llmCall(utilityEndpoint, chapterPrompt, { temperature: 0.1, priority: 'high' }),
             new Promise<null>(resolve => setTimeout(() => resolve(null), 20_000)),
         ]);
-        if (raw) selectedChapterIds = parseChapterIds(raw);
+        if (raw) selectedChapterIds = await parseChapterIds(raw);
     } catch (err) {
         console.warn('[DeepArchiveSearch] Phase 1 (chapter scan) failed:', err);
         return '';
@@ -263,7 +261,10 @@ Respond ONLY with JSON: {"chapters": ["ch01", "ch03", ...]}`;
             llmCall(utilityEndpoint, makeScenePrompt(conversation, sceneOverview1), { temperature: 0.1, priority: 'high' }),
             new Promise<null>(resolve => setTimeout(() => resolve(null), 35_000)),
         ]);
-        if (raw) parseSceneIds(raw).forEach(id => notebookIds.add(id));
+        if (raw) {
+            const parsed = await parseSceneIds(raw);
+            parsed.forEach(id => notebookIds.add(id));
+        }
     } catch (err) {
         console.warn('[DeepArchiveSearch] Phase 2 round 1 failed:', err);
         return '';
@@ -298,7 +299,10 @@ Respond ONLY with JSON: {"chapters": ["ch01", "ch03", ...]}`;
                     llmCall(utilityEndpoint, makeScenePrompt(conversation, sceneOverview2), { temperature: 0.1, priority: 'high' }),
                     new Promise<null>(resolve => setTimeout(() => resolve(null), 35_000)),
                 ]);
-                if (raw) parseSceneIds(raw).forEach(id => notebookIds.add(id));
+                if (raw) {
+                    const parsed = await parseSceneIds(raw);
+                    parsed.forEach(id => notebookIds.add(id));
+                }
                 console.log(`[DeepArchiveSearch] Round 2: ${extraChapters.length} extra chapters → ${notebookIds.size} total selected`);
             } catch (err) {
                 console.warn('[DeepArchiveSearch] Phase 2 round 2 failed (non-fatal):', err);
