@@ -326,6 +326,7 @@ export async function runTurn(
 
                 callbacks.setPipelinePhase?.('idle');
                 callbacks.setStreamingStats?.(null);
+                callbacks.setStreaming(false);
             },
             (err) => {
                 if (err === '__ABORT__' || err === 'AbortError' || err === 'The user aborted a request.') {
