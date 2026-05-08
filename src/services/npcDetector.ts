@@ -31,37 +31,20 @@ export function extractNPCNames(content: string, excludeNames: string[] = []): s
         extractedNames.push(stripTitle(raw));
     }
 
-    // Pattern 4: Prose extraction - capitalized proper nouns
+    // Pattern 4: Prose extraction — capitalized proper nouns
     // Matches names like "Orin", "Captain Aldric", "Aldric of Westhold", "Lady Elara"
-    const PROSE_NAME = /\b([A-Z][a-z''-]+(?:\s+(?:of|the|von|de|di|al|el|ibn|bin)\s+[A-Z][a-z''-]+|\s+[A-Z][a-z''-]+){0,3})\b/g;
+    // Char class includes straight (') and curly (’) apostrophes for typographic safety
+    const PROSE_NAME = /\b([A-Z][a-z'’-]+(?:\s+(?:of|the|von|de|di|al|el|ibn|bin)\s+[A-Z][a-z'’-]+|\s+[A-Z][a-z'’-]+){0,3})\b/g;
     const proseMatches = Array.from(content.matchAll(PROSE_NAME));
-
-    // Track sentence boundaries for the sentence-initial guard
-    const sentenceBoundaries = new Set<number>();
-    for (const match of content.matchAll(/[.!?]\s*/g)) {
-        sentenceBoundaries.add(match.index! + match[0].length);
-    }
-    sentenceBoundaries.add(0); // String start
 
     for (const m of proseMatches) {
         const raw = m[1].trim();
 
         // Strip title first, then validate the result
         const stripped = stripTitle(raw);
-        if (stripped.length === 0) continue; // Nothing left after stripping title
+        if (stripped.length === 0) continue;
 
         if (!isValidCandidate(stripped, excludeSet, GENERIC_ROLE_PATTERN, NPC_NAME_BLOCKLIST)) continue;
-
-        // Cheap sentence-initial guard: skip if ONLY occurrence is at sentence start AND it's a blocklisted word
-        // (e.g., "She", "Then") — but keep legitimate names even if they start a sentence (e.g., "Bram")
-        const escapedName = stripped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const allMatches = Array.from(content.matchAll(new RegExp('\\b' + escapedName + '\\b', 'g')));
-
-        // Check if ANY occurrence is not at sentence start
-        const hasNonSentenceInitialOccurrence = allMatches.some(m => !sentenceBoundaries.has(m.index || 0));
-
-        // Only skip if it ONLY appears at sentence starts AND it's a known blocklisted word (pronoun, etc.)
-        if (allMatches.length === 1 && !hasNonSentenceInitialOccurrence && NPC_NAME_BLOCKLIST.has(stripped.toLowerCase())) continue;
 
         extractedNames.push(stripped);
     }

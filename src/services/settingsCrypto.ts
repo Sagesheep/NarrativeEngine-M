@@ -75,32 +75,36 @@ async function decryptString(ciphertext: string, key: CryptoKey): Promise<string
 /** Encrypts apiKey fields in a preset and returns a new preset object. */
 export async function encryptPreset(preset: AIPreset): Promise<AIPreset> {
     const key = await getDeviceCryptoKey();
-    const [storyKey, summKey, utilKey] = await Promise.all([
+    const [storyKey, summKey, utilKey, auxKey] = await Promise.all([
         encryptString(preset.storyAI.apiKey, key),
         encryptString(preset.summarizerAI.apiKey, key),
         preset.utilityAI ? encryptString(preset.utilityAI.apiKey, key) : Promise.resolve(''),
+        preset.auxiliaryAI ? encryptString(preset.auxiliaryAI.apiKey, key) : Promise.resolve(''),
     ]);
     return {
         ...preset,
         storyAI: { ...preset.storyAI, apiKey: storyKey },
         summarizerAI: { ...preset.summarizerAI, apiKey: summKey },
         ...(preset.utilityAI ? { utilityAI: { ...preset.utilityAI, apiKey: utilKey } } : {}),
+        ...(preset.auxiliaryAI ? { auxiliaryAI: { ...preset.auxiliaryAI, apiKey: auxKey } } : {}),
     };
 }
 
 /** Decrypts apiKey fields in a preset and returns a new preset object. */
 export async function decryptPreset(preset: AIPreset): Promise<AIPreset> {
     const key = await getDeviceCryptoKey();
-    const [storyKey, summKey, utilKey] = await Promise.all([
+    const [storyKey, summKey, utilKey, auxKey] = await Promise.all([
         decryptString(preset.storyAI.apiKey, key),
         decryptString(preset.summarizerAI.apiKey, key),
         preset.utilityAI ? decryptString(preset.utilityAI.apiKey, key) : Promise.resolve(''),
+        preset.auxiliaryAI ? decryptString(preset.auxiliaryAI.apiKey, key) : Promise.resolve(''),
     ]);
     return {
         ...preset,
         storyAI: { ...preset.storyAI, apiKey: storyKey },
         summarizerAI: { ...preset.summarizerAI, apiKey: summKey },
         ...(preset.utilityAI ? { utilityAI: { ...preset.utilityAI, apiKey: utilKey } } : {}),
+        ...(preset.auxiliaryAI ? { auxiliaryAI: { ...preset.auxiliaryAI, apiKey: auxKey } } : {}),
     };
 }
 

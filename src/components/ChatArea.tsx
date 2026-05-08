@@ -47,6 +47,7 @@ export function ChatArea() {
         getActiveStoryEndpoint,
         getActiveSummarizerEndpoint,
         getActiveUtilityEndpoint,
+        getActiveAuxiliaryEndpoint,
         addMessage,
         updateNPC,
         addNPC,
@@ -118,6 +119,10 @@ export function ChatArea() {
             getFreshProvider: () => getActiveStoryEndpoint(),
             getFreshSummarizerProvider: () => getActiveSummarizerEndpoint?.() ?? getActiveStoryEndpoint(),
             getUtilityEndpoint: () => getActiveUtilityEndpoint(),
+            getFreshAuxiliaryProvider: () => {
+                const aux = getActiveAuxiliaryEndpoint?.();
+                return aux?.modelName ? aux : getActiveStoryEndpoint();
+            },
             forcedInterventions: forcedAIs,
             incrementBookkeepingTurnCounter: () => useAppStore.getState().incrementBookkeepingTurnCounter(),
             autoBookkeepingInterval: useAppStore.getState().autoBookkeepingInterval,

@@ -57,6 +57,7 @@ export type TurnState = {
     getFreshProvider: () => LLMProvider | undefined;
     getFreshSummarizerProvider?: () => LLMProvider | undefined;
     getUtilityEndpoint?: () => LLMProvider | undefined;
+    getFreshAuxiliaryProvider?: () => LLMProvider | undefined;
     forcedInterventions?: ('enemy' | 'neutral' | 'ally')[];
     incrementBookkeepingTurnCounter: () => number;
     autoBookkeepingInterval: number;

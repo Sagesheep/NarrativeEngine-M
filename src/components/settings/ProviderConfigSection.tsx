@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import type { AIPreset, LLMProvider, ApiFormat } from '../../types';
 
-type ProviderKey = 'storyAI' | 'summarizerAI' | 'utilityAI' | 'enemyAI' | 'neutralAI' | 'allyAI';
+type ProviderKey = 'storyAI' | 'summarizerAI' | 'utilityAI' | 'auxiliaryAI' | 'enemyAI' | 'neutralAI' | 'allyAI';
 
 type ProviderConfigSectionProps = {
     section: ProviderKey;

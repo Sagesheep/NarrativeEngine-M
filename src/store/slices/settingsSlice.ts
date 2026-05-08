@@ -71,6 +71,7 @@ export const defaultPreset: AIPreset = {
         apiFormat: 'openai',
     },
     utilityAI: { endpoint: '', apiKey: '', modelName: '' },
+    auxiliaryAI: { endpoint: '', apiKey: '', modelName: '' },
     enemyAI: { endpoint: '', apiKey: '', modelName: '' },
     neutralAI: { endpoint: '', apiKey: '', modelName: '' },
     allyAI: { endpoint: '', apiKey: '', modelName: '' }
@@ -173,6 +174,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         storyAI: migratedStoryProvider,
         summarizerAI: { ...migratedStoryProvider },
         utilityAI: { endpoint: '', apiKey: '', modelName: '' },
+        auxiliaryAI: { endpoint: '', apiKey: '', modelName: '' },
         enemyAI: { endpoint: '', apiKey: '', modelName: '' },
         neutralAI: { endpoint: '', apiKey: '', modelName: '' },
         allyAI: { endpoint: '', apiKey: '', modelName: '' }
@@ -225,6 +227,7 @@ export type SettingsSlice = {
     getActiveStoryEndpoint: () => LLMProvider | undefined;
     getActiveSummarizerEndpoint: () => LLMProvider | undefined;
     getActiveUtilityEndpoint: () => LLMProvider | undefined;
+    getActiveAuxiliaryEndpoint: () => LLMProvider | undefined;
     getActiveEnemyEndpoint: () => LLMProvider | undefined;
     getActiveNeutralEndpoint: () => LLMProvider | undefined;
     getActiveAllyEndpoint: () => LLMProvider | undefined;
@@ -344,6 +347,11 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
     getActiveUtilityEndpoint: () => {
         const preset = get().getActivePreset();
         return preset?.utilityAI;
+    },
+
+    getActiveAuxiliaryEndpoint: () => {
+        const preset = get().getActivePreset();
+        return preset?.auxiliaryAI;
     },
 
     getActiveEnemyEndpoint: () => {

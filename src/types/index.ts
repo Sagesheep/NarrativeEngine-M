@@ -51,6 +51,7 @@ export type AIPreset = {
     storyAI: LLMProvider;
     summarizerAI: LLMProvider;
     utilityAI?: LLMProvider; // Context recommender — optional, fallback to substring scan if empty
+    auxiliaryAI?: LLMProvider; // Cheap classifier for NPC validation etc — optional, fallback to storyAI
     enemyAI?: LLMProvider;
     neutralAI?: LLMProvider;
     allyAI?: LLMProvider;

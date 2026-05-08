@@ -94,7 +94,7 @@ export async function handlePostTurn(
     }
 
     if (extractedNames.length > 0) {
-        const provider = state.getFreshProvider();
+        const provider = state.getFreshAuxiliaryProvider?.() ?? state.getFreshProvider();
         const validatedNames = provider ?
             await validateNPCCandidates(provider, extractedNames, lastAssistantContent) :
             extractedNames;
