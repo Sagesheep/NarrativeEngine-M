@@ -38,7 +38,7 @@ export async function stripThink(text: string): Promise<string> {
         currentIndex = endTagIndex + 8; // length of '</think>'
 
         // Yield to the event loop to prevent blocking the main thread
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise(resolve => setTimeout(resolve, 10));
     }
 
     return result;

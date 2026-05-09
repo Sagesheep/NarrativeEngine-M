@@ -23,9 +23,51 @@ const BULLET_RE = /^\s*-?\s*\[\s*([^|\]]+?)\s*\|\s*([^|\]]+?)\s*\|\s*scene\s*:\s
 const BULLET_RE_LOOSE = /^\s*-?\s*([a-z_]+)\s*\|\s*([^|]+?)\s*\|\s*scene\s*:\s*([^|]+?)\s*(?:\|\s*supersedes\s*:\s*([^|]+?)\s*)?\|\s*(.+?)\s*$/i;
 
 export function stripReasoning(raw: string): string {
-    let clean = raw.replace(/<think[\s\S]*?<\/think\s*>/gi, '');
-    const fence = clean.match(/```(?:\w+)?\s*([\s\S]*?)```/);
-    if (fence) clean = fence[1];
+    if (!raw || typeof raw !== 'string') return raw;
+
+    let clean = '';
+    let currentIndex = 0;
+    const lowerText = raw.toLowerCase();
+
+    while (currentIndex < raw.length) {
+        const startTagIndex = lowerText.indexOf('<think', currentIndex);
+
+        if (startTagIndex === -1) {
+            clean += raw.slice(currentIndex);
+            break;
+        }
+
+        clean += raw.slice(currentIndex, startTagIndex);
+
+        let endTagIndex = lowerText.indexOf('</think>', startTagIndex + 6);
+        let endTagLen = 8;
+        if (endTagIndex === -1) {
+             endTagIndex = lowerText.indexOf('</think >', startTagIndex + 6);
+             endTagLen = 9;
+        }
+
+        if (endTagIndex === -1) {
+            clean += raw.slice(startTagIndex);
+            break;
+        }
+
+        currentIndex = endTagIndex + endTagLen;
+    }
+
+    const fenceStart = clean.indexOf('```');
+    if (fenceStart !== -1) {
+        let contentStart = fenceStart + 3;
+
+        while (contentStart < clean.length && clean[contentStart] !== '\n' && clean[contentStart] !== ' ') {
+            contentStart++;
+        }
+
+        const fenceEnd = clean.indexOf('```', contentStart);
+        if (fenceEnd !== -1) {
+            clean = clean.slice(contentStart, fenceEnd);
+        }
+    }
+
     return clean.trim();
 }
 
@@ -67,15 +109,32 @@ export function parseBulletDivergences(raw: string, validSceneIds: string[]): Pa
         const category: DivergenceCategory = VALID_CATEGORIES.has(catNorm) ? catNorm : 'entity_state';
         const sceneRef = sceneSet.has(sceneRaw) ? sceneRaw : fallbackScene;
         let divergence = divergenceRaw;
-        const firstSentence = divergence.split(/[.!?]\s/)[0];
-        if (firstSentence && firstSentence.length < divergence.length) {
-            divergence = firstSentence.endsWith('.') || firstSentence.endsWith('!') || firstSentence.endsWith('?')
-                ? firstSentence
-                : firstSentence + '.';
+        let sentenceEnd = -1;
+        for (let i = 0; i < divergence.length - 1; i++) {
+            const c = divergence[i];
+            if ((c === '.' || c === '!' || c === '?') && divergence[i + 1] === ' ') {
+                sentenceEnd = i + 1;
+                break;
+            }
         }
-        const words = divergence.split(/\s+/);
-        if (words.length > 15) {
-            divergence = words.slice(0, 15).join(' ') + '.';
+        if (sentenceEnd !== -1) {
+            divergence = divergence.slice(0, sentenceEnd).trim();
+            if (!divergence.endsWith('.') && !divergence.endsWith('!') && !divergence.endsWith('?')) {
+                divergence += '.';
+            }
+        }
+
+        let wordCount = 0;
+        let lastSpace = -1;
+        for (let i = 0; i < divergence.length; i++) {
+            if (divergence[i] === ' ' || divergence[i] === '\n' || divergence[i] === '\t') {
+                if (i > lastSpace + 1) wordCount++;
+                lastSpace = i;
+                if (wordCount >= 15) {
+                    divergence = divergence.slice(0, i).trim() + '.';
+                    break;
+                }
+            }
         }
         out.push({
             category,
@@ -721,38 +780,54 @@ export async function extractFromMessageBatch(
     const allSupersedes: Array<{ oldId: string; newId: string }> = [];
     let parseFailures = 0;
 
-    for (const chunk of chunks) {
+    const chunkPromises = chunks.map(async (chunk) => {
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-
         const combinedText = chunk.map(s => `[Scene #${s.sceneId}]:\n${s.text}`).join('\n\n');
         const sceneIds = chunk.map(s => s.sceneId);
         const prompt = buildBatchExtractionPrompt(combinedText, sceneIds, currentRegister);
 
         try {
             const raw = await llmCall(provider, prompt, { priority: 'low', maxTokens: 1200, signal });
-            const parsed = parseBulletDivergences(raw, sceneIds);
-            for (const ne of parsed) {
-                if (ne.parseError) parseFailures++;
-                const entry: DivergenceEntry = {
-                    id: `div_${uid()}`,
-                    category: ne.category,
-                    subject: ne.subject,
-                    divergence: ne.divergence,
-                    sceneRef: ne.sceneRef,
-                    linkedSceneIds: [...sceneIds],
-                    importance: 5,
-                    supersedes: ne.supersedes,
-                    source: 'auto',
-                    parseError: ne.parseError,
-                };
-                allNewEntries.push(entry);
-                if (ne.supersedes) {
-                    allSupersedes.push({ oldId: ne.supersedes, newId: entry.id });
-                }
-            }
+            return { parsed: parseBulletDivergences(raw, sceneIds), sceneIds };
         } catch (err) {
             if ((err as Error).name === 'AbortError') throw err;
             console.warn('[DivergenceRegister] Batch extraction chunk failed:', err);
+            return { error: true };
+        }
+    });
+
+    const results = await Promise.allSettled(chunkPromises);
+
+    for (const result of results) {
+        if (result.status === 'fulfilled') {
+            const val = result.value;
+            if (val.error) {
+                parseFailures++;
+            } else if (val.parsed) {
+                for (const ne of val.parsed) {
+                    if (ne.parseError) parseFailures++;
+                    const entry: DivergenceEntry = {
+                        id: `div_${uid()}`,
+                        category: ne.category,
+                        subject: ne.subject,
+                        divergence: ne.divergence,
+                        sceneRef: ne.sceneRef,
+                        linkedSceneIds: [...val.sceneIds],
+                        importance: 5,
+                        supersedes: ne.supersedes,
+                        source: 'auto',
+                        parseError: ne.parseError,
+                    };
+                    allNewEntries.push(entry);
+                    if (ne.supersedes) {
+                        allSupersedes.push({ oldId: ne.supersedes, newId: entry.id });
+                    }
+                }
+            }
+        } else if (result.reason && result.reason.name === 'AbortError') {
+            throw result.reason;
+        } else {
+            console.warn('[DivergenceRegister] Batch extraction chunk failed (unhandled rejection):', result.reason);
             parseFailures++;
         }
     }

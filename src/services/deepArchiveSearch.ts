@@ -178,14 +178,14 @@ Write the narrative context brief now:`;
     const partitionQuota = Math.floor(targetTokens / partitions.length);
 
     onStatus(`[3/5] Deep Archive — summarizing ${partitions.length} parts...`);
-    const partitionSummaries: string[] = await Promise.all(partitions.map((partition) => {
+    const partitionSummaries: string[] = await Promise.allSettled(partitions.map((partition) => {
         const prompt = `Compress these narrative scenes to ~${partitionQuota} tokens. Preserve NPC names, key decisions, outcomes, unresolved threads.
 
 ${partition}
 
 Summary:`;
         return llmCall(utilityEndpoint, prompt, { temperature: 0.2, priority: 'high' });
-    }));
+    })).then(results => results.map(r => r.status === 'fulfilled' ? r.value : ''));
 
     onStatus('[3/5] Deep Archive — combining summaries...');
     const combinedPrompt = `Merge these narrative summaries into one coherent context brief. Target approximately ${targetTokens} tokens. Preserve all critical lore, NPC states, and unresolved threads.

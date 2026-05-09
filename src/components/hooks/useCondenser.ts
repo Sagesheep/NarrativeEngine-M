@@ -33,6 +33,25 @@ export function useCondenser(deps: UseCondenserDeps) {
     const [condensePhase, setCondensePhase] = useState<'save' | 'extract' | 'compress' | null>(null);
     const [saveProgress, setSaveProgress] = useState<SaveProgress | null>(null);
 
+    const setSaveProgressThrottled = useMemo(() => {
+        let lastCall = 0;
+        let timeoutId: any;
+        return (p: SaveProgress | null) => {
+            const now = Date.now();
+            if (now - lastCall >= 100 || p === null) {
+                lastCall = now;
+                setSaveProgress(p);
+                if (timeoutId) clearTimeout(timeoutId);
+            } else {
+                if (timeoutId) clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    lastCall = Date.now();
+                    setSaveProgress(p);
+                }, 100);
+            }
+        };
+    }, []);
+
     const triggerCondense = useCallback(async () => {
         if (deps.condenser.isCondensing) return;
         deps.setCondensing(true);
@@ -51,7 +70,7 @@ export function useCondenser(deps: UseCondenserDeps) {
                     undefined,
                     undefined,
                     deps.settings.contextLimit,
-                    (p) => setSaveProgress(p),
+                    (p) => setSaveProgressThrottled(p),
                     condenseAbortRef.current.signal
                 );
                 if (saveResult.coreMemorySlots) deps.updateContext({ coreMemorySlots: saveResult.coreMemorySlots });
@@ -119,7 +138,7 @@ export function useCondenser(deps: UseCondenserDeps) {
                 deps.settings.contextLimit,
                 condenseAbortRef.current.signal,
                 budgetRatio,
-                (batch, total) => setSaveProgress({ phase: 'compress', batch, totalBatches: total }),
+                (batch, total) => setSaveProgressThrottled({ phase: 'compress', batch, totalBatches: total }),
             );
             deps.setCondensed(result.summary, result.upToIndex);
 
@@ -144,7 +163,7 @@ export function useCondenser(deps: UseCondenserDeps) {
             }
         } finally {
             setCondensePhase(null);
-            setSaveProgress(null);
+            setSaveProgressThrottled(null);
             deps.setCondensing(false);
             condenseAbortRef.current = null;
         }
