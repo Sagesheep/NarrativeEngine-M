@@ -20,7 +20,6 @@ export function ChapterTab() {
             context.continuePromptActive ? context.continuePrompt : '',
             context.characterProfileActive ? context.characterProfile : '',
             context.inventoryActive ? context.inventory : '',
-            condenser.condensedSummary,
         ].filter(Boolean).join('\n\n');
         const activeMessages = (condenser.condensedUpToIndex !== undefined && condenser.condensedUpToIndex >= 0)
             ? messages.slice(condenser.condensedUpToIndex + 1)

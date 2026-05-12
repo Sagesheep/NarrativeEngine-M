@@ -4,7 +4,6 @@ import { useAppStore } from '../../store/useAppStore';
 type ChatInputProps = {
     input: string;
     isStreaming: boolean;
-    isCondensing: boolean;
     editingMessageId: string | null;
     onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
     onSend: () => void;
@@ -17,7 +16,6 @@ type ChatInputProps = {
 export function ChatInput({
     input,
     isStreaming,
-    isCondensing,
     editingMessageId,
     onChange,
     onSend,
@@ -50,9 +48,8 @@ export function ChatInput({
                         ref={inputRef}
                         value={input}
                         onChange={onChange}
-                        disabled={isCondensing}
-                        placeholder={isCondensing ? 'Condensing history...' : editingMessageId ? 'Edit...' : 'What do you do?'}
-                        className="flex-1 bg-transparent px-2 py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[40px] leading-5 disabled:opacity-40 disabled:cursor-not-allowed"
+                        placeholder={editingMessageId ? 'Edit...' : 'What do you do?'}
+                        className="flex-1 bg-transparent px-2 py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[40px] leading-5"
                     />
                     <button
                         onClick={isStreaming ? onStop : (editingMessageId ? onEditSubmit : onSend)}

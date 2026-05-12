@@ -46,7 +46,6 @@ const baseContext: GameContext = {
     allyCooldown: 2,
     interventionQueue: [],
     worldEventConfig: { initialDC: 498, dcReduction: 2, who: DEFAULT_WORLD_WHO, where: DEFAULT_WORLD_WHERE, why: DEFAULT_WORLD_WHY, what: DEFAULT_WORLD_WHAT },
-    coreMemorySlots: [],
     notebook: [],
     notebookActive: true,
     inventoryLastScene: 'Never',

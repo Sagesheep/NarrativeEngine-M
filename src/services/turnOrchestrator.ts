@@ -3,8 +3,7 @@ import { type TurnCallbacks, type TurnState } from './turnTypes';
 export type { TurnCallbacks, TurnState } from './turnTypes';
 import { uid } from '../utils/uid';
 import { sendMessage } from './chatEngine';
-import { shouldCondense, condenseHistory, getCondenseBudgetRatio } from './condenser';
-import { runSaveFilePipeline } from './saveFileEngine';
+import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from './condenser';
 import { rollEngines, rollDiceFairness } from './engineRolls';
 import { api } from './apiClient';
 import { toast } from '../components/Toast';
@@ -62,52 +61,12 @@ export async function runTurn(
 
     callbacks.updateLastMessage({ debugPayload: payload });
 
-    const triggerCondense = async () => {
-        if (condenser.isCondensing || !activeCampaignId) return;
-        callbacks.setCondensing(true);
-        const condenseController = new AbortController();
-        try {
-            const currentProvider = state.getFreshSummarizerProvider?.() ?? state.getFreshProvider();
-            if (!currentProvider) return;
-
-            const currentMsgs = state.getMessages();
-            const uncondensed = currentMsgs.slice(condenser.condensedUpToIndex + 1);
-
-            try {
-                const saveResult = await runSaveFilePipeline(currentProvider as LLMProvider, uncondensed, undefined, undefined, settings.contextLimit);
-                console.log(`[SavePipeline] Slots: ${saveResult.success ? '✓' : '✗'}`);
-
-                if (saveResult.coreMemorySlots) {
-                    callbacks.updateContext({ coreMemorySlots: saveResult.coreMemorySlots });
-                }
-            } catch (err) {
-                toast.warning('Save pipeline failed — state not updated');
-            }
-
-            const budgetRatio = getCondenseBudgetRatio(settings.condenseAggressiveness);
-            const result = await condenseHistory(
-                currentProvider,
-                currentMsgs,
-                condenser.condensedUpToIndex,
-                condenser.condensedSummary,
-                activeCampaignId,
-                npcLedger.map(n => n.name),
-                settings.contextLimit,
-                condenseController.signal,
-                budgetRatio
-            );
-            callbacks.setCondensed(result.summary, result.upToIndex);
-
-            const freshIndex = await api.archive.getIndex(activeCampaignId);
-            callbacks.setArchiveIndex(freshIndex);
-            console.log(`[Archive] Reloaded index: ${freshIndex.length} entries`);
-        } catch (err) {
-            if ((err as Error).name !== 'AbortError') {
-                console.error('[Condenser]', err);
-                toast.error('Auto-condense failed');
-            }
-        } finally {
-            callbacks.setCondensing(false);
+    const triggerAutoTrim = () => {
+        if (!activeCampaignId) return;
+        const currentMsgs = state.getMessages();
+        const newIndex = computeTrimIndex(currentMsgs, condenser.condensedUpToIndex);
+        if (newIndex !== condenser.condensedUpToIndex) {
+            callbacks.setCondensed(newIndex);
         }
     };
 
@@ -320,8 +279,8 @@ export async function runTurn(
                     );
                 }
 
-                if (settings.autoCondenseEnabled && (settings.enableLegacyCondenser !== false) && shouldCondense(allMsgs, settings.contextLimit, condenser.condensedUpToIndex, getCondenseBudgetRatio(settings.condenseAggressiveness))) {
-                    triggerCondense();
+                if (settings.autoCondenseEnabled && shouldCondense(allMsgs, settings.contextLimit, condenser.condensedUpToIndex, getCondenseBudgetRatio(settings.condenseAggressiveness))) {
+                    triggerAutoTrim();
                 }
 
                 callbacks.setPipelinePhase?.('idle');

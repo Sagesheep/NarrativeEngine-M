@@ -171,7 +171,6 @@ export const defaultContext: GameContext = {
         why: [...DEFAULT_WORLD_WHY],
         what: [...DEFAULT_WORLD_WHAT],
     },
-    coreMemorySlots: [],
     notebook: [],
     notebookActive: true,
     inventoryLastScene: 'Never',

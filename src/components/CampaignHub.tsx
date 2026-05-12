@@ -16,7 +16,7 @@ import { downloadBundle, importBundle, readFileChunked } from '../services/campa
 import { toast } from './Toast';
 import type { Campaign } from '../types';
 
-const DEFAULT_CONDENSER = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
+const DEFAULT_CONDENSER = { condensedUpToIndex: -1 };
 
 export function CampaignHub() {
     useAppStore(); // state accessed via useAppStore.setState / useAppStore.getState
@@ -195,7 +195,7 @@ export function CampaignHub() {
         useAppStore.setState({
             context: { ...defaultContext, ...(state?.context ?? {}) },
             messages: state?.messages ?? [],
-            condenser: { ...(state?.condenser ?? DEFAULT_CONDENSER), isCondensing: false },
+            condenser: state?.condenser ?? DEFAULT_CONDENSER,
             loreChunks: chunks,
             npcLedger: npcs,
             archiveIndex,

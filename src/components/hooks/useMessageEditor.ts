@@ -12,7 +12,7 @@ interface UseMessageEditorDeps {
     resetTextareaHeight: () => void;
     activeCampaignId: string | null;
     archiveIndex: ReturnType<typeof useAppStore.getState>['archiveIndex'];
-    condenser: { condensedSummary: string; condensedUpToIndex: number; isCondensing: boolean };
+    condenser: { condensedUpToIndex: number };
     setArchiveIndex: (entries: any[]) => void;
     setChapters: (chapters: any[]) => void;
     setTimeline: (events: any[]) => void;

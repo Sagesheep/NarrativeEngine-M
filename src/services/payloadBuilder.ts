@@ -76,7 +76,6 @@ export function buildPayload(
     context: GameContext,
     history: ChatMessage[],
     userMessage: string,
-    condensedSummary?: string,
     condensedUpToIndex?: number,
     relevantLore?: LoreChunk[],
     npcLedger?: NPCEntry[],
@@ -118,16 +117,6 @@ export function buildPayload(
         }
         stableParts.push(rules);
     }
-    // Phase 7: Core Memory Slot rendering with priority sorting
-    if (context.coreMemorySlots && context.coreMemorySlots.length > 0) {
-        const sorted = [...context.coreMemorySlots].sort((a, b) => b.priority - a.priority);
-        const lines = sorted.map(s => `${s.key} [p${s.priority}]: ${s.value}`);
-        stableParts.push(
-            `[CORE MEMORY -- ALWAYS ACCURATE]\n` +
-            lines.join('\n') +
-            `\n[END CORE MEMORY]`
-        );
-    }
     if (context.starterActive && context.starter) stableParts.push(context.starter);
     if (context.continuePromptActive && context.continuePrompt) stableParts.push(context.continuePrompt);
 
@@ -147,17 +136,6 @@ export function buildPayload(
     const stableTokens = countTokens(stableContent);
     addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: 'Rules & Core state', included: true, position: 'system_static' });
 
-    const useLegacyCondenser = settings.enableLegacyCondenser !== false;
-    const VERBATIM_FALLBACK_WINDOW = 16;
-
-    let summaryContent = '';
-    if (useLegacyCondenser && condensedSummary) {
-        summaryContent = `[CONDENSED SESSION HISTORY]\n${condensedSummary}\n[END CONDENSED HISTORY]`;
-    }
-    const summaryTokens = countTokens(summaryContent);
-    const shouldInjectSummary = settings.injectProseSummary !== false;
-    addTrace({ source: 'Condensed Summary', classification: 'summary', tokens: summaryTokens, reason: 'Compressed session history', included: !!summaryContent && shouldInjectSummary, position: 'system_summary' });
-
     let divergenceContent = '';
     if (divergenceRegister && divergenceRegister.entries.length > 0) {
         divergenceContent = renderRegisterForPayload(divergenceRegister, chapters);
@@ -170,7 +148,6 @@ export function buildPayload(
 
     // Archive Recall
     if (archiveRecall && archiveRecall.length > 0) {
-        // Simple dedupe against active history
         const activeAssistantContents = history
             .slice((condensedUpToIndex ?? -1) + 1)
             .filter(m => m.role === 'assistant' && typeof m.content === 'string' && m.content.length > 20)
@@ -178,10 +155,6 @@ export function buildPayload(
 
         const filteredRecall = archiveRecall.filter(scene => {
             if (activeAssistantContents.some(asst => scene.content.includes(asst))) return false;
-            if (condensedSummary && scene.content.length > 100) {
-                const slug = scene.content.slice(0, 100).toLowerCase();
-                if (condensedSummary.toLowerCase().includes(slug)) return false;
-            }
             return true;
         });
 
@@ -306,14 +279,13 @@ export function buildPayload(
 
     // --- 6. Fit History ---
     const userTokens = countTokens(userMessage);
-    const reservedTotal = stableTokens + (shouldInjectSummary ? summaryTokens : 0) + divergenceTokens + currentWorldTokens + volatileTokens + userTokens;
+    const reservedTotal = stableTokens + divergenceTokens + currentWorldTokens + volatileTokens + userTokens;
     const historyBudget = limit - reservedTotal - 200; // Small safety margin of 200 tokens
 
-    const candidateMessages = (useLegacyCondenser && condensedSummary && condensedUpToIndex !== undefined && condensedUpToIndex >= 0)
+    const VERBATIM_FALLBACK_WINDOW = 16;
+    const candidateMessages = (condensedUpToIndex !== undefined && condensedUpToIndex >= 0)
         ? history.slice(condensedUpToIndex + 1)
-        : useLegacyCondenser
-            ? history
-            : history.slice(-VERBATIM_FALLBACK_WINDOW);
+        : history.slice(-VERBATIM_FALLBACK_WINDOW);
 
     const fitted: OpenAIMessage[] = [];
     let historyUsed = 0;
@@ -385,7 +357,6 @@ export function buildPayload(
     // --- 8. Final Assembly ---
     const messages: OpenAIMessage[] = [];
     if (stableContent) messages.push({ role: 'system', content: stableContent });
-    if (summaryContent && shouldInjectSummary) messages.push({ role: 'system', content: summaryContent });
     if (divergenceContent) messages.push({ role: 'system', content: divergenceContent });
     if (worldContent || volatileContent) {
         messages.push({ role: 'system', content: [worldContent, volatileContent].filter(Boolean).join('\n\n') });

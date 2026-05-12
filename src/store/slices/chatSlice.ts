@@ -20,9 +20,8 @@ export type ChatSlice = {
     clearArchive: () => void;
 
     condenser: CondenserState;
-    setCondensed: (summary: string, upToIndex: number) => void;
+    setCondensed: (upToIndex: number) => void;
     setCondenser: (state: CondenserState) => void;
-    setCondensing: (v: boolean) => void;
     resetCondenser: () => void;
 
     divergenceRegister: DivergenceRegister;
@@ -65,22 +64,15 @@ type ChatDeps = ChatSlice & {
 export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) => ({
     // Condenser defaults
     condenser: {
-        condensedSummary: '',
         condensedUpToIndex: -1,
-        isCondensing: false,
     },
-    setCondensed: (summary, upToIndex) =>
-        set((s) => {
-            const safeSummary = summary || s.condenser.condensedSummary;
-            return {
-                condenser: { ...s.condenser, condensedSummary: safeSummary, condensedUpToIndex: upToIndex },
-            };
-        }),
+    setCondensed: (upToIndex) =>
+        set((s) => ({
+            condenser: { ...s.condenser, condensedUpToIndex: upToIndex },
+        })),
     setCondenser: (newState) => set({ condenser: newState }),
-    setCondensing: (v) =>
-        set((s) => ({ condenser: { ...s.condenser, isCondensing: v } })),
     resetCondenser: () =>
-        set({ condenser: { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false } } as Partial<ChatDeps>),
+        set({ condenser: { condensedUpToIndex: -1 } } as Partial<ChatDeps>),
 
     divergenceRegister: { ...EMPTY_REGISTER },
     setDivergenceRegister: (register) =>
@@ -226,7 +218,7 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
         }),
     setStreaming: (v) => set({ isStreaming: v } as Partial<ChatDeps>),
     clearChat: () => set((s) => {
-        const newCondenser = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
+        const newCondenser = { condensedUpToIndex: -1 };
         const newDivReg = { ...EMPTY_REGISTER };
         debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: [], condenser: newCondenser });
         return { messages: [], condenser: newCondenser, divergenceRegister: newDivReg };

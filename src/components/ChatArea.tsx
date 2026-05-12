@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { 
-    Save, Loader2, Zap, Scroll, Trash2, Square,
+    Save, Loader2, Zap, Scroll, Trash2,
     ChevronDown, X
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
@@ -33,7 +33,6 @@ export function ChatArea() {
         updateLastAssistant,
         updateContext,
         setCondensed,
-        setCondensing,
         resetCondenser,
         activeCampaignId,
         deleteMessage,
@@ -134,7 +133,6 @@ export function ChatArea() {
             archiveNPC,
             restoreNPC,
             setCondensed,
-            setCondensing,
             setStreaming,
             setLoadingStatus,
             setLastPayloadTrace: useAppStore.getState().setLastPayloadTrace,
@@ -175,26 +173,12 @@ export function ChatArea() {
     });
 
     const {
-        triggerCondense,
-        condenseAbortRef,
-        condensePhase,
-        saveProgress,
+        triggerCondense: triggerTrim,
     } = useCondenser({
-        activeCampaignId,
-        isStreaming,
         messages,
         condenser,
-        settings,
-        context,
-        npcLedger,
         setCondensed,
-        setCondensing,
         resetCondenser,
-        updateContext,
-        setArchiveIndex,
-        setSemanticFacts,
-        getActiveSummarizerEndpoint: () => getActiveSummarizerEndpoint?.() ?? getActiveStoryEndpoint(),
-        getActiveStoryEndpoint: () => getActiveStoryEndpoint(),
     });
 
     useEffect(() => {
@@ -354,15 +338,9 @@ export function ChatArea() {
                 <button onClick={handleForceSave} disabled={isSaving} className="flex items-center gap-1.5 bg-void border border-emerald-500/30 text-emerald-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
                     {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} SAVE
                 </button>
-                {(settings.enableLegacyCondenser !== false) && (condenser.isCondensing ? (
-                    <button onClick={() => condenseAbortRef.current?.abort()} className="flex items-center gap-1.5 bg-void border border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
-                        <Square size={13} /> STOP
-                    </button>
-                ) : (
-                    <button onClick={triggerCondense} disabled={messages.length < 6} className="flex items-center gap-1.5 bg-void border border-terminal/30 text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
-                        <Zap size={13} /> CONDENSE
-                    </button>
-                ))}
+                <button onClick={triggerTrim} disabled={messages.length < 6} className="flex items-center gap-1.5 bg-void border border-terminal/30 text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
+                    <Zap size={13} /> TRIM
+                </button>
 <button onClick={() => api.archive.open(activeCampaignId || '')} className="flex items-center gap-1.5 bg-void border border-ice/30 text-ice text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded ml-auto transition-all hover:bg-ice/5"><Scroll size={13} /> ARCHIVE</button>
                 <button onClick={handleClearArchive} disabled={!activeCampaignId} className="flex items-center gap-1.5 bg-void border border-red-500/20 text-red-500/60 hover:text-red-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-red-500/5 hover:border-red-500/40"><Trash2 size={13} /> CLEAR</button>
             </div>
@@ -372,27 +350,6 @@ export function ChatArea() {
             <NPCPressureInspector />
 
             <GenerationProgress phase={pipelinePhase} stats={streamingStats} />
-
-            {condenser.isCondensing && (
-                <div className="py-1.5 px-4 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
-                    <div className="flex items-center gap-2 animate-pulse">
-                        <Loader2 size={10} className="animate-spin text-amber-500" />
-                        <span className="text-[9px] uppercase tracking-widest text-amber-500 font-bold">
-                            {condensePhase === 'save'
-                                ? saveProgress
-                                    ? `Archiving session state... (${saveProgress.phase} ${saveProgress.batch}/${saveProgress.totalBatches})`
-                                    : 'Archiving session state...'
-                                : 'Compressing history...'}
-                        </span>
-                    </div>
-                    <button
-                        onClick={() => condenseAbortRef.current?.abort()}
-                        className="text-[9px] text-amber-500/60 hover:text-amber-500 uppercase tracking-wider transition-colors"
-                    >
-                        Stop
-                    </button>
-                </div>
-            )}
 
             {loadingStatus && (
                 <div className="py-1.5 px-4 bg-terminal/10 border-b border-terminal/20 flex items-center gap-2 animate-pulse">
@@ -404,7 +361,6 @@ export function ChatArea() {
             <ChatInput
                 input={input}
                 isStreaming={isStreaming}
-                isCondensing={condenser.isCondensing}
                 editingMessageId={editingMessageId}
                 onChange={handleInputChange}
                 onSend={() => handleSend()}

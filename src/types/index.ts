@@ -77,8 +77,6 @@ export type AppSettings = {
     enableDeepArchiveSearch?: boolean;
     autoExtractDivergences?: boolean;
     divergenceTokenBudget?: number;
-    enableLegacyCondenser?: boolean; // default true; OFF disables prose condenser entirely (injection + button + auto-condense)
-    injectProseSummary?: boolean; // default true. When false, prose condensed summary is NOT shipped to AI in payload (still generated and visible in panel for inspection).
     divergenceScanBudget?: number; // 0 or undefined = auto (75% of contextLimit). Otherwise the explicit max-tokens-per-chunk for divergence extraction.
     autoArchiveStaleNPCsTurns?: number; // 0 disables auto-archive; default 15
 
@@ -92,9 +90,7 @@ export type AppSettings = {
 };
 
 export type CondenserState = {
-    condensedSummary: string;
     condensedUpToIndex: number;
-    isCondensing: boolean;
 };
 
 export type DiceConfig = {
@@ -156,7 +152,6 @@ export type GameContext = {
     sceneNoteDepth: number;
     surpriseConfig?: SurpriseConfig;
     encounterConfig?: EncounterConfig;
-    coreMemorySlots?: CoreMemorySlot[];
     notebook: NotebookNote[];
     notebookActive: boolean;
     // --- AI Players (Enemy, Neutral, Ally) ---
@@ -372,13 +367,6 @@ export type PayloadTrace = {
     included: boolean;
     position?: string;
     childMessages?: Array<{ role: string; tokens: number; preview: string }>;
-};
-
-export type CoreMemorySlot = {
-    key: string;
-    value: string;
-    priority: number;
-    sceneId: string;
 };
 
 export type SemanticFact = {

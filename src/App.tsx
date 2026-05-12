@@ -17,7 +17,7 @@ import {
   loadChapters, loadSemanticFacts, loadDivergenceRegister,
 } from './store/campaignStore';
 
-const DEFAULT_CONDENSER = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
+const DEFAULT_CONDENSER = { condensedUpToIndex: -1 };
 
 export default function App() {
   const activeCampaignId = useAppStore((s) => s.activeCampaignId);
@@ -86,7 +86,7 @@ export default function App() {
       useAppStore.setState({
         context: state?.context ?? useAppStore.getState().context,
         messages: state?.messages ?? [],
-        condenser: { ...(state?.condenser ?? DEFAULT_CONDENSER), isCondensing: false },
+        condenser: state?.condenser ?? DEFAULT_CONDENSER,
         loreChunks: chunks,
         npcLedger: npcs,
         archiveIndex,

@@ -14,9 +14,8 @@ export function TokenGauge() {
         if (context.continuePromptActive && context.continuePrompt) parts.push(context.continuePrompt);
         if (context.characterProfileActive && context.characterProfile) parts.push(`[CHARACTER PROFILE]\n${context.characterProfile}`);
         if (context.inventoryActive && context.inventory) parts.push(`[PLAYER INVENTORY]\n${context.inventory}`);
-        if (condenser.condensedSummary) parts.push(condenser.condensedSummary);
         return parts.join('\n\n');
-    }, [context.loreRaw, context.rulesRaw, context.starter, context.starterActive, context.continuePrompt, context.continuePromptActive, context.characterProfile, context.characterProfileActive, context.inventory, context.inventoryActive, condenser.condensedSummary]);
+    }, [context.loreRaw, context.rulesRaw, context.starter, context.starterActive, context.continuePrompt, context.continuePromptActive, context.characterProfile, context.characterProfileActive, context.inventory, context.inventoryActive]);
 
     const systemTokens = useMemo(() => countTokens(systemText), [systemText]);
 
