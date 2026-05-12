@@ -282,10 +282,9 @@ export function buildPayload(
     const reservedTotal = stableTokens + divergenceTokens + currentWorldTokens + volatileTokens + userTokens;
     const historyBudget = limit - reservedTotal - 200; // Small safety margin of 200 tokens
 
-    const VERBATIM_FALLBACK_WINDOW = 16;
     const candidateMessages = (condensedUpToIndex !== undefined && condensedUpToIndex >= 0)
         ? history.slice(condensedUpToIndex + 1)
-        : history.slice(-VERBATIM_FALLBACK_WINDOW);
+        : history;
 
     const fitted: OpenAIMessage[] = [];
     let historyUsed = 0;

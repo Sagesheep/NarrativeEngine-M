@@ -3,17 +3,6 @@ import { countTokens } from './tokenizer';
 import { extractJson } from './payloadBuilder';
 import { llmCall } from '../utils/llmCall';
 
-const BATCH_TIMEOUT_MS = 90_000;
-
-async function callWithTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-    let timer: ReturnType<typeof setTimeout>;
-    const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timeout`)), ms);
-    });
-    try { return await Promise.race([p, timeout]); }
-    finally { clearTimeout(timer!); }
-}
-
 // ─── Chapter Summary Generator ───
 
 const CHAPTER_SUMMARY_TOKEN_BUDGET = 8000;

@@ -1,11 +1,9 @@
-import type { LLMProvider } from '../types';
 import { type TurnCallbacks, type TurnState } from './turnTypes';
 export type { TurnCallbacks, TurnState } from './turnTypes';
 import { uid } from '../utils/uid';
 import { sendMessage } from './chatEngine';
 import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from './condenser';
 import { rollEngines, rollDiceFairness } from './engineRolls';
-import { api } from './apiClient';
 import { toast } from '../components/Toast';
 import { sanitizePayloadForApi } from './payloadSanitizer';
 import { handleInterventions } from './aiPlayers';

@@ -424,8 +424,6 @@ export type EntityEntry = {
     factCount?: number;
 };
 
-export const CHAPTER_SCENE_SOFT_CAP = 25;
-
 export const TIMELINE_PREDICATES = [
     'status',
     'located_in',

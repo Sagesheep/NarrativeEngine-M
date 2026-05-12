@@ -10,18 +10,46 @@ function affinityDescriptor(v: number): string {
     return 'Devoted — deep loyalty';
 }
 
-export function buildBehaviorDirective(npc: NPCEntry): string {
-    const affinityLabel = affinityDescriptor(npc.affinity);
-    const parts: string[] = [`[Affinity: ${affinityLabel}]`];
+function truncate(s: string, max: number): string {
+    if (!s || s.length <= max) return s;
+    return s.substring(0, max) + '…';
+}
 
-    const personality = npc.personality || npc.disposition || '';
-    if (personality) parts.push(personality);
+export function buildBehaviorDirective(npc: NPCEntry): string {
+    const parts: string[] = [];
+
+    const affinityLabel = affinityDescriptor(npc.affinity);
+    parts.push(`[Aff: ${affinityLabel}]`);
+
+    if (npc.drives) {
+        const driveParts: string[] = [];
+        if (npc.drives.sceneWant) driveParts.push(truncate(npc.drives.sceneWant, 80));
+        if (npc.drives.sessionWant) driveParts.push(truncate(npc.drives.sessionWant, 80));
+        if (npc.drives.coreWant) driveParts.push(truncate(npc.drives.coreWant, 80));
+        if (driveParts.length > 0) parts.push(`WANTS: ${driveParts.join(' ← ')}`);
+    }
+
+    if (npc.hardBoundaries && npc.hardBoundaries.length > 0) {
+        parts.push(`WON'T: ${npc.hardBoundaries.map(b => truncate(b, 40)).join('; ')}`);
+    }
+
+    if (npc.softBoundaries && npc.softBoundaries.length > 0) {
+        parts.push(`RESENTS: ${npc.softBoundaries.map(b => truncate(b, 40)).join('; ')}`);
+    }
+
+    if (npc.behavioralTriggers && npc.behavioralTriggers.length > 0) {
+        parts.push(`ON "${npc.behavioralTriggers[0].keyword}": ${truncate(npc.behavioralTriggers[0].shift, 50)}`);
+        for (let i = 1; i < npc.behavioralTriggers.length; i++) {
+            const t = npc.behavioralTriggers[i];
+            parts.push(`ON "${t.keyword}": ${truncate(t.shift, 50)}`);
+        }
+    }
 
     const voice = npc.voice || '';
-    if (voice) parts.push(`Voice: ${voice}`);
+    if (voice) parts.push(`Voice: ${truncate(voice, 60)}`);
 
     const example = npc.exampleOutput || '';
-    if (example) parts.push(`Example: ${example}`);
+    if (example) parts.push(`Example: ${truncate(example, 80)}`);
 
     return `PLAY AS: ${parts.join(' | ')}`;
 }

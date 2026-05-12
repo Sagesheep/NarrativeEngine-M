@@ -3,6 +3,7 @@ import type { TurnCallbacks, TurnState } from './turnTypes';
 import { generateNPCProfile, updateExistingNPCs, backfillNPCDrives } from './chatEngine';
 import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from './npcDetector';
 import { api } from './apiClient';
+import { uid } from '../utils/uid';
 import { toast } from '../components/Toast';
 import { shouldAutoSeal, sealChapter } from './archiveChapterEngine';
 import { sealChapterCombined, type ChapterSummaryOutput } from './saveFileEngine';
@@ -66,6 +67,13 @@ export async function handlePostTurn(
         const freshIndex = await api.archive.getIndex(activeCampaignId);
         callbacks.setArchiveIndex(freshIndex);
         console.log(`[Archive] Appended scene #${appendedSceneId}`);
+        callbacks.addMessage({
+            id: uid(),
+            role: 'system',
+            name: 'scene-marker',
+            content: `Scene ${appendedSceneId}`,
+            timestamp: Date.now(),
+        });
     }
 
     const extractedNames = extractNPCNames(lastAssistantContent);
@@ -220,14 +228,14 @@ export async function handlePostTurn(
 }
 
 async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, activeCampaignId: string) {
-    const currentChapters = state.chapters;
+    const currentChapters = await loadChapters(activeCampaignId);
 
     if (currentChapters.length > 0 && shouldAutoSeal(currentChapters).shouldSeal) {
         try {
-            const result = await sealChapter(currentChapters);
+            const result = sealChapter(currentChapters);
             if (!result) return;
 
-            const sealed = { ...result.sealedChapter, sealedAt: Date.now() };
+            const sealed = result.sealedChapter;
             await api.chapters.update(activeCampaignId, sealed.chapterId, sealed);
             await api.chapters.create(activeCampaignId);
 
