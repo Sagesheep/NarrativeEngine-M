@@ -80,6 +80,7 @@ export function buildPayload(
     relevantLore?: LoreChunk[],
     npcLedger?: NPCEntry[],
     archiveRecall?: ArchiveScene[],
+    sceneNumber?: string,
     recommendedNPCNames?: string[],
     semanticFactText?: string,
     deepContextSummary?: string,
@@ -108,6 +109,7 @@ export function buildPayload(
 
     // --- 2. Calculate Stable Truth & Summary (High Priority) ---
     const stableParts: string[] = [];
+    if (sceneNumber) stableParts.push(`[CURRENT SCENE: #${sceneNumber}]`);
     if (context.rulesRaw) {
         let rules = context.rulesRaw;
         if (context.diceFairnessActive === false) {
