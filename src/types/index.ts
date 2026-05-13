@@ -191,6 +191,7 @@ export type DivergenceEntry = {
     sceneRef: string;
     npcIds: string[];
     pinned: boolean;
+    enabled?: boolean;
     source: 'auto' | 'manual';
     reviewFlag?: boolean;
     unrecognizedNpcNames?: string[];

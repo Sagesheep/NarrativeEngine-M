@@ -293,6 +293,7 @@ export function buildPayload(
         // reasoning_content overhead is not needed in fitted history.
         if (msg.role === 'tool') continue;
         if (msg.role === 'assistant' && Array.isArray((msg as any).tool_calls) && (msg as any).tool_calls.length > 0) continue;
+        if ((msg as any).name === 'scene-marker') continue;
 
         let content = msg.content ?? null;
         if (msg.role === 'user' && typeof content === 'string') {

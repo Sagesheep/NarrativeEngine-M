@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, AlertTriangle, Trash2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { DivergenceCategory, DivergenceEntry } from '../../types';
 import { countRegisterTokens, EMPTY_REGISTER, CATEGORY_LABELS } from '../../services/divergenceRegister';
@@ -31,6 +31,8 @@ export function MemoryTab() {
     const chapters = useAppStore(s => s.chapters);
     const settings = useAppStore(s => s.settings);
     const deleteDivergenceFact = useAppStore(s => s.deleteDivergenceFact);
+    const deleteDivergenceChapter = useAppStore(s => s.deleteDivergenceChapter);
+    const toggleDivergenceFact = useAppStore(s => s.toggleDivergenceFact);
     const confirmReviewEntry = useAppStore(s => s.confirmReviewEntry);
     const deleteReviewedEntry = useAppStore(s => s.deleteReviewedEntry);
     const toggleDivergenceChapter = useAppStore(s => s.toggleDivergenceChapter);
@@ -67,6 +69,7 @@ export function MemoryTab() {
     }
 
     const activeCount = entries.filter(e => {
+        if (e.enabled === false) return false;
         if (e.pinned) return true;
         const chapterOn = reg.chapterToggles[e.chapterId] !== false;
         if (!chapterOn) return false;
@@ -168,7 +171,21 @@ export function MemoryTab() {
                                         <span className="text-[11px] font-bold text-text-primary">{chapterTitle}</span>
                                         <span className="text-[9px] text-text-dim">{chapterEntries.length} facts</span>
                                     </div>
-                                    {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={(ev) => {
+                                                ev.stopPropagation();
+                                                if (window.confirm(`Delete all ${chapterEntries.length} facts in "${chapterTitle}"?`)) {
+                                                    deleteDivergenceChapter(chapterId);
+                                                }
+                                            }}
+                                            className="text-text-muted hover:text-red-400 p-0.5"
+                                            title="Delete all facts in chapter"
+                                        >
+                                            <Trash2 size={11} />
+                                        </button>
+                                        {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                    </div>
                                 </button>
 
                                 {isExpanded && [...catGroups.entries()].map(([cat, catEntries]) => {
@@ -216,7 +233,14 @@ export function MemoryTab() {
                                                                 </div>
                                                             </div>
                                                         ) : (
-                                                            <div key={e.id} className="flex items-start gap-1 text-[11px] text-text-secondary">
+                                                            <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={e.enabled !== false}
+                                                                    onChange={() => toggleDivergenceFact(e.id, e.enabled === false)}
+                                                                    className="w-2.5 h-2.5 mt-0.5 accent-terminal shrink-0"
+                                                                    title={e.enabled !== false ? 'Disable this fact' : 'Enable this fact'}
+                                                                />
                                                                 <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
                                                                 <span className="min-w-0 flex-1">
                                                                     {e.text}

@@ -262,6 +262,7 @@ export function renderRegisterForPayload(
     }
 
     const activeEntries = register.entries.filter(e => {
+        if (e.enabled === false) return false;
         if (e.pinned) return true;
         const chapterOn = register.chapterToggles[e.chapterId] !== false;
         if (!chapterOn) return false;
@@ -356,6 +357,20 @@ export function editFact(register: DivergenceRegister, entryId: string, text: st
 
 export function deleteFact(register: DivergenceRegister, entryId: string): DivergenceRegister {
     const entries = register.entries.filter(e => e.id !== entryId);
+    return { ...register, entries, lastUpdatedAt: Date.now() };
+}
+
+export function deleteChapter(register: DivergenceRegister, chapterId: string): DivergenceRegister {
+    const entries = register.entries.filter(e => e.chapterId !== chapterId);
+    const { [chapterId]: _c, ...chapterToggles } = register.chapterToggles;
+    const { [chapterId]: _ct, ...categoryToggles } = register.categoryToggles;
+    return { ...register, entries, chapterToggles, categoryToggles, lastUpdatedAt: Date.now() };
+}
+
+export function toggleFact(register: DivergenceRegister, entryId: string, on: boolean): DivergenceRegister {
+    const entries = register.entries.map(e =>
+        e.id === entryId ? { ...e, enabled: on } : e
+    );
     return { ...register, entries, lastUpdatedAt: Date.now() };
 }
 

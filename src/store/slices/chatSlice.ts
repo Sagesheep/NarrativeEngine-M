@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { ChatMessage, CondenserState, GameContext, LoreCheckSelection, LoreCheckResult, DivergenceRegister, DivergenceEntry, DivergenceCategory } from '../../types';
-import { EMPTY_REGISTER, toggleChapter, toggleCategory, pinFact, editFact, deleteFact, dismissReviewFlag, migrateV1ToV2 } from '../../services/divergenceRegister';
+import { EMPTY_REGISTER, toggleChapter, toggleCategory, pinFact, editFact, deleteFact, deleteChapter, toggleFact, dismissReviewFlag, migrateV1ToV2 } from '../../services/divergenceRegister';
 import { debouncedSaveCampaignState } from './campaignSlice';
 
 // ── Slice type ─────────────────────────────────────────────────────────
@@ -37,6 +37,8 @@ export type ChatSlice = {
     editDivergenceFact: (entryId: string, text: string) => void;
     deleteDivergenceFact: (entryId: string) => void;
     dismissDivergenceReviewFlag: (entryId: string) => void;
+    deleteDivergenceChapter: (chapterId: string) => void;
+    toggleDivergenceFact: (entryId: string, on: boolean) => void;
     migrateDivergenceIfNeeded: () => void;
 
     loreCheckOpen: boolean;
@@ -143,6 +145,18 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
     dismissDivergenceReviewFlag: (entryId) =>
         set((s) => {
             const reg = dismissReviewFlag(s.divergenceRegister, entryId);
+            debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser });
+            return { divergenceRegister: reg };
+        }),
+    deleteDivergenceChapter: (chapterId) =>
+        set((s) => {
+            const reg = deleteChapter(s.divergenceRegister, chapterId);
+            debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser });
+            return { divergenceRegister: reg };
+        }),
+    toggleDivergenceFact: (entryId, on) =>
+        set((s) => {
+            const reg = toggleFact(s.divergenceRegister, entryId, on);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser });
             return { divergenceRegister: reg };
         }),
