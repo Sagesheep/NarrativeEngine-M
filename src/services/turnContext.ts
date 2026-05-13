@@ -299,7 +299,7 @@ export async function gatherContext(
 
     const payloadResult = buildPayload(
         settings, state.context, freshMessages, finalInput,
-        condenser.condensedUpToIndex, relevantLore, npcLedger, finalArchiveRecall, sceneNumber, recommendedNPCNames, semanticFactText, deepContextSummary,
+        condenser.condensedUpToIndex, relevantLore, npcLedger, finalArchiveRecall, recommendedNPCNames, semanticFactText, deepContextSummary,
         state.divergenceRegister,
         state.chapters
     );

@@ -31,7 +31,7 @@ public class SaveFilePlugin extends Plugin {
             return;
         }
 
-        try {
+    try {
             Uri sourceUri = Uri.parse(uriString);
             ContentResolver resolver = getContext().getContentResolver();
 
