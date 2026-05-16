@@ -1,5 +1,23 @@
 import type { LoreChunk, EngineSeed } from '../types';
 
+const CATEGORY_PREFIXES = [
+    'CHARACTER', 'FACTION', 'NPC', 'HERO', 'VILLAIN',
+    'LOCATION', 'CITY', 'REGION', 'ORGANIZATION', 'ENCOUNTER',
+];
+
+function extractNameFromHeader(header: string): string {
+    const stripped = header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').trim();
+    const parts = stripped.split(/[—–]/);
+    if (parts.length <= 1) return stripped;
+
+    const firstPart = parts[0].trim().toUpperCase();
+    if (CATEGORY_PREFIXES.includes(firstPart)) {
+        return parts.slice(1).join('—').trim();
+    }
+
+    return parts[0].trim();
+}
+
 export function extractEngineSeeds(chunks: LoreChunk[]): EngineSeed {
     const seed: EngineSeed = {
         surpriseTypes: [],
@@ -26,7 +44,7 @@ export function extractEngineSeeds(chunks: LoreChunk[]): EngineSeed {
         
         // --- WHO (Factions, Orgs, Key Figures) ---
         if (chunk.category === 'faction') {
-            const name = chunk.header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').split(/[—–-]/)[0].trim();
+            const name = extractNameFromHeader(chunk.header);
             if (name) whoSet.add(name);
             
             // Extract leader if present
@@ -38,7 +56,7 @@ export function extractEngineSeeds(chunks: LoreChunk[]): EngineSeed {
 
         // --- WHERE (Locations) ---
         if (chunk.category === 'location') {
-            const name = chunk.header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').split(/[—–-]/)[0].trim();
+            const name = extractNameFromHeader(chunk.header);
             if (name) whereSet.add(`in or around ${name}`);
         } else if (chunk.category === 'world_overview') {
             // grab capitalized proper nouns that might be places

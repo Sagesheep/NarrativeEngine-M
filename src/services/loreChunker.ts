@@ -1,6 +1,11 @@
 import type { LoreChunk, LoreCategory } from '../types';
 import { countTokens } from './tokenizer';
 
+const CATEGORY_PREFIXES = [
+    'CHARACTER', 'FACTION', 'NPC', 'HERO', 'VILLAIN',
+    'LOCATION', 'CITY', 'REGION', 'ORGANIZATION', 'ENCOUNTER',
+];
+
 const ALWAYS_INCLUDE_PREFIXES = [
     'wl-meta', 'wl-econ', 'wl-power'
 ];
@@ -140,7 +145,15 @@ function generateSummary(_header: string, content: string): string | undefined {
 function extractLinkedEntities(chunks: LoreChunk[]) {
     const entityDict = chunks.map(c => {
         let name = c.header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').trim();
-        name = name.split(/[—–-]/)[0].trim(); // Take the portion before a dash
+        const parts = name.split(/[—–]/);
+        if (parts.length > 1) {
+            const firstPart = parts[0].trim().toUpperCase();
+            if (CATEGORY_PREFIXES.includes(firstPart)) {
+                name = parts.slice(1).join('—').trim();
+            } else {
+                name = parts[0].trim();
+            }
+        }
         return { name, id: c.id, nameLower: name.toLowerCase() };
     }).filter(e => e.nameLower.length > 3);
 
