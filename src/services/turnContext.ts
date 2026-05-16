@@ -286,6 +286,25 @@ export async function gatherContext(
             ]);
             if (recommenderResult) {
                 recommendedNPCNames = recommenderResult.relevantNPCNames;
+
+                // Inject lore chunks the recommender picked that keyword/semantic retrieval missed
+                const { relevantLoreIds } = recommenderResult;
+                if (relevantLoreIds.length > 0 && loreChunks.length > 0 && relevantLore) {
+                    const alreadyIn = new Set(relevantLore.map(c => c.id));
+                    const RECOMMENDER_EXTRA_BUDGET = 600;
+                    let extraTokens = 0;
+
+                    for (const id of relevantLoreIds) {
+                        const chunk = loreChunks.find(c => c.id === id);
+                        if (!chunk || alreadyIn.has(chunk.id) || chunk.alwaysInclude) continue;
+                        if (extraTokens + chunk.tokens > RECOMMENDER_EXTRA_BUDGET) continue;
+                        relevantLore.push(chunk);
+                        alreadyIn.add(chunk.id);
+                        extraTokens += chunk.tokens;
+                    }
+
+                    if (extraTokens > 0) console.log(`[TurnContext] Recommender injected lore (${extraTokens} extra tokens)`);
+                }
             }
         } catch (err) {
             console.warn('[TurnOrchestrator] UtilityAI recommender failed:', err);

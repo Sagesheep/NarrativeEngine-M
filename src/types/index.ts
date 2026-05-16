@@ -267,6 +267,7 @@ export type LoreChunk = {
     parentSection?: string;     // The ## parent header this ### belongs under
     priority: number;           // 0-10, higher = more important
     summary?: string;           // One-line auto-summary for recommender index
+    keywordsEnriched?: boolean; // true after LLM enrichment pass; undefined = not yet enriched
 };
 
 export type EngineSeed = {

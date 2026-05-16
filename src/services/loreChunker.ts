@@ -58,12 +58,13 @@ function extractTriggerKeywords(header: string, content: string): string[] {
     }
 
     const fieldPatterns = [
-        /(?:Real Name|Alias|Affiliation|Location|Slogan)[:\s]+([A-Z][A-Za-z\s]+)/g,
+        /(?:Real Name|Alias(?:es)?|Affiliation|Location|Slogan)[:\s]+([A-Z][A-Za-z\s,]+)/g,
+        /(?:Goals?|Disposition|Type|Members?|Leader|Faction|Title|Role|Occupation|Rank|Specialty|Weakness|Motivation|Known For)[:\s]+([A-Za-z][A-Za-z\s,]+)/g,
     ];
     for (const pattern of fieldPatterns) {
         let match;
         while ((match = pattern.exec(text)) !== null) {
-            const val = match[1].trim().toLowerCase();
+            const val = match[1].trim().toLowerCase().replace(/,$/, '');
             if (val.length > 2 && !STOP_WORDS.has(val)) {
                 keywords.add(val);
                 val.split(/\s+/).forEach(w => {
@@ -72,6 +73,21 @@ function extractTriggerKeywords(header: string, content: string): string[] {
             }
         }
     }
+
+    // Category-aware concept injection based on header signals
+    const hUpper = header.toUpperCase();
+    if (/FACTION|GUILD|ORGANIZATION|BROTHERHOOD|SYNDICATE|CARTEL|ORDER/.test(hUpper))
+        ['faction', 'guild', 'organization', 'members', 'alliance', 'join', 'betray', 'leader'].forEach(w => keywords.add(w));
+    if (/CHARACTER|HERO|NPC|VILLAIN/.test(hUpper))
+        ['character', 'person', 'individual', 'npc'].forEach(w => keywords.add(w));
+    if (/LOCATION|CITY|REGION|DISTRICT|ZONE|TOWN|VILLAGE|FORTRESS|DUNGEON/.test(hUpper))
+        ['location', 'place', 'travel', 'visit', 'go'].forEach(w => keywords.add(w));
+    if (/ECONOMY|MARKET|TRADE|SHOP|MERCHANT/.test(hUpper))
+        ['trade', 'merchant', 'shop', 'buy', 'sell', 'price'].forEach(w => keywords.add(w));
+    if (/POWER|MAGIC|MANA|ABILITY|SKILL|SPELL|RANK/.test(hUpper))
+        ['power', 'magic', 'ability', 'skill', 'rank', 'cast'].forEach(w => keywords.add(w));
+    if (/EVENT|ARC|TIMELINE|HISTORY|WAR|BATTLE/.test(hUpper))
+        ['event', 'history', 'battle', 'war', 'happened'].forEach(w => keywords.add(w));
 
     const headerWords = header
         .replace(/\[CHUNK:\s*[A-Z_-]+\]\s*/i, '')
@@ -87,7 +103,7 @@ function extractTriggerKeywords(header: string, content: string): string[] {
         keywords.add('gear');
     }
 
-    return Array.from(keywords).slice(0, 15);
+    return Array.from(keywords).slice(0, 25);
 }
 
 function assignPriority(category: LoreCategory, alwaysInclude: boolean): number {

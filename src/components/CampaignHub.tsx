@@ -112,6 +112,15 @@ export function CampaignHub() {
             const chunks = chunkLoreFile(loreText);
             await saveLoreChunks(campaign.id, chunks);
 
+            // Non-blocking LLM keyword enrichment — fire and forget
+            const utilityEndpointForEnrichment = useAppStore.getState().getActiveUtilityEndpoint();
+            if (utilityEndpointForEnrichment?.endpoint) {
+                import('../services/loreKeywordEnricher').then(({ enrichLoreKeywords }) => {
+                    enrichLoreKeywords(campaign.id, chunks, utilityEndpointForEnrichment)
+                        .catch(err => console.warn('[LoreEnricher] Background enrichment failed:', err));
+                }).catch(() => {});
+            }
+
             const seeds = extractEngineSeeds(chunks);
             if (seeds) {
                 const existingState = await loadCampaignState(campaign.id);
