@@ -21,6 +21,11 @@ export type UISlice = {
     deepArmed: boolean;
     setDeepArmed: (val: boolean) => void;
     toggleDeepArmed: () => void;
+    troubleModalOpen: boolean;
+    troubleOptions: string[];
+    troubleLoading: boolean;
+    openTroubleModal: (options: string[]) => void;
+    closeTroubleModal: () => void;
 };
 
 export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
@@ -42,4 +47,9 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     deepArmed: false,
     setDeepArmed: (val) => set({ deepArmed: val }),
     toggleDeepArmed: () => set((s) => ({ deepArmed: !s.deepArmed })),
+    troubleModalOpen: false,
+    troubleOptions: [],
+    troubleLoading: false,
+    openTroubleModal: (options) => set({ troubleModalOpen: true, troubleOptions: options, troubleLoading: false }),
+    closeTroubleModal: () => set({ troubleModalOpen: false, troubleOptions: [], troubleLoading: false }),
 });

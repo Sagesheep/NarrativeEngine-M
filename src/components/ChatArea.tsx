@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { 
-    Save, Loader2, Zap, Scroll, Trash2,
+    Loader2, Zap, Trash2,
     ChevronDown, X
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
@@ -9,10 +9,11 @@ import { runTurn } from '../services/turnOrchestrator';
 import { GenerationProgress } from './GenerationProgress';
 import { useMessageEditor } from './hooks/useMessageEditor';
 import { useCondenser } from './hooks/useCondenser';
-import { api } from '../services/apiClient';
-import { set } from 'idb-keyval';
 import { toast } from './Toast';
+import { api } from '../services/apiClient';
 import { MessageBubble } from './chat/MessageBubble';
+import { CreateTroubleButton } from './chat/CreateTroubleButton';
+import { CreateTroubleModal } from './chat/CreateTroubleModal';
 
 import { NPCPressureInspector } from './NPCPressureInspector';
 import { ChatInput } from './chat/ChatInput';
@@ -63,7 +64,6 @@ export function ChatArea() {
     const [showScrollFab, setShowScrollFab] = useState(false);
 
     const [streamingStats, setStreamingStatsLocal] = useState<StreamingStats | null>(null);
-    const [isSaving, setIsSaving] = useState(false);
     const streamStartRef = useRef<number>(0);
     const bottomRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -233,31 +233,6 @@ export function ChatArea() {
         useAppStore.getState().setStreamingStats(null);
     };
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setInput(e.target.value);
-        if (inputRef.current) {
-            inputRef.current.style.height = '40px';
-            const newHeight = Math.min(inputRef.current.scrollHeight, 240);
-            inputRef.current.style.height = `${newHeight}px`;
-        }
-    };
-
-    const handleForceSave = () => {
-        setIsSaving(true);
-        const state = useAppStore.getState();
-        if (state.activeCampaignId) {
-            try {
-                set(`nn_settings`, { settings: state.settings, activeCampaignId: state.activeCampaignId });
-                set(`nn_campaign_${state.activeCampaignId}_state`, { context: state.context, messages: state.messages, condenser: state.condenser });
-                set(`nn_campaign_${state.activeCampaignId}_npcs`, state.npcLedger);
-                toast.success('Campaign saved');
-            } catch {
-                toast.error('Save failed');
-            }
-        }
-        setTimeout(() => setIsSaving(false), 2000);
-    };
-
     const handleClearArchive = async () => {
         if (!activeCampaignId || !window.confirm('Delete archive?')) return;
         try {
@@ -268,7 +243,14 @@ export function ChatArea() {
         }
     };
 
-
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setInput(e.target.value);
+        if (inputRef.current) {
+            inputRef.current.style.height = '40px';
+            const newHeight = Math.min(inputRef.current.scrollHeight, 240);
+            inputRef.current.style.height = `${newHeight}px`;
+        }
+    };
 
     const visibleMessages = messages.filter(msg => msg.role !== 'tool').slice(-visibleCount);
 
@@ -337,14 +319,11 @@ export function ChatArea() {
             </div>
 
             <div className="px-2 md:px-4 pb-1 flex gap-2 overflow-x-auto no-scrollbar">
-                <button onClick={handleForceSave} disabled={isSaving} className="flex items-center gap-1.5 bg-void border border-emerald-500/30 text-emerald-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
-                    {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} SAVE
-                </button>
-                <button onClick={triggerTrim} disabled={messages.length < 6} className="flex items-center gap-1.5 bg-void border border-terminal/30 text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all">
+                <button onClick={() => { if (window.confirm('Trim conversation history? This condenses older messages.')) triggerTrim(); }} disabled={messages.length < 6} className="flex items-center gap-1.5 bg-void border border-terminal/30 text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all disabled:opacity-40">
                     <Zap size={13} /> TRIM
                 </button>
-<button onClick={() => api.archive.open(activeCampaignId || '')} className="flex items-center gap-1.5 bg-void border border-ice/30 text-ice text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded ml-auto transition-all hover:bg-ice/5"><Scroll size={13} /> ARCHIVE</button>
-                <button onClick={handleClearArchive} disabled={!activeCampaignId} className="flex items-center gap-1.5 bg-void border border-red-500/20 text-red-500/60 hover:text-red-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-red-500/5 hover:border-red-500/40"><Trash2 size={13} /> CLEAR</button>
+                <CreateTroubleButton />
+                <button onClick={handleClearArchive} disabled={!activeCampaignId} className="flex items-center gap-1.5 bg-void border border-red-500/20 text-red-500/60 hover:text-red-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-red-500/5 hover:border-red-500/40 disabled:opacity-40"><Trash2 size={13} /> CLEAR</button>
             </div>
 
 
@@ -375,6 +354,8 @@ export function ChatArea() {
             {showScrollFab && (
                 <button onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })} className="fixed bottom-[calc(160px+env(safe-area-inset-bottom))] right-4 z-50 w-10 h-10 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"><ChevronDown size={20} /></button>
             )}
+
+            <CreateTroubleModal onSelect={(opt) => handleSend(opt)} />
         </div>
     );
 }
