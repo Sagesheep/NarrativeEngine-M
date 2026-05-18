@@ -4,22 +4,9 @@ import { toast } from '../../components/Toast';
 import { debouncedSaveSettings } from './settingsSlice';
 import { embedText } from '../../services/embedder';
 import { embeddingStorage } from '../../services/storage/embeddingStorage';
+import { buildNPCEmbeddingText } from '../../services/npcGeneration';
 
 const NPC_EMBED_FIELDS: (keyof NPCEntry)[] = ['name', 'aliases', 'faction', 'tier', 'appearance', 'personality', 'voice', 'goals', 'storyRelevance'];
-
-function npcEmbedText(npc: NPCEntry): string {
-    return [
-        npc.name,
-        npc.aliases ? `aliases: ${npc.aliases}` : '',
-        npc.faction ? `faction: ${npc.faction}` : '',
-        npc.tier ? `tier: ${npc.tier}` : '',
-        npc.appearance ? `appearance: ${npc.appearance}` : '',
-        npc.personality ? `personality: ${npc.personality}` : '',
-        npc.voice ? `voice: ${npc.voice}` : '',
-        npc.goals ? `goals: ${npc.goals}` : '',
-        npc.storyRelevance ? `storyRelevance: ${npc.storyRelevance}` : '',
-    ].filter(Boolean).join('; ');
-}
 import {
     DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES,
     DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES,
@@ -338,7 +325,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         if (oldNpc && s.activeCampaignId && NPC_EMBED_FIELDS.some(f => f in patch)) {
             const updatedNpc = { ...oldNpc, ...patch };
             const cId = s.activeCampaignId;
-            embedText(npcEmbedText(updatedNpc))
+            embedText(buildNPCEmbeddingText(updatedNpc))
                 .then(vec => vec && embeddingStorage.store(cId, id, Array.from(vec), 'npc'))
                 .catch(e => console.warn(`[NPC] Re-embed failed for ${updatedNpc.name}:`, e));
         }

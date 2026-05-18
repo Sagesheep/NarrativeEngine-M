@@ -68,4 +68,14 @@ describe('dedupeNPCLedger', () => {
         const result = dedupeNPCLedger([npc1, npc2]);
         expect(result).toHaveLength(1);
     });
+
+    it('handles three-way collision: partial + two exacts', () => {
+        const partial = makeNPC('Gandalf');
+        const exact1 = makeNPC('Gandalf');
+        const exact2 = makeNPC('Gandalf');
+        exact2.affinity = 77;
+        const result = dedupeNPCLedger([partial, exact1, exact2]);
+        expect(result).toHaveLength(1);
+        expect(result[0].affinity).toBe(77);
+    });
 });

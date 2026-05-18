@@ -43,11 +43,6 @@ export type StreamingStats = {
     speed: number;
 };
 
-/** @deprecated Use LLMProvider */
-export type EndpointConfig = LLMProvider;
-/** @deprecated Use ProviderConfig */
-export type ProviderConfig = LLMProvider;
-
 export type AIPreset = {
     id: string;
     name: string;
@@ -151,10 +146,6 @@ export type GameContext = {
     encounterConfig?: EncounterConfig;
     notebook: NotebookNote[];
     notebookActive: boolean;
-    canonState?: string;
-    canonStateActive?: boolean;
-    headerIndex?: string;
-    headerIndexActive?: boolean;
 };
 
 
@@ -332,6 +323,7 @@ export type NPCEntry = {
     archivedAtTurn?: number;
     archivedReason?: string;
     tier?: 'recurring' | 'oneshot' | 'walkon';
+    recalledByEmbedding?: boolean;
 };
 
 

@@ -18,7 +18,7 @@ export type ChapterSummaryOutput = {
     themes: string[];
 };
 
-function truncateScenesToBudget(
+export function truncateScenesToBudget(
     scenes: { sceneId: string; content: string }[],
     budget: number = CHAPTER_SUMMARY_TOKEN_BUDGET
 ): { sceneId: string; content: string }[] {
@@ -280,7 +280,7 @@ export function parseCombinedSealOutput(
     npcLedger: { id: string; name: string; aliases: string }[]
 ): CombinedSealResult {
     const cleaned = stripReasoning(raw);
-    let jsonStr = extractJson(cleaned);
+    const jsonStr = extractJson(cleaned);
 
     let parsed: { summary?: unknown; divergences?: unknown };
     let divergenceParseError = false;

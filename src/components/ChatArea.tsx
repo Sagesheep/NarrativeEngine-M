@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { 
     Loader2, Zap, Trash2,
     ChevronDown, X
@@ -258,7 +258,7 @@ export function ChatArea() {
         }
     };
 
-    const visibleMessages = messages.filter(msg => msg.role !== 'tool').slice(-visibleCount);
+    const visibleMessages = useMemo(() => messages.filter(msg => msg.role !== 'tool').slice(-visibleCount), [messages, visibleCount]);
 
     return (
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative md:pb-0">

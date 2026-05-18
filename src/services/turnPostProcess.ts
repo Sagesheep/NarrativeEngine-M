@@ -1,4 +1,4 @@
-import type { NPCEntry, ArchiveChapter, ArchiveIndexEntry, DivergenceEntry, LLMProvider, WitnessSource } from '../types';
+import type { NPCEntry, ArchiveChapter, ArchiveIndexEntry, LLMProvider, WitnessSource } from '../types';
 import type { TurnCallbacks, TurnState } from './turnTypes';
 import { generateNPCProfile, updateExistingNPCs, backfillNPCDrives } from './chatEngine';
 import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from './npcDetector';
@@ -6,7 +6,7 @@ import { api } from './apiClient';
 import { uid } from '../utils/uid';
 import { toast } from '../components/Toast';
 import { shouldAutoSeal, sealChapter } from './archiveChapterEngine';
-import { sealChapterCombined, type ChapterSummaryOutput } from './saveFileEngine';
+import { sealChapterCombined, type CombinedSealResult } from './saveFileEngine';
 import { fetchFacts } from './semanticMemory';
 import { loadChapters } from '../store/campaignStore';
 import { backgroundQueue } from './backgroundQueue';
@@ -17,13 +17,6 @@ import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToResto
 import { mergeSealEntries } from './divergenceRegister';
 import { llmCall } from '../utils/llmCall';
 import { extractJson } from './payloadBuilder';
-
-export type CombinedSealResult = {
-    summary: ChapterSummaryOutput | null;
-    divergences: DivergenceEntry[];
-    divergenceParseError?: boolean;
-    witnessCorrections?: Record<string, string[]>;
-};
 
 const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*[:\-–—]?\s*(.+?)(?:\n|$)/i;
 

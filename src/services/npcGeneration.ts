@@ -273,7 +273,7 @@ Example of an NPC whose scene context shifted:
 RESPOND ONLY WITH VALID JSON.`;
 
     try {
-        const parsed = await llmParseJson<{ updates?: Array<{ name?: string; changes?: Record<string, unknown> }> }>(provider, prompt, 'NPC Updater');
+        const parsed = await llmParseJson<{ updates?: Array<{ name?: string; changes?: Partial<NPCEntry> }> }>(provider, prompt, 'NPC Updater');
 
         if (parsed?.updates && Array.isArray(parsed.updates)) {
             for (const update of parsed.updates) {

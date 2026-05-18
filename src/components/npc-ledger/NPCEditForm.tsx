@@ -1,7 +1,6 @@
 import { Trash2, Save, Loader2, Sparkles, Users, ScrollText } from 'lucide-react';
-import type { NPCEntry, NPCBehavioralTrigger, DivergenceCategory } from '../../types';
-import { useAppStore } from '../../store/useAppStore';
-import { getEntriesForNpc, CATEGORY_LABELS } from '../../services/divergenceRegister';
+import type { NPCEntry, NPCBehavioralTrigger, DivergenceCategory, DivergenceEntry } from '../../types';
+import { CATEGORY_LABELS } from '../../services/divergenceRegister';
 
 type Props = {
     form: Partial<NPCEntry>;
@@ -14,13 +13,13 @@ type Props = {
     onCancel: () => void;
     onDelete: (id: string, e: React.MouseEvent) => void;
     onAIUpdate: () => void;
+    divergenceEntries?: DivergenceEntry[];
 };
 
 export function NPCEditForm({
     form, setForm, selectedId, isEditing, isAIUpdating,
-    onEdit, onSave, onCancel, onDelete, onAIUpdate,
+    onEdit, onSave, onCancel, onDelete, onAIUpdate, divergenceEntries,
 }: Props) {
-    const divergenceRegister = useAppStore(s => s.divergenceRegister);
     if (!selectedId && !isEditing) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 opacity-50 bg-void">
@@ -386,8 +385,7 @@ export function NPCEditForm({
                 </div>
 
                 {selectedId && !isEditing && (() => {
-                    const reg = divergenceRegister;
-                    const events = reg ? getEntriesForNpc(reg, selectedId) : [];
+                    const events = divergenceEntries ?? [];
                     if (events.length === 0) return null;
                     const CATEGORY_COLORS: Record<DivergenceCategory, string> = {
                         locations: 'text-blue-400',

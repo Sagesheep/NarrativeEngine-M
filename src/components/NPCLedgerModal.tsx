@@ -13,9 +13,10 @@ import { NPCListView } from './npc-ledger/NPCListView';
 import { NPCGalleryView } from './npc-ledger/NPCGalleryView';
 import { NPCEditForm } from './npc-ledger/NPCEditForm';
 import { uid } from '../utils/uid';
+import { getEntriesForNpc } from '../services/divergenceRegister';
 
 export function NPCLedgerModal() {
-  const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC, restoreNPC, setNPCLedger, setMobileView, activeCampaignId } = useAppStore();
+  const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC, restoreNPC, setNPCLedger, setMobileView, activeCampaignId, divergenceRegister } = useAppStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'gallery'>('list');
@@ -287,6 +288,7 @@ export function NPCLedgerModal() {
             onCancel={() => setIsEditing(false)}
             onDelete={handleDelete}
             onAIUpdate={handleAIUpdate}
+            divergenceEntries={selectedId ? getEntriesForNpc(divergenceRegister, selectedId) : undefined}
           />
         </div>
       </div>

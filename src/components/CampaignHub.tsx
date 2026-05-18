@@ -11,6 +11,7 @@ import { chunkLoreFile } from '../services/loreChunker';
 import { extractEngineSeeds } from '../services/loreEngineSeeder';
 import { parseNPCsFromLore } from '../services/loreNPCParser';
 import { dedupeNPCLedger, defaultContext } from '../store/slices/campaignSlice';
+import { EMPTY_REGISTER } from '../services/divergenceRegister';
 import { api } from '../services/apiClient';
 import { downloadBundle, importBundle, readFileChunked } from '../services/campaignBundle';
 import { toast } from './Toast';
@@ -211,7 +212,7 @@ export function CampaignHub() {
             semanticFacts: facts,
             chapters: chaps,
             activeCampaignId: campaign.id,
-            divergenceRegister: divReg ?? { entries: [], chapterToggles: {}, categoryToggles: {}, lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 2 as const },
+            divergenceRegister: divReg ?? { ...EMPTY_REGISTER },
         });
     };
 
