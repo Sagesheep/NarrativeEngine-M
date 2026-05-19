@@ -260,7 +260,8 @@ export type LoreChunk = {
     content: string;
     tokens: number;
     alwaysInclude: boolean;
-    triggerKeywords: string[];  // exact keywords that activate this chunk
+    triggerKeywords: string[];  // primary keywords that activate this chunk
+    secondaryKeywords?: string[]; // contextual disambiguators; if present, one must also match (strict AND-gate)
     scanDepth: number;          // how many recent messages to scan (default: 3)
     category: LoreCategory;
     linkedEntities: string[];   // Names of NPCs, factions, locations referenced
@@ -268,6 +269,7 @@ export type LoreChunk = {
     priority: number;           // 0-10, higher = more important
     summary?: string;           // One-line auto-summary for recommender index
     keywordsEnriched?: boolean; // true after LLM enrichment pass; undefined = not yet enriched
+    enrichedVersion?: number;   // ENRICHER_VERSION the chunk was last enriched at; undefined = pre-versioning
 };
 
 export type CharacterIntroEntry = {

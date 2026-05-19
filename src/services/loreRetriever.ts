@@ -52,15 +52,15 @@ export function retrieveRelevantLore(
 
     // Score chunks
     const scored: { chunk: LoreChunk; score: number }[] = [];
+    const semanticSet = new Set(semanticLoreIds || []);
 
     for (const chunk of chunks) {
         if (chunk.alwaysInclude) continue;
 
-        const keywords = chunk.triggerKeywords || [];
-        if (keywords.length === 0) continue;
-
         const depth = chunk.scanDepth || defaultDepth;
         const scanText = textByDepth.get(depth) || userMessage.toLowerCase();
+
+        const keywords = chunk.triggerKeywords || [];
 
         let matchCount = 0;
         for (const kw of keywords) {
@@ -69,9 +69,22 @@ export function retrieveRelevantLore(
             if (regex.test(scanText)) matchCount++;
         }
 
+        const isSemanticHit = semanticSet.has(chunk.id);
+
         if (matchCount > 0) {
+            // Secondary-key AND-gate: if secondaryKeywords exist, at least one must match
+            const secondaryKws = chunk.secondaryKeywords || [];
+            if (secondaryKws.length > 0) {
+                const secondaryMatch = secondaryKws.some(kw => {
+                    const lower = kw.toLowerCase();
+                    const regex = new RegExp(`\\b${lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+                    return regex.test(scanText);
+                });
+                if (!secondaryMatch) continue; // AND-gate not satisfied — skip
+            }
+
             let score = matchCount * 10;
-            
+
             // Boost by priority
             score += (chunk.priority || 5);
 
@@ -86,10 +99,15 @@ export function retrieveRelevantLore(
                 score += 15;
             }
 
-            if (semanticLoreIds && semanticLoreIds.includes(chunk.id)) {
+            if (isSemanticHit) {
                 score += 20;
             }
 
+            scored.push({ chunk, score });
+        } else if (isSemanticHit) {
+            // Semantic-only path: no keyword match but embedding matched — add with base score
+            // Bypasses the secondary-key AND-gate (earned inclusion by meaning)
+            const score = 25 + (chunk.priority || 5);
             scored.push({ chunk, score });
         }
     }

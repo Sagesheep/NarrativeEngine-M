@@ -5,6 +5,7 @@ import { saveLoreChunks } from '../store/campaignStore';
 const BATCH_SIZE = 8;
 const CONTENT_PREVIEW_CHARS = 300;
 const FINAL_KEYWORD_CAP = 25;
+const ENRICHER_VERSION = 2;
 
 function buildBatchPrompt(batch: LoreChunk[]): string {
     const entries = batch.map(c => {
@@ -13,11 +14,12 @@ function buildBatchPrompt(batch: LoreChunk[]): string {
     }).join('\n');
 
     return `You are generating trigger keywords for a tabletop RPG lore retrieval system.
-For each lore entry below, return 12-15 semantic trigger keywords that a player might naturally say to invoke this entry.
-Include: roles (thief, guard, merchant), synonyms (steal/heist/pilfer), related concepts (faction → join/ally/betray/members), actions (hire, fight, visit, ask about), and entity names/aliases.
-Do NOT include stop words, generic adjectives, or the entry id itself.
-Return ONLY a JSON object mapping each entry id to its keyword array. No prose, no markdown.
-Format: {"chunk-id": ["kw1", "kw2", ...], ...}
+For each lore entry below, return TWO keyword sets:
+- "primary": 10-15 distinctive, high-precision trigger words that uniquely identify this entry. Include entity names, aliases, multi-word proper nouns, rare/specific nouns. AVOID generic verbs and common role words such as: visit, ask, go, members, join, order, fight, hire, travel, meet, find, talk — these cause false triggers on unrelated text.
+- "secondary": 5-10 contextual disambiguator words that, when present alongside a primary keyword, confirm this chunk is genuinely on-topic.
+
+Return ONLY a JSON object. No prose, no markdown fences.
+Format: {"chunk-id": {"primary": ["kw1", "kw2", ...], "secondary": ["kw1", ...]}, ...}
 
 LORE ENTRIES:
 ${entries}
@@ -26,7 +28,7 @@ ${entries}
 Respond with the JSON object now:`;
 }
 
-function parseEnrichmentResponse(raw: string): Record<string, string[]> {
+function parseEnrichmentResponse(raw: string): Record<string, { primary: string[]; secondary: string[] }> {
     let clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
     const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (mdMatch) clean = mdMatch[1];
@@ -37,16 +39,29 @@ function parseEnrichmentResponse(raw: string): Record<string, string[]> {
 
     const parsed = JSON.parse(clean.substring(start, end + 1));
     if (typeof parsed !== 'object' || parsed === null) throw new Error('Enrichment response is not an object');
-    return parsed as Record<string, string[]>;
+
+    const result: Record<string, { primary: string[]; secondary: string[] }> = {};
+    for (const [id, value] of Object.entries(parsed)) {
+        if (Array.isArray(value)) {
+            // Old flat-array shape — treat as primary only
+            result[id] = { primary: value as string[], secondary: [] };
+        } else if (typeof value === 'object' && value !== null) {
+            const v = value as Record<string, unknown>;
+            const primary = Array.isArray(v.primary) ? (v.primary as string[]) : [];
+            const secondary = Array.isArray(v.secondary) ? (v.secondary as string[]) : [];
+            result[id] = { primary, secondary };
+        }
+    }
+    return result;
 }
 
-function mergeKeywords(llmKeywords: string[], existing: string[]): string[] {
-    const merged = new Set<string>();
-    for (const kw of [...llmKeywords, ...existing]) {
+function capKeywords(keywords: string[]): string[] {
+    const deduped = new Set<string>();
+    for (const kw of keywords) {
         const lower = kw.toLowerCase().trim();
-        if (lower.length > 1) merged.add(lower);
+        if (lower.length > 1) deduped.add(lower);
     }
-    return Array.from(merged).slice(0, FINAL_KEYWORD_CAP);
+    return Array.from(deduped).slice(0, FINAL_KEYWORD_CAP);
 }
 
 export async function enrichLoreKeywords(
@@ -54,7 +69,7 @@ export async function enrichLoreKeywords(
     chunks: LoreChunk[],
     utilityEndpoint: LLMProvider
 ): Promise<void> {
-    const toEnrich = chunks.filter(c => !c.alwaysInclude && !c.keywordsEnriched);
+    const toEnrich = chunks.filter(c => !c.alwaysInclude && (c.enrichedVersion ?? 0) < ENRICHER_VERSION);
 
     if (toEnrich.length === 0) {
         console.log('[LoreEnricher] All chunks already enriched, skipping.');
@@ -68,7 +83,7 @@ export async function enrichLoreKeywords(
         batches.push(toEnrich.slice(i, i + BATCH_SIZE));
     }
 
-    const enrichedMap = new Map<string, string[]>();
+    const enrichedMap = new Map<string, { primary: string[]; secondary: string[] }>();
 
     for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
@@ -77,14 +92,14 @@ export async function enrichLoreKeywords(
             const raw = await llmCall(utilityEndpoint, prompt, {
                 temperature: 0.1,
                 priority: 'normal',
-                maxTokens: 700,
+                maxTokens: 1400,
             });
             const result = parseEnrichmentResponse(raw);
 
             for (const chunk of batch) {
-                const llmKeywords = result[chunk.id];
-                if (Array.isArray(llmKeywords) && llmKeywords.length > 0) {
-                    enrichedMap.set(chunk.id, mergeKeywords(llmKeywords, chunk.triggerKeywords));
+                const entry = result[chunk.id];
+                if (entry && Array.isArray(entry.primary) && entry.primary.length > 0) {
+                    enrichedMap.set(chunk.id, entry);
                 }
             }
 
@@ -97,10 +112,13 @@ export async function enrichLoreKeywords(
     // Apply enriched keywords back to the full chunks array
     let enrichedCount = 0;
     for (const chunk of chunks) {
-        const kws = enrichedMap.get(chunk.id);
-        if (kws) {
-            chunk.triggerKeywords = kws;
+        const entry = enrichedMap.get(chunk.id);
+        if (entry) {
+            // REPLACE triggerKeywords with LLM primary set (do not merge stale old keywords)
+            chunk.triggerKeywords = capKeywords(entry.primary);
+            chunk.secondaryKeywords = capKeywords(entry.secondary);
             chunk.keywordsEnriched = true;
+            chunk.enrichedVersion = ENRICHER_VERSION;
             enrichedCount++;
         }
     }
