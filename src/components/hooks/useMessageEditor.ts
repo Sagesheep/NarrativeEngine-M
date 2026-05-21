@@ -6,10 +6,6 @@ import { toast } from '../Toast';
 
 interface UseMessageEditorDeps {
     messages: ChatMessage[];
-    input: string;
-    setInput: (v: string) => void;
-    inputRef: React.RefObject<HTMLTextAreaElement | null>;
-    resetTextareaHeight: () => void;
     activeCampaignId: string | null;
     archiveIndex: ReturnType<typeof useAppStore.getState>['archiveIndex'];
     condenser: { condensedUpToIndex: number };
@@ -27,13 +23,10 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
 
     const startEditing = (msg: ChatMessage) => {
         setEditingMessageId(msg.id);
-        deps.setInput(msg.displayContent || msg.content);
-        deps.inputRef.current?.focus();
     };
 
     const cancelEditing = () => {
         setEditingMessageId(null);
-        deps.setInput('');
     };
 
     const rollbackArchiveFrom = async (fromTimestamp: number) => {
@@ -72,25 +65,19 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         }
     };
 
-    const handleEditSubmit = () => {
-        if (!editingMessageId) return;
-        const msg = deps.messages.find(m => m.id === editingMessageId);
+    const handleEditSubmit = (id: string, newContent: string) => {
+        const msg = deps.messages.find(m => m.id === id);
         if (!msg) return;
 
         if (msg.role === 'user') {
             rollbackArchiveFrom(msg.timestamp);
             deps.deleteMessagesFrom(msg.id);
-            const textToResend = deps.input.trim();
-            deps.setInput('');
-            deps.resetTextareaHeight();
             setEditingMessageId(null);
             setTimeout(() => {
-                deps.onAfterEdit(textToResend);
+                deps.onAfterEdit(newContent.trim());
             }, 50);
         } else {
-            useAppStore.getState().updateMessageContent(msg.id, deps.input.trim());
-            deps.setInput('');
-            deps.resetTextareaHeight();
+            useAppStore.getState().updateMessageContent(msg.id, newContent.trim());
             setEditingMessageId(null);
         }
     };

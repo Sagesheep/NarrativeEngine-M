@@ -164,10 +164,6 @@ export function ChatArea() {
         handleRegenerate,
     } = useMessageEditor({
         messages,
-        input,
-        setInput,
-        inputRef: inputRef as React.RefObject<HTMLTextAreaElement>,
-        resetTextareaHeight,
         activeCampaignId,
         archiveIndex,
         condenser,
@@ -307,7 +303,10 @@ export function ChatArea() {
                         msg={msg}
                         isStreaming={isStreaming}
                         isLastMessage={idx === visibleMessages.length - 1}
-                        onEdit={startEditing}
+                        isEditing={editingMessageId === msg.id}
+                        onStartEdit={startEditing}
+                        onCancelEdit={cancelEditing}
+                        onSubmitEdit={handleEditSubmit}
                         onRegenerate={handleRegenerate}
                         onDelete={deleteMessage}
                         showReasoning={settings.showReasoning ?? false}
@@ -355,12 +354,9 @@ export function ChatArea() {
             <ChatInput
                 input={input}
                 isStreaming={isStreaming}
-                editingMessageId={editingMessageId}
                 onChange={handleInputChange}
                 onSend={() => handleSend()}
                 onStop={handleStop}
-                onEditSubmit={handleEditSubmit}
-                onCancelEdit={cancelEditing}
                 inputRef={inputRef}
             />
 

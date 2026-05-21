@@ -78,7 +78,7 @@ describe('rollEngines', () => {
     it('world engine triggers with low DC', () => {
         const ctx = { ...baseContext, surpriseDC: 9999, encounterDC: 9999, worldEventDC: 1 };
         const result = rollEngines(ctx);
-        expect(result.appendToInput).toContain('WORLD_EVENT');
+        expect(result.appendToInput).toContain('WORLD_RUMOUR');
     });
 
     it('never reduces DC below 5', () => {

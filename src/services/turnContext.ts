@@ -68,7 +68,8 @@ export type GatheredContext = {
 export async function gatherContext(
     state: TurnState,
     callbacks: TurnCallbacks,
-    finalInput: string
+    finalInput: string,
+    userMsgId: string
 ): Promise<GatheredContext> {
     const { settings, loreChunks, npcLedger, archiveIndex, activeCampaignId } = state;
     let semanticArchiveIds: string[] | undefined;
@@ -137,7 +138,7 @@ export async function gatherContext(
         }
     }
 
-    const messages = state.getMessages();
+    const messages = state.getMessages().filter(m => m.id !== userMsgId);
     const relevantLore = loreChunks.length > 0
         ? retrieveRelevantLore(loreChunks, finalInput, 1200, messages, semanticLoreIds)
         : undefined;
@@ -239,7 +240,7 @@ export async function gatherContext(
                     archiveIndex,
                     sealedChapters,
                     activeCampaignId,
-                    state.getMessages(),
+                    state.getMessages().filter(m => m.id !== userMsgId),
                     finalInput,
                     deepBudget,
                     (msg) => callbacks.setLoadingStatus?.(msg),
@@ -311,7 +312,7 @@ export async function gatherContext(
         }
     }
 
-    const freshMessages = state.getMessages();
+    const freshMessages = state.getMessages().filter(m => m.id !== userMsgId);
     callbacks.setLoadingStatus?.('[5/5] Architecting AI Prompt...');
 
     let semanticallyRecalledNpcIds: string[] = [];

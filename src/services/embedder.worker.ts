@@ -1,6 +1,9 @@
 /// <reference lib="webworker" />
 
-import { pipeline } from '@huggingface/transformers';
+import { pipeline, env } from '@huggingface/transformers';
+
+env.allowRemoteModels = false;
+env.localModelPath = '/models/';
 
 const MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
 const SINGLE_PASS_LIMIT = 1500;

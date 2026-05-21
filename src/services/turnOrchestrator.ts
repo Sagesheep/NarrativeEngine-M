@@ -43,19 +43,6 @@ export async function runTurn(
         console.warn('[TurnOrchestrator] Character intro engine failed:', err);
     }
 
-    callbacks.setStreaming(true);
-    callbacks.setLoadingStatus?.('[1/5] Extracting Lore & Stats...');
-
-    callbacks.setPipelinePhase?.('gathering-context');
-    const gathered = await gatherContext(state, callbacks, finalInput);
-
-    callbacks.setPipelinePhase?.('building-prompt');
-    const { payloadResult } = gathered;
-
-    // Add the user message to the chat store after context is gathered so the
-    // current turn input is NOT included in fitted history (which snapshots
-    // state.getMessages() inside gatherContext). It is appended directly as the
-    // trailing user message by buildPayload, so it would otherwise appear twice.
     const userMsgId = uid();
     callbacks.addMessage({
         id: userMsgId,
@@ -64,6 +51,15 @@ export async function runTurn(
         displayContent: displayInput,
         timestamp: Date.now()
     });
+
+    callbacks.setStreaming(true);
+    callbacks.setLoadingStatus?.('[1/5] Extracting Lore & Stats...');
+
+    callbacks.setPipelinePhase?.('gathering-context');
+    const gathered = await gatherContext(state, callbacks, finalInput, userMsgId);
+
+    callbacks.setPipelinePhase?.('building-prompt');
+    const { payloadResult } = gathered;
 
     const payload = payloadResult.messages;
     if (settings.debugMode && callbacks.setLastPayloadTrace) {

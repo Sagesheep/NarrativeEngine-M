@@ -32,7 +32,11 @@
       "mcp__Claude_Preview__preview_start",
       "PowerShell(Stop-Process -Id 35508 -Force -ErrorAction SilentlyContinue)",
       "PowerShell(Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue)",
-      "PowerShell(if \\($?\\) { \"stopped 35508\" } else { \"already gone\" })"
+      "PowerShell(if \\($?\\) { \"stopped 35508\" } else { \"already gone\" })",
+      "Bash(Select-String -Pattern \"\\(loreRetriever|loreEngineSeeder|loreCheck|charIntroEngine|vectorSearch\\)\")",
+      "Bash(Select-Object -First 30)",
+      "Bash(echo \"EXIT: $?\")",
+      "PowerShell(New-Item -ItemType Directory -Force \"D:\\\\Games\\\\AI DM Project\\\\Automated_system\\\\mobileApp\\\\public\\\\models\\\\Xenova\\\\all-MiniLM-L6-v2\\\\onnx\")"
     ]
   }
 }
