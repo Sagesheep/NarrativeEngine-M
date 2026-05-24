@@ -24,6 +24,95 @@ const SEMANTIC_FLOOR_LORE = 0.30;
 
 const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(we|i) (did|met|fought|saw|found|got))\b/i;
 
+type PlannerResult = {
+    subQueries?: string[];
+    filters?: {
+        characters?: string[];
+        locations?: string[];
+        items?: string[];
+        concepts?: string[];
+        eventTypes?: string[];
+    };
+    sceneIdRange?: [string, string] | null;
+};
+
+export async function runPlannerCall(
+    userMessage: string,
+    recentMessages: Array<{ role?: string; content?: string }>,
+    npcLedger: import('../types').NPCEntry[],
+    chapterSummary: string | undefined,
+    utilityEndpoint: LLMProvider,
+    timeoutSeconds?: number,
+): Promise<PlannerResult | null> {
+    try {
+        const timeoutMs = (timeoutSeconds ?? 45) * 1000;
+
+        const recentContextText = recentMessages
+            .slice(-8)
+            .map(m => `${m.role === 'assistant' ? 'GM' : 'Player'}: ${(m.content ?? '').slice(0, 200)}`)
+            .join('\n');
+
+        const npcRosterText = npcLedger.slice(0, 30).map(n => `${n.id}: ${n.name}`).join('\n') || '(none)';
+
+        const prompt = `You are a retrieval planner for a TTRPG campaign archive. Output a JSON object that helps focus memory recall for the GM's next turn.
+
+USER MESSAGE: """${userMessage}"""
+
+RECENT CONTEXT (last few turns):
+${recentContextText}
+
+NPC ROSTER:
+${npcRosterText}
+
+CHAPTER SUMMARY (if any):
+${chapterSummary || '(no chapter summary)'}
+
+OUTPUT — a single JSON object:
+{
+  "subQueries": ["query rephrase 1", "query rephrase 2"],
+  "filters": {
+    "characters": ["Astarion"],
+    "locations": ["Baldur's Gate"],
+    "items": [],
+    "concepts": [],
+    "eventTypes": ["promise", "betrayal"]
+  },
+  "sceneIdRange": null
+}
+
+RULES:
+- subQueries: 0-3 alternative phrasings of what to search for. Optional — omit or use [] if the user message is already specific.
+- filters.characters: NPC names (from the roster above) that should heavily influence recall. Only include if the user message clearly references them.
+- filters.locations / items / concepts: domain entities mentioned or strongly implied.
+- filters.eventTypes: any of [combat, discovery, item_acquired, item_lost, relationship_shift, travel, promise, betrayal, death, revelation, quest_milestone, other]. Only include when the user message references that kind of event (e.g. "what did I promise" → ["promise"]).
+- sceneIdRange: only set if the user message clearly anchors to a time window (e.g. "back in Waterdeep" → range covering those scenes); otherwise null.
+- If nothing is clear, output {} — empty filters is valid. DO NOT hallucinate filters.
+
+Respond with ONE JSON object only. No prose, no markdown fences.`;
+
+        const raw = await llmCall(utilityEndpoint, prompt, {
+            temperature: 0.1,
+            priority: 'high',
+            maxTokens: 400,
+            timeoutMs,
+            trackingLabel: 'planner',
+        });
+
+        let clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
+        const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (mdMatch) clean = mdMatch[1];
+
+        const braceStart = clean.indexOf('{');
+        const braceEnd = clean.lastIndexOf('}');
+        if (braceStart === -1 || braceEnd === -1) return null;
+
+        const parsed: PlannerResult = JSON.parse(clean.substring(braceStart, braceEnd + 1));
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
 async function expandQuery(query: string, npcLedger: import('../types').NPCEntry[], utilityEndpoint: LLMProvider, timeoutMs?: number): Promise<string[]> {
     try {
         const npcContext = npcLedger.slice(0, 10).map(n => n.name).join(', ');
@@ -81,18 +170,39 @@ export async function gatherContext(
     let semanticLoreIds: string[] | undefined;
     let semanticRuleIds: string[] | undefined;
 
+    const plannerEndpoint = state.getUtilityEndpoint?.();
+    let plannerResult: PlannerResult | null = null;
+    let plannerPromise: Promise<PlannerResult | null> = Promise.resolve(null);
+    if (plannerEndpoint?.endpoint) {
+        const recentForPlanner = state.getMessages().filter(m => m.id !== userMsgId).slice(-8);
+        const chapterSummary = state.chapters.length > 0 ? state.chapters[state.chapters.length - 1].summary : undefined;
+        plannerPromise = runPlannerCall(finalInput, recentForPlanner, npcLedger, chapterSummary, plannerEndpoint, settings.utilityTimeoutSeconds);
+    }
+
     if (isEmbedderReady() && activeCampaignId) {
         try {
             let queries = [finalInput];
             const isCallback = CALLBACK_REGEX.test(finalInput);
             const isShort = finalInput.trim().split(/\s+/).length < 8;
             const expansionEndpoint = state.getUtilityEndpoint?.();
-            if ((isCallback || isShort) && expansionEndpoint?.endpoint) {
-                const expanded = await expandQuery(finalInput, npcLedger, expansionEndpoint, utilityTimeoutMs);
-                queries = expanded;
-                if (expanded.length > 1) {
-                    console.log(`[QueryExpansion] "${finalInput}" → ${expanded.length} variants`);
-                }
+
+            const [resolvedPlanner, expandedQueries] = await Promise.all([
+                plannerPromise,
+                (isCallback || isShort) && expansionEndpoint?.endpoint
+                    ? expandQuery(finalInput, npcLedger, expansionEndpoint, utilityTimeoutMs)
+                    : Promise.resolve([finalInput]),
+            ]);
+
+            plannerResult = resolvedPlanner;
+            queries = expandedQueries;
+            if (expandedQueries.length > 1) {
+                console.log(`[QueryExpansion] "${finalInput}" → ${expandedQueries.length} variants`);
+            }
+
+            if (plannerResult?.subQueries?.length) {
+                const newSubs = plannerResult.subQueries.filter(q => !queries.includes(q));
+                queries = [...queries, ...newSubs];
+                console.log(`[Planner] Added ${newSubs.length} sub-queries`);
             }
 
             const [sceneIds, loreIds, ruleIds] = await Promise.all([
@@ -192,6 +302,15 @@ export async function gatherContext(
         } catch { /* ignored */ }
     }
 
+    // If the embedder path didn't run, still resolve the planner before archive recall.
+    if (!plannerResult && plannerEndpoint?.endpoint) {
+        plannerResult = await plannerPromise;
+    }
+
+    const plannerFilters = plannerResult?.filters;
+    const plannerSceneRanges: [string, string][] | undefined =
+        plannerResult?.sceneIdRange ? [plannerResult.sceneIdRange] : undefined;
+
     callbacks.setLoadingStatus?.('[3/5] Recalling Archive Memory...');
     let archiveResult = { scenes: [] as ArchiveScene[], usedTokens: 0 };
     const { chapters, semanticFacts } = state;
@@ -225,13 +344,13 @@ export async function gatherContext(
             }
         } catch {
             if (activeCampaignId) {
-                const flatRecall = await recallArchiveScenes(activeCampaignId, archiveIndex, finalInput, messages, 3000, npcLedger, semanticFacts, semanticArchiveIds, getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER));
+                const flatRecall = await recallArchiveScenes(activeCampaignId, archiveIndex, finalInput, messages, 3000, npcLedger, semanticFacts, semanticArchiveIds, getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), undefined, plannerFilters);
                 archiveResult = { scenes: flatRecall || [], usedTokens: 0 };
             }
         }
     } else if (archiveIndex.length > 0 && activeCampaignId) {
         const flatRecall = await recallArchiveScenes(
-            activeCampaignId, archiveIndex, finalInput, messages, 3000, npcLedger, semanticFacts, semanticArchiveIds, getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER)
+            activeCampaignId, archiveIndex, finalInput, messages, 3000, npcLedger, semanticFacts, semanticArchiveIds, getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), undefined, plannerFilters
         );
         archiveResult = { scenes: flatRecall || [], usedTokens: 0 };
     }
@@ -251,7 +370,8 @@ export async function gatherContext(
             try {
                 const scoredIds = retrieveArchiveMemory(
                     archiveIndex, finalInput, messages, npcLedger,
-                    undefined, semanticFacts, pinnedRanges, semanticArchiveIds
+                    undefined, semanticFacts, pinnedRanges, semanticArchiveIds,
+                    undefined, plannerFilters
                 ).filter(id => !alreadyCoveredIds.has(id));
 
                 if (scoredIds.length > 0) {

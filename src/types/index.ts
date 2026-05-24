@@ -230,6 +230,32 @@ export type ChatMessage = {
 /** Search index entry — one per scene, auto-built by server on every turn. */
 export type WitnessSource = 'header' | 'aux_fallback' | 'body_fallback' | 'seal_correction' | 'empty';
 
+export type SceneEventType =
+    | 'combat'
+    | 'discovery'
+    | 'item_acquired'
+    | 'item_lost'
+    | 'relationship_shift'
+    | 'travel'
+    | 'promise'
+    | 'betrayal'
+    | 'death'
+    | 'revelation'
+    | 'quest_milestone'
+    | 'other';
+
+export type SceneEvent = {
+    eventType: SceneEventType;
+    importance: number;       // 1-10
+    text: string;             // short summary line
+    characters?: string[];    // canonical NPC names or IDs
+    locations?: string[];
+    items?: string[];
+    concepts?: string[];
+    cause?: string;           // short plain-text cause beat
+    result?: string;          // short plain-text result beat
+};
+
 export type ArchiveIndexEntry = {
     sceneId: string;         // zero-padded, e.g. "014" — matches ## SCENE header in .archive.md
     timestamp: number;
@@ -241,6 +267,7 @@ export type ArchiveIndexEntry = {
     keywordStrengths?: Record<string, number>;
     npcStrengths?: Record<string, number>;
     importance?: number;
+    events?: SceneEvent[];    // optional: structured events extracted at seal time (back-compat: undefined for pre-existing entries)
 };
 
 /** Full verbatim scene content fetched from .archive.md for recall injection. */

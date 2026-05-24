@@ -444,6 +444,27 @@ async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, act
                     } catch (e) { console.warn('[CombinedSeal] Failed to apply witness corrections:', e); }
                 }
 
+                // ── Persist scene events from combined seal ──
+                if (sealResult.sceneEventMap && Object.keys(sealResult.sceneEventMap).length > 0) {
+                    try {
+                        const index = await api.archive.getIndex(activeCampaignId);
+                        let eventCount = 0;
+                        for (const entry of index) {
+                            const events = sealResult.sceneEventMap[entry.sceneId];
+                            if (events && events.length > 0) {
+                                entry.events = events;
+                                eventCount++;
+                            }
+                        }
+                        if (eventCount > 0) {
+                            const { offlineStorage } = await import('./storage');
+                            await offlineStorage.archive.updateIndex(activeCampaignId, index);
+                            callbacks.setArchiveIndex([...index]);
+                            console.log(`[Seal] Persisted scene events for ${eventCount} scenes`);
+                        }
+                    } catch (e) { console.warn('[Seal] Failed to persist scene events:', e); }
+                }
+
                 const liveRegister = state.divergenceRegister;
                 if (sealResult.divergences.length > 0 && liveRegister && callbacks.setDivergenceRegister) {
                     const sceneIds = sealed.sceneIds?.length

@@ -10,9 +10,13 @@ const DEFAULT_RETRY_DELAY_MS = 300;
 export type { LLMCallPriority };
 
 export class UtilityTimeoutError extends Error {
-    constructor(public elapsedMs: number, public label: string) {
+    elapsedMs: number;
+    label: string;
+    constructor(elapsedMs: number, label: string) {
         super(`Utility call "${label}" exceeded deadline (${elapsedMs}ms)`);
         this.name = 'UtilityTimeoutError';
+        this.elapsedMs = elapsedMs;
+        this.label = label;
     }
 }
 

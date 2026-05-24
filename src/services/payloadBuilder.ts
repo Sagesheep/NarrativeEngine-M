@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveIndexEntry } from '../types';
+import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveIndexEntry, SceneEvent } from '../types';
 import type { OpenAIMessage } from './llmService';
 import { countTokens } from './tokenizer';
 import { buildBehaviorDirective, buildDriftAlert } from './npcBehaviorDirective';
@@ -81,6 +81,21 @@ function computeBudgets(limit: number, hasDeepContext: boolean, rulesBudgetPct: 
         rules,
         volatile: Math.floor(adjusted * (hasDeepContext ? 0.07 : 0.10)),
     };
+}
+
+function renderSceneEvents(events: SceneEvent[]): string {
+    if (!events || events.length === 0) return '';
+    return events
+        .slice()
+        .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0))
+        .map(e => {
+            const parts = [`[${e.eventType}] ${e.text}`];
+            if (e.cause && e.result) parts.push(`(${e.cause} → ${e.result})`);
+            else if (e.cause) parts.push(`(cause: ${e.cause})`);
+            else if (e.result) parts.push(`(result: ${e.result})`);
+            return parts.join(' ');
+        })
+        .join('\n');
 }
 
 function fitHistory(
@@ -311,7 +326,28 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         }
 
         if (filteredRecall.length > 0) {
-            const text = `[ARCHIVE RECALL — VERBATIM PAST SCENES]\n${filteredRecall.map(s => `[SCENE #${s.sceneId}]\n${s.content}`).join('\n\n')}\n[END ARCHIVE RECALL]`;
+            // Build map of sceneId -> index entry for event lookup
+            const indexMap = archiveIndex ? new Map(archiveIndex.map(e => [e.sceneId, e])) : new Map();
+
+            const sceneLines = filteredRecall.map(s => {
+                let lines = [`[SCENE #${s.sceneId}]`];
+
+                // Inject structured events if present in index
+                const idxEntry = indexMap.get(s.sceneId);
+                if (idxEntry?.events && idxEntry.events.length > 0) {
+                    const eventsText = renderSceneEvents(idxEntry.events);
+                    if (eventsText) {
+                        lines.push('STRUCTURED EVENTS:');
+                        lines.push(eventsText);
+                        lines.push('');
+                    }
+                }
+
+                lines.push(s.content);
+                return lines.join('\n');
+            }).join('\n\n');
+
+            const text = `[ARCHIVE RECALL — VERBATIM PAST SCENES]\n${sceneLines}\n[END ARCHIVE RECALL]`;
             worldBlocks.push({ source: 'Archive Recall', content: text, tokens: countTokens(text), reason: `Verbatim history (${filteredRecall.length} scenes${archiveIndex?.some(e => e.npcsWitnessed !== undefined) ? ', perception-bounded' : ''})` });
         }
     }

@@ -1,4 +1,4 @@
-import type { LLMProvider, ThinkingEffort } from '../types';
+import type { LLMProvider, ThinkingEffort, SceneEvent, SceneEventType } from '../types';
 import { countTokens } from './tokenizer';
 import { extractJson } from './payloadBuilder';
 import { llmCall } from '../utils/llmCall';
@@ -205,7 +205,7 @@ ${witnessAuditSection}
 SCENE CONTENT:
 ${sceneContent}
 
-OUTPUT FORMAT — a single JSON object with exactly two top-level keys: "summary" and "divergences".
+OUTPUT FORMAT — a single JSON object with the keys "summary", "divergences", and optionally "sceneEvents".
 
 The "summary" value must be this JSON shape:
 {
@@ -231,6 +231,33 @@ ${knownByExample},
      "rules_lore": [],
      "misc": []
 }
+
+The "sceneEvents" value must be an object mapping scene IDs to arrays of structured event objects, or {} if no scenes had meaningful events. Example:
+{
+    "014": [
+        {
+            "eventType": "item_acquired",
+            "importance": 7,
+            "text": "Tav bought a leather chestpiece for 80gp",
+            "characters": ["Tav", "Astarion"],
+            "locations": ["Baldur's Gate"],
+            "items": ["leather chestpiece", "80gp"],
+            "concepts": ["trade"],
+            "cause": "Tav needed better armor before the next dungeon",
+            "result": "Tav now wears the leather chestpiece"
+        }
+    ],
+    "015": []
+}
+
+SCENE EVENT RULES:
+- eventType MUST be one of: combat, discovery, item_acquired, item_lost, relationship_shift, travel, promise, betrayal, death, revelation, quest_milestone, other
+- importance is 1-10 (same scale as chapter importance)
+- text is one short sentence describing what happened
+- characters/locations/items/concepts are optional arrays of canonical names (use NPC names from the ledger above when possible)
+- cause/result are short plain-text causal beats (one short clause each, optional)
+- Cap at MAXIMUM 3 events per scene. Skip scenes with nothing meaningful (use [] or omit the scene key).
+- Only include scenes from this chapter's scene IDs.
 
 Category definitions:
 
@@ -271,6 +298,8 @@ export type CombinedSealResult = {
     divergences: DivergenceEntry[];
     divergenceParseError?: boolean;
     witnessCorrections?: Record<string, string[]>;
+    sceneEventMap?: Record<string, SceneEvent[]>; // sceneId -> events (sceneId zero-padded e.g. "014")
+    sceneEventsParseError?: boolean;              // true if events block was present but unparseable
 };
 
 function buildDivergenceEntries(
@@ -449,7 +478,50 @@ export function parseCombinedSealOutput(
 
     const witnessCorrections = extractWitnessCorrections(parsed);
 
-    return { summary, divergences: entries, divergenceParseError: divergenceParseError || undefined, witnessCorrections };
+    let sceneEventMap: Record<string, SceneEvent[]> | undefined;
+    let sceneEventsParseError: boolean | undefined;
+    try {
+        const rawSceneEvents = (parsed as Record<string, unknown>).sceneEvents;
+        if (rawSceneEvents !== undefined) {
+            if (typeof rawSceneEvents !== 'object' || rawSceneEvents === null || Array.isArray(rawSceneEvents)) {
+                throw new Error('sceneEvents is not an object');
+            }
+            const VALID_EVENT_TYPES = new Set<string>([
+                'combat', 'discovery', 'item_acquired', 'item_lost', 'relationship_shift',
+                'travel', 'promise', 'betrayal', 'death', 'revelation', 'quest_milestone', 'other',
+            ]);
+            const map: Record<string, SceneEvent[]> = {};
+            for (const [sceneId, eventsRaw] of Object.entries(rawSceneEvents as Record<string, unknown>)) {
+                if (!Array.isArray(eventsRaw)) continue;
+                const validEvents: SceneEvent[] = [];
+                for (const ev of eventsRaw) {
+                    if (!ev || typeof ev !== 'object') continue;
+                    const raw = ev as Record<string, unknown>;
+                    if (typeof raw.text !== 'string' || !raw.text.trim()) continue;
+                    if (typeof raw.importance !== 'number') continue;
+                    const eventType: SceneEventType = VALID_EVENT_TYPES.has(raw.eventType as string)
+                        ? (raw.eventType as SceneEventType)
+                        : 'other';
+                    const importance = Math.min(10, Math.max(1, Math.round(raw.importance as number)));
+                    const event: SceneEvent = { eventType, importance, text: (raw.text as string).trim() };
+                    if (Array.isArray(raw.characters) && raw.characters.length > 0) event.characters = raw.characters.filter((v: unknown): v is string => typeof v === 'string');
+                    if (Array.isArray(raw.locations) && raw.locations.length > 0) event.locations = raw.locations.filter((v: unknown): v is string => typeof v === 'string');
+                    if (Array.isArray(raw.items) && raw.items.length > 0) event.items = raw.items.filter((v: unknown): v is string => typeof v === 'string');
+                    if (Array.isArray(raw.concepts) && raw.concepts.length > 0) event.concepts = raw.concepts.filter((v: unknown): v is string => typeof v === 'string');
+                    if (typeof raw.cause === 'string' && raw.cause.trim()) event.cause = raw.cause.trim();
+                    if (typeof raw.result === 'string' && raw.result.trim()) event.result = raw.result.trim();
+                    validEvents.push(event);
+                }
+                map[sceneId] = validEvents;
+            }
+            sceneEventMap = map;
+        }
+    } catch (e) {
+        console.warn('[CombinedSeal] sceneEvents block present but unparseable — ignoring', e);
+        sceneEventsParseError = true;
+    }
+
+    return { summary, divergences: entries, divergenceParseError: divergenceParseError || undefined, witnessCorrections, sceneEventMap, sceneEventsParseError };
 }
 
 export async function sealChapterCombined(
@@ -499,6 +571,7 @@ export async function sealChapterCombined(
             console.warn(`[CombinedSeal] Attempt ${attempt + 1}: summary OK but divergence parse failed — retrying divergences`);
             continue;
         }
+        // sceneEventsParseError alone is a soft failure — do not retry on its behalf
         console.warn(`[CombinedSeal] Attempt ${attempt + 1} produced no usable output`);
     }
 

@@ -19,10 +19,11 @@ function scoreEntry(
     totalScenes: number,
     divergenceSceneIds?: Set<string>
 ): number {
-    // D1: Recency bonus (always positive, logarithmic — never zero)
+    // D1: Recency bonus — exponential decay with chat-length-scaled half-life
     const sceneNum = parseInt(entry.sceneId, 10) || 0;
     const turnsSince = totalScenes - sceneNum;
-    const recencyBonus = 1 / (1 + Math.log(1 + Math.max(0, turnsSince)));
+    const halfLife = Math.max(40, 0.2 * totalScenes);
+    const recencyBonus = Math.pow(0.5, Math.max(0, turnsSince) / halfLife);
 
     // D2: Intrinsic importance (permanent, no decay)
     const importance = entry.importance ?? 5;
@@ -42,8 +43,33 @@ function scoreEntry(
         }
     }
 
-    // Fallback: legacy keyword matching for old entries without strengths
-    if (Object.keys(kwStrengths).length === 0 && Object.keys(npcStrengths).length === 0) {
+    // Event-field activation (additive on top of keyword/NPC scoring)
+    if (entry.events && entry.events.length > 0) {
+        let eventActivation = 0;
+        for (const event of entry.events) {
+            const eventImportanceScale = (event.importance ?? 5) / 10;
+            let perEvent = 0;
+            for (const name of (event.characters ?? [])) {
+                const key = name.toLowerCase();
+                if (contextActivations[key]) {
+                    perEvent += contextActivations[key] * 1.5; // characters get NPC-tier weight; locations/items/concepts get keyword tier (prevents protagonist drowning out recall)
+                }
+            }
+            for (const fieldNames of [event.locations ?? [], event.items ?? [], event.concepts ?? []]) {
+                for (const name of fieldNames) {
+                    const key = name.toLowerCase();
+                    if (contextActivations[key]) {
+                        perEvent += contextActivations[key] * 1.0;
+                    }
+                }
+            }
+            eventActivation += perEvent * eventImportanceScale;
+        }
+        activation += Math.min(15, eventActivation);
+    }
+
+    // Fallback: legacy keyword matching for old entries without strengths or events
+    if (Object.keys(kwStrengths).length === 0 && Object.keys(npcStrengths).length === 0 && !(entry.events && entry.events.length > 0)) {
         for (const kw of entry.keywords) {
             if (contextText.includes(kw)) {
                 const exactMatch = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
@@ -153,7 +179,8 @@ export function retrieveArchiveMemory(
     semanticFacts?: SemanticFact[],
     sceneRanges?: [string, string][],
     semanticCandidateIds?: string[],
-    divergenceSceneIds?: Set<string>
+    divergenceSceneIds?: Set<string>,
+    filters?: { characters?: string[]; locations?: string[]; items?: string[]; concepts?: string[]; eventTypes?: string[] }
 ): string[] {
     if (!index || index.length === 0) {
         console.log('[Archive Retrieval] Index is empty — no recall.');
@@ -190,7 +217,20 @@ export function retrieveArchiveMemory(
             semanticBoost = baseScore * 0.5;
         }
 
-        return { sceneId: entry.sceneId, score: baseScore + semanticBoost };
+        let filterBoost = 1.0;
+        if (filters && entry.events && entry.events.length > 0) {
+            const matched = entry.events.some(ev => {
+                if (filters.eventTypes && filters.eventTypes.includes(ev.eventType)) return true;
+                if (filters.characters && ev.characters?.some(c => filters.characters!.some(f => c.toLowerCase().includes(f.toLowerCase())))) return true;
+                if (filters.locations && ev.locations?.some(l => filters.locations!.some(f => l.toLowerCase().includes(f.toLowerCase())))) return true;
+                if (filters.items && ev.items?.some(i => filters.items!.some(f => i.toLowerCase().includes(f.toLowerCase())))) return true;
+                if (filters.concepts && ev.concepts?.some(c => filters.concepts!.some(f => c.toLowerCase().includes(f.toLowerCase())))) return true;
+                return false;
+            });
+            if (matched) filterBoost = 1.5;
+        }
+
+        return { sceneId: entry.sceneId, score: (baseScore + semanticBoost) * filterBoost };
     });
 
     const sorted = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score);
@@ -214,14 +254,16 @@ export function retrieveArchiveMemory(
 export async function fetchArchiveScenes(
     campaignId: string,
     sceneIds: string[],
-    tokenBudget = 3000
+    tokenBudget = 3000,
+    excludeSceneIds?: Set<string>
 ): Promise<ArchiveScene[]> {
     if (sceneIds.length === 0) return [];
 
     try {
         const raw = await offlineStorage.archive.getScenes(campaignId, sceneIds);
 
-        const sorted = raw.sort((a, b) => parseInt(a.sceneId) - parseInt(b.sceneId));
+        const deduped = excludeSceneIds ? raw.filter(s => !excludeSceneIds.has(s.sceneId)) : raw;
+        const sorted = deduped.sort((a, b) => parseInt(a.sceneId) - parseInt(b.sceneId));
         const selected: ArchiveScene[] = [];
         let usedTokens = 0;
 
@@ -265,9 +307,11 @@ export async function recallArchiveScenes(
     npcLedger?: NPCEntry[],
     semanticFacts?: SemanticFact[],
     semanticCandidateIds?: string[],
-    divergenceSceneIds?: Set<string>
+    divergenceSceneIds?: Set<string>,
+    excludeSceneIds?: Set<string>,
+    filters?: { characters?: string[]; locations?: string[]; items?: string[]; concepts?: string[]; eventTypes?: string[] }
 ): Promise<ArchiveScene[]> {
-    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds, divergenceSceneIds);
+    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds, divergenceSceneIds, filters);
     if (matchedIds.length === 0) return [];
-    return fetchArchiveScenes(campaignId, matchedIds, tokenBudget);
+    return fetchArchiveScenes(campaignId, matchedIds, tokenBudget, excludeSceneIds);
 }

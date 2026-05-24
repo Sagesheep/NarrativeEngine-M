@@ -6,6 +6,7 @@ const LABEL_MAP: Record<string, string> = {
     'rerank-scene': 'Reranking Scenes',
     'rerank-lore': 'Reranking Lore',
     'recommender': 'AI Recommender',
+    'planner': 'Planner',
 };
 
 export function UtilityCallStrip() {
@@ -27,7 +28,6 @@ export function UtilityCallStrip() {
                 const elapsed = Math.floor((now - call.startedAt) / 1000);
                 const totalSec = Math.floor(call.initialTimeoutMs / 1000);
                 const remaining = Math.max(0, Math.floor((call.deadline - now) / 1000));
-                const pct = remaining / Math.max(1, Math.floor((call.deadline - call.deadline + call.initialTimeoutMs + (call.extensions * 60000)) / 1000));
                 const isWarning = remaining <= Math.floor(totalSec * 0.25) && remaining > 0;
                 const isExpired = remaining === 0;
                 const displayName = LABEL_MAP[call.label] ?? call.label;
