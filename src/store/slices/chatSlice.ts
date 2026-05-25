@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { ChatMessage, CondenserState, GameContext, LoreCheckSelection, LoreCheckResult, DivergenceRegister, DivergenceEntry, DivergenceCategory } from '../../types';
+import type { ChatMessage, CondenserState, GameContext, LoreCheckSelection, LoreCheckResult, DivergenceRegister, DivergenceEntry, DivergenceCategory, TopicClusters } from '../../types';
 import { EMPTY_REGISTER, toggleChapter, toggleCategory, pinFact, editFact, deleteFact, deleteChapter, toggleFact, dismissReviewFlag, migrateV1ToV2 } from '../../services/divergenceRegister';
 import { debouncedSaveCampaignState } from './campaignSlice';
 
@@ -39,6 +39,8 @@ export type ChatSlice = {
     dismissDivergenceReviewFlag: (entryId: string) => void;
     deleteDivergenceChapter: (chapterId: string) => void;
     toggleDivergenceFact: (entryId: string, on: boolean) => void;
+    setManyFactsEnabled: (updates: Array<{ id: string; enabled: boolean }>) => void;
+    setTopicClusters: (clusters: TopicClusters) => void;
     migrateDivergenceIfNeeded: () => void;
 
     loreCheckOpen: boolean;
@@ -138,7 +140,14 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
         }),
     deleteDivergenceFact: (entryId) =>
         set((s) => {
-            const reg = deleteFact(s.divergenceRegister, entryId);
+            let reg = deleteFact(s.divergenceRegister, entryId);
+            if (reg.topicClusters) {
+                const groups = reg.topicClusters.groups.map(g => ({
+                    ...g,
+                    factIds: g.factIds.filter(id => id !== entryId),
+                })).filter(g => g.factIds.length > 0);
+                reg = { ...reg, topicClusters: { ...reg.topicClusters, groups } };
+            }
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser });
             return { divergenceRegister: reg };
         }),
@@ -157,6 +166,22 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
     toggleDivergenceFact: (entryId, on) =>
         set((s) => {
             const reg = toggleFact(s.divergenceRegister, entryId, on);
+            debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser });
+            return { divergenceRegister: reg };
+        }),
+    setManyFactsEnabled: (updates) =>
+        set((s) => {
+            const updateMap = new Map(updates.map(u => [u.id, u.enabled]));
+            let reg = s.divergenceRegister;
+            for (const [id, on] of updateMap) {
+                reg = toggleFact(reg, id, on);
+            }
+            debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser });
+            return { divergenceRegister: reg };
+        }),
+    setTopicClusters: (clusters) =>
+        set((s) => {
+            const reg = { ...s.divergenceRegister, topicClusters: clusters };
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser });
             return { divergenceRegister: reg };
         }),

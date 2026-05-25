@@ -199,6 +199,18 @@ export type DivergenceEntry = {
     unrecognizedNpcNames?: string[];
 };
 
+export type TopicCluster = {
+    id: string;
+    name: string;
+    factIds: string[];
+};
+
+export type TopicClusters = {
+    groups: TopicCluster[];
+    generatedAt: string;
+    generatedFromFactCount: number;
+};
+
 export type DivergenceRegister = {
     entries: DivergenceEntry[];
     chapterToggles: Record<string, boolean>;
@@ -206,6 +218,7 @@ export type DivergenceRegister = {
     lastUpdatedSceneId: string;
     lastUpdatedAt: number;
     version: 2;
+    topicClusters?: TopicClusters;
 };
 
 export type ChatMessage = {
