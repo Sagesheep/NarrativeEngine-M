@@ -118,7 +118,7 @@ export function MemoryTab() {
         }
     };
 
-    const handleToggleGroup = (groupId: string, factIds: string[], allEnabled: boolean) => {
+    const handleToggleGroup = (_groupId: string, factIds: string[], allEnabled: boolean) => {
         const updates = factIds.map(id => ({ id, enabled: !allEnabled }));
         setManyFactsEnabled(updates);
     };
