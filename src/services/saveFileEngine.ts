@@ -2,6 +2,15 @@ import type { LLMProvider, ThinkingEffort, SceneEvent, SceneEventType } from '..
 import { countTokens } from './tokenizer';
 import { extractJson } from './payloadBuilder';
 import { llmCall } from '../utils/llmCall';
+import {
+    ANCHOR_BEFORE_INPUT,
+    INPUT_DELIMITER,
+    KNOWNBY_RULES,
+    NPC_INNER_STATE_RULES,
+    SCENE_EVENT_RULES,
+    TTRPG_PERSONA_ARCHIVIST,
+    joinPromptSections,
+} from './utilityPrompts';
 
 // ─── Chapter Summary Generator ───
 
@@ -184,31 +193,7 @@ ${rows}`;
          { "text": "Eastern gate destroyed by siege", "sceneRef": "014", "npcIds": [], "unrecognizedNpcNames": [] }
      ]`;
 
-    const knownByRules = `
-KNOWNBY RULES:
-- knownBy: list the canonical NPC IDs of characters who WITNESSED or could reasonably know this fact.
-- For rules_lore and locations categories, knownBy should be omitted or null (broadcast knowledge — everyone can know).
-- For npc_events, promises_debts, party_facts, world_state, and misc: list only NPCs who were present or directly informed.
-- If the fact is public knowledge (announced publicly, observed by all present), list all witnesses.
-- If unsure who knows, omit knownBy (treated as broadcast).`;
-
-    return `You are a TTRPG campaign archivist. Perform TWO tasks in a single response:
-
-TASK 1 — Generate a structured chapter summary.
-TASK 2 — Extract established facts that would BREAK A FUTURE SCENE if the AI contradicted them.
-
-CHAPTER: "${chapterTitle || 'Untitled'}"
-SCENE IDs IN THIS CHAPTER: ${sceneIds.join(', ')}
-
-NPC LEDGER (resolve names to IDs):
-${npcList || '(no NPCs in ledger)'}
-${witnessAuditSection}
-SCENE CONTENT:
-${sceneContent}
-
-OUTPUT FORMAT — a single JSON object with the keys "summary", "divergences", and optionally "sceneEvents".
-
-The "summary" value must be this JSON shape:
+    const summaryShape = `The "summary" value must be this JSON shape:
 {
     "title": "Short evocative chapter title",
     "summary": "3-5 sentence narrative summary of what happened",
@@ -219,17 +204,9 @@ The "summary" value must be this JSON shape:
     "tone": "one of: combat-heavy, exploration, social, mystery, political, emotional, mixed",
     "themes": ["theme1", "theme2"],
     "npcInnerState": { "NPC Name": "1-2 sentence inner-state note" }
-}
+}`;
 
-NPC INNER STATE RULES:
-- "npcInnerState" captures an NPC's beliefs, posture, and attitude AFTER this chapter's events — NOT a list of events ("X happened").
-- Write what is true about the NPC's inner world now: what they believe, how they regard other characters, what has shifted in them.
-- 1-2 sentences max per NPC. Aim for texture and specificity, not plot recaps.
-- Include ONLY NPCs whose inner state meaningfully shifted during this chapter. Omit NPCs with no arc movement.
-- Example: "Helena Broadmarsh": "Pale, processing the violation of natural order; trusts Grey absolutely but now fears him."
-- If no NPC inner state shifted meaningfully, output "npcInnerState": {}.
-
-The "divergences" value must be an object with one key per category slot. Each value is an array of fact objects, or [] if empty. Example:
+    const divergencesShape = `The "divergences" value must be an object with one key per category slot. Each value is an array of fact objects, or [] if empty. Example:
 {
 ${knownByExample},
      "npc_events": [
@@ -240,9 +217,9 @@ ${knownByExample},
      "party_facts": [],
      "rules_lore": [],
      "misc": []
-}
+}`;
 
-The "sceneEvents" value must be an object mapping scene IDs to arrays of structured event objects, or {} if no scenes had meaningful events. Example:
+    const sceneEventsShape = `The "sceneEvents" value must be an object mapping scene IDs to arrays of structured event objects, or {} if no scenes had meaningful events. Example:
 {
     "014": [
         {
@@ -258,49 +235,90 @@ The "sceneEvents" value must be an object mapping scene IDs to arrays of structu
         }
     ],
     "015": []
-}
+}`;
 
-SCENE EVENT RULES:
-- eventType MUST be one of: combat, discovery, item_acquired, item_lost, relationship_shift, travel, promise, betrayal, death, revelation, quest_milestone, other
-- importance is 1-10 (same scale as chapter importance)
-- text is one short sentence describing what happened
-- characters/locations/items/concepts are optional arrays of canonical names (use NPC names from the ledger above when possible)
-- cause/result are short plain-text causal beats (one short clause each, optional)
-- Cap at MAXIMUM 3 events per scene. Skip scenes with nothing meaningful (use [] or omit the scene key).
-- Only include scenes from this chapter's scene IDs.
-
-Category definitions:
+    const categoryDefinitions = `Category definitions:
 
 ${divergenceSlots}
 
 ### MISC
 Definition: ${CATEGORY_DEFINITIONS.misc}
-Output: JSON array for this slot, or [] if empty.
+Output: JSON array for this slot, or [] if empty.`;
 
-${knownByRules}
-
-DIVERGENCE EXTRACTION RULES:
+    const divergenceRulesStatic = `DIVERGENCE EXTRACTION RULES:
 - Each fact is ONE SHORT SENTENCE, max 15 words. No compound sentences, no explanations.
-- sceneRef must be one of: ${sceneIds.join(', ')}
+- sceneRef must be one of the scene IDs listed in the INPUT below.
 - npcIds: list the NPC ledger IDs mentioned. If a name appears that is NOT in the ledger, put it in unrecognizedNpcNames instead.
 - Focus on: permanent changes, new information, relationship shifts, acquisitions, losses, oaths, regime changes.
 - Skip transient details, emotional narration, momentary states, and anything the archive would already surface.
-- If a slot is empty, output [] for that slot.${witnessAuditSection ? `
+- If a slot is empty, output [] for that slot.`;
 
-WITNESS CORRECTIONS:
-If you found errors in the per-scene witness data above, include a "witness_corrections" key at the top level of the divergences object:
+    const witnessCorrectionsRule = witnessAuditSection
+        ? `WITNESS CORRECTIONS:
+If you found errors in the per-scene witness data in the INPUT, include a "witness_corrections" key at the top level of the divergences object:
 "witness_corrections": { "014": ["npc_5", "npc_7"], "022": ["npc_42"] }
-This maps scene IDs to the CORRECT list of NPC IDs who were physically present in that scene. Only include scenes where you disagree with the pre-captured data.` : ''}
+This maps scene IDs to the CORRECT list of NPC IDs who were physically present in that scene. Only include scenes where you disagree with the pre-captured data.`
+        : '';
 
-SUMMARY RULES:
+    const summaryRules = `SUMMARY RULES:
 1. Keywords should be distinctive nouns/places/factions — not generic words
 2. NPCs should include all significant named characters who appeared or were discussed
 3. Major events are plot-critical beats only (not every combat round)
 4. Unresolved threads are open plot hooks, promises, or mysteries
 5. Title should be 2-5 words, evocative
-6. Summary should read like a campaign journal entry, not a list
+6. Summary should read like a campaign journal entry, not a list`;
 
-Respond with ONE JSON object only. No prose, no markdown fences, no second object, no reasoning before or after.`;
+    const innerStateFewShot = `EXAMPLES — npcInnerState focus (synthetic NPCs, do not echo):
+
+GOOD — inner-state notes describe BELIEFS / POSTURE after events:
+"npcInnerState": {
+  "Helena Broadmarsh": "Pale, processing the violation of natural order; trusts Grey absolutely but now fears him.",
+  "Cadwyn Vale": "Hardened by the betrayal; treats every promise as suspect until proven."
+}
+
+BAD — inner-state notes written as plot recap (this is what majorEvents is for):
+"npcInnerState": {
+  "Helena Broadmarsh": "Helena watched Grey raise the dead and then helped him escape the guards.",
+  "Cadwyn Vale": "Cadwyn was betrayed by his lieutenant and lost his command."
+}
+Corrected — rewrite as the NPC's current inner world:
+"npcInnerState": {
+  "Helena Broadmarsh": "Pale, processing the violation of natural order; trusts Grey absolutely but now fears him.",
+  "Cadwyn Vale": "Hardened by the betrayal; treats every promise as suspect until proven."
+}`;
+
+    const strictFooter = 'Respond with ONE JSON object only. No prose, no markdown fences, no second object, no reasoning before or after.';
+
+    return joinPromptSections(
+        `${TTRPG_PERSONA_ARCHIVIST} Perform TWO tasks in a single response:
+
+TASK 1 — Generate a structured chapter summary.
+TASK 2 — Extract established facts that would BREAK A FUTURE SCENE if the AI contradicted them.`,
+
+        'OUTPUT FORMAT — a single JSON object with the keys "summary", "divergences", and optionally "sceneEvents".',
+
+        summaryShape,
+        NPC_INNER_STATE_RULES,
+        divergencesShape,
+        sceneEventsShape,
+        SCENE_EVENT_RULES,
+        categoryDefinitions,
+        KNOWNBY_RULES,
+        divergenceRulesStatic,
+        witnessCorrectionsRule,
+        summaryRules,
+        innerStateFewShot,
+
+        strictFooter,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
+
+        `CHAPTER: "${chapterTitle || 'Untitled'}"`,
+        `SCENE IDs IN THIS CHAPTER: ${sceneIds.join(', ')}`,
+        `NPC LEDGER (resolve names to IDs):\n${npcList || '(no NPCs in ledger)'}`,
+        witnessAuditSection ? witnessAuditSection.trim() : '',
+        `SCENE CONTENT:\n${sceneContent}`,
+    );
 }
 
 export type CombinedSealResult = {

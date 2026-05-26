@@ -2,6 +2,12 @@ import type { DivergenceRegister, TopicClusters, TopicCluster, LLMProvider } fro
 import { llmCall } from '../utils/llmCall';
 import { countTokens } from './tokenizer';
 import { extractJsonRobust } from './jsonExtract';
+import {
+    ANCHOR_BEFORE_INPUT,
+    INPUT_DELIMITER,
+    JSON_ONLY_FOOTER,
+    joinPromptSections,
+} from './utilityPrompts';
 
 export type ClusteringCancelled = { cancelled: boolean };
 
@@ -22,17 +28,47 @@ export async function runFactClustering(
         .map(e => `${e.id}|${e.chapterId}|${e.text.slice(0, textLimit)}`)
         .join('\n');
 
-    const prompt = `You are organizing campaign facts for a TTRPG. Group the facts below by recurring entity or theme — a specific NPC, a location, an ongoing storyline, a faction, or a concept that appears across multiple facts.
+    const prompt = joinPromptSections(
+        'You are organizing campaign facts for a TTRPG. Group the facts below by recurring entity or theme — a specific NPC, a location, an ongoing storyline, a faction, or a concept that appears across multiple facts.',
 
-FACTS (id|chapter|text):
-${factLines}
+        `OUTPUT FORMAT — a single JSON object:
+{"groups":[{"name":"<group label>","factIds":["<id>","<id>"]}]}`,
 
-RULES:
-- Each fact must appear in exactly one group.
+        `RULES:
+- Each fact must appear in EXACTLY one group.
+- Include EVERY fact ID listed below — do not omit any.
 - Aim for 8–20 groups. Prefer specific names (e.g. "Yuki", "The Bridge District") over generic labels.
-- IMPORTANT: Include ALL ${entries.length} fact IDs across your groups — do not omit any.
-- Return ONLY valid complete JSON, no prose, no truncation:
-{"groups":[{"name":"Yuki","factIds":["id1","id2"]},{"name":"Reaper Contract","factIds":["id3"]}]}`;
+- Return ONLY valid complete JSON, no prose, no truncation.`,
+
+        `EXAMPLES (synthetic — do not echo these ids):
+
+Given facts:
+f_x1|001|Yuki swore vengeance against the Reaper guild
+f_x2|001|Yuki's sister was killed at the Bridge District
+f_x3|002|The Reaper guild controls the eastern docks
+f_x4|002|Aldric promised to help Yuki find the killer
+
+GOOD output (every id assigned, specific names):
+{"groups":[
+  {"name":"Yuki","factIds":["f_x1","f_x2"]},
+  {"name":"Reaper guild","factIds":["f_x3"]},
+  {"name":"Aldric's promise","factIds":["f_x4"]}
+]}
+
+BAD — every fact MUST appear (this drops f_x4):
+{"groups":[
+  {"name":"Yuki","factIds":["f_x1","f_x2"]},
+  {"name":"Reaper guild","factIds":["f_x3"]}
+]}
+Corrected: add a group for f_x4 (e.g. "Aldric's promise") or fold f_x4 into "Yuki".`,
+
+        JSON_ONLY_FOOTER,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
+
+        `Total facts to assign: ${entries.length}`,
+        `FACTS (id|chapter|text):\n${factLines}`,
+    );
 
     const promptTokens = countTokens(prompt);
     const maxTokens = Math.floor(contextLimit * 0.75);

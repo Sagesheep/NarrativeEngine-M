@@ -4,6 +4,15 @@ import { extractJson } from './payloadBuilder';
 import { uid } from '../utils/uid';
 import { embedText, getCurrentModelId } from './embedder';
 import { embeddingStorage } from './storage/embeddingStorage';
+import {
+    ANCHOR_BEFORE_INPUT,
+    APPEARANCE_UPDATE_RULES,
+    DRIVES_UPDATE_RULES,
+    INPUT_DELIMITER,
+    JSON_ONLY_FOOTER,
+    TTRPG_PERSONA_STATE_ANALYZER,
+    joinPromptSections,
+} from './utilityPrompts';
 
 const RETRY_SUFFIX = '\n\nIMPORTANT: Your previous response was not valid JSON. Respond with ONLY valid JSON. No markdown fences, no comments, no trailing commas, no extra text before or after the JSON.';
 
@@ -234,43 +243,47 @@ export async function updateExistingNPCs(
         return data;
     }).join('\n\n');
 
-    const prompt = `You are a background game state analyzer. Your job is to read the RECENT CONTEXT of an RPG session and determine if any of the provided NPCs have undergone a shift in their status, personality, goals, disposition, faction, or relevance.
+    const prompt = joinPromptSections(
+        `${TTRPG_PERSONA_STATE_ANALYZER} Your job is to read the RECENT CONTEXT of an RPG session and determine if any of the provided NPCs have undergone a shift in their status, personality, goals, disposition, faction, or relevance.`,
 
-[RECENT CONTEXT]
-${recentContext}
-[END CONTEXT]
-
-[CURRENT NPC STATES]
-${npcDatas}
-[END STATES]
+        `OUTPUT FORMAT — a single JSON object:
 
 If NO changes occurred for ANY of these NPCs, respond EXACTLY with:
 {"updates": []}
 
-If ANY changes occurred, respond with a JSON object containing an "updates" array. Each update must include the basic "name" and ANY attributes that have fundamentally changed (status, disposition, goals, personality, voice, appearance, affinity, faction, storyRelevance, drives). DO NOT include attributes that stayed the same.
-Valid statuses: Alive, Deceased, Missing, Unknown.
-Note: "affinity" is a 0-100 scale of how much they like the player (0=Nemesis, 50=Neutral, 100=Ally). Update this if the player did something to gain or lose favor.
-Do NOT change personality or voice unless the scene contains a genuinely transformative event for this character.
+If ANY changes occurred, respond with:
+{"updates": [{"name": "<NPC name>", "changes": { ...only the fields that changed... }}]}
 
-APPEARANCE UPDATE RULES:
-- "appearance" should only be updated if the prose explicitly describes a CHANGE to the NPC's physical state (e.g., they received a new scar, changed clothing, aged). Do NOT update appearance just because the AI re-describes them — preserve the original canonical description.
-- If appearance is currently blank or "[inferred]" and the new prose provides concrete details, update it with those grounded details.
+Each update MUST include "name" and only the attributes that fundamentally changed (status, disposition, goals, personality, voice, appearance, affinity, faction, storyRelevance, drives). DO NOT include attributes that stayed the same.`,
 
-DRIVES UPDATE RULES:
-- "drives" is an object with "coreWant", "sessionWant", and "sceneWant".
-- "coreWant" is a deep character truth — almost never changes. Only update if a transformative event reshapes who this NPC is.
-- "sessionWant" is their arc-level objective — update if the story has clearly moved to a new arc or their long-term situation shifted.
-- "sceneWant" is their immediate scene-level goal — this changes OFTEN. Update whenever the scene context, NPC's situation, or conversation direction has shifted. Always include a new sceneWant if the old one is clearly resolved or irrelevant.
-- If the NPC has "Drives: NOT YET POPULATED", you MUST provide ALL THREE drive fields (coreWant, sessionWant, sceneWant) plus at least one behavioralTrigger, one hardBoundary, and one softBoundary.
-- Only include the "drives" field if at least one sub-field changed or needs to be populated.
+        `GENERAL RULES:
+- Valid statuses: Alive, Deceased, Missing, Unknown.
+- "affinity" is a 0-100 scale of how much they like the player (0=Nemesis, 50=Neutral, 100=Ally). Update this if the player did something to gain or lose favor.
+- Do NOT change personality or voice unless the scene contains a genuinely transformative event for this character.`,
 
-Example of an NPC dying and getting angry:
+        APPEARANCE_UPDATE_RULES,
+        DRIVES_UPDATE_RULES,
+
+        `EXAMPLES:
+
+GOOD — NPC who died with a transformative emotional arc:
 {"updates": [{"name": "Captain Vorin", "changes": {"status": "Deceased", "personality": "consumed by rage in final moments, betrayed and broken", "storyRelevance": "His death sparked a rebellion"}}]}
 
-Example of an NPC whose scene context shifted:
+GOOD — NPC whose immediate scene goal shifted (note: only sceneWant changed, so only sceneWant appears):
 {"updates": [{"name": "Senna", "changes": {"drives": {"sceneWant": "convince the party to camp here tonight — she spotted tracks earlier and wants to investigate at dawn"}}}]}
 
-RESPOND ONLY WITH VALID JSON.`;
+BAD — re-emitting unchanged attributes (status/personality/voice/appearance all unchanged here):
+{"updates": [{"name": "Senna", "changes": {"status": "Alive", "personality": "warm and curious", "voice": "soft alto", "appearance": "tall, dark hair", "drives": {"sceneWant": "investigate the tracks at dawn"}}}]}
+Corrected: include ONLY the field that changed —
+{"updates": [{"name": "Senna", "changes": {"drives": {"sceneWant": "investigate the tracks at dawn"}}}]}`,
+
+        JSON_ONLY_FOOTER,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
+
+        `[RECENT CONTEXT]\n${recentContext}\n[END CONTEXT]`,
+        `[CURRENT NPC STATES]\n${npcDatas}\n[END STATES]`,
+    );
 
     try {
         const parsed = await llmParseJson<{ updates?: Array<{ name?: string; changes?: Partial<NPCEntry> }> }>(provider, prompt, 'NPC Updater');
