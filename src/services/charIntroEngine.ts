@@ -33,7 +33,7 @@ async function resolveLocation(
         const raw = await llmCall(provider, `${LOCATION_PROMPT}\n\n${INPUT_DELIMITER}\n\n${excerpt}`, {
             temperature: 0.1,
             priority: 'high',
-            maxTokens: 60,
+            maxTokens: 100,
         });
         return extractLocationFromResponse(raw);
     } catch (err) {

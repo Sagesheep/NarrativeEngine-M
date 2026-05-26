@@ -65,15 +65,15 @@ export async function runPlannerCall(
         const prompt = joinPromptSections(
             TTRPG_PERSONA_RETRIEVAL_PLANNER,
 
-            `OUTPUT — a single JSON object with this shape (all keys optional):
+            `OUTPUT — a single JSON object (example values shown for shape; emit your own based on the input):
 {
-  "subQueries": [],
+  "subQueries": ["query rephrase 1", "query rephrase 2"],
   "filters": {
-    "characters": [],
-    "locations": [],
+    "characters": ["Astarion"],
+    "locations": ["Baldur's Gate"],
     "items": [],
     "concepts": [],
-    "eventTypes": []
+    "eventTypes": ["promise", "betrayal"]
   },
   "sceneIdRange": null
 }`,
