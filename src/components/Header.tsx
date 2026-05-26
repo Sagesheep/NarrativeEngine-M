@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Settings, PanelLeftOpen, PanelLeftClose, Trash2, LogOut, Users, Save, Archive, ScanSearch, BookCheck } from 'lucide-react';
+import { Settings, Trash2, LogOut, Users, Save, Archive, ScanSearch, BookCheck, Pin } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { TokenGauge } from './TokenGauge';
 import { saveCampaignState, saveDivergenceRegister } from '../store/campaignStore';
 import { api } from '../services/apiClient';
+import { toast } from './Toast';
 
-type LoreSelectionSnapshot = {
+type SelectionSnapshot = {
     messageId: string;
     text: string;
     start: number;
@@ -16,10 +17,8 @@ type LoreSelectionSnapshot = {
 export function Header() {
     const {
         toggleSettings,
-        toggleDrawer,
         toggleNPCLedger,
         toggleBackupModal,
-        drawerOpen,
         clearChat,
         activeCampaignId,
         setActiveCampaign,
@@ -30,21 +29,23 @@ export function Header() {
         toggleDeepArmed,
         settings,
         openLoreCheck,
+        addPinnedExcerpt,
     } = useAppStore();
 
-    const [loreSel, setLoreSel] = useState<LoreSelectionSnapshot | null>(null);
+    const [loreSel, setLoreSel] = useState<SelectionSnapshot | null>(null);
+    const [pinSel, setPinSel] = useState<SelectionSnapshot | null>(null);
 
-    const captureSelection = (): LoreSelectionSnapshot | null => {
+    const captureFromBubble = (selector: string): SelectionSnapshot | null => {
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
         const range = sel.getRangeAt(0);
         const node = range.commonAncestorContainer;
         const el = (node.nodeType === 1 ? node as Element : node.parentElement);
-        const bubble = el?.closest('[data-lore-checkable="true"]') as HTMLElement | null;
+        const bubble = el?.closest(selector) as HTMLElement | null;
         if (!bubble) return null;
         const messageId = bubble.dataset.messageId;
         const text = sel.toString().trim();
-        if (!messageId || text.length < 3) return null;
+        if (!messageId || text.length < 1) return null;
         const bubbleText = bubble.textContent ?? '';
         const start = bubbleText.indexOf(text);
         if (start === -1) return null;
@@ -52,16 +53,19 @@ export function Header() {
     };
 
     useEffect(() => {
-        const handle = () => setLoreSel(captureSelection());
+        const handle = () => {
+            const lore = captureFromBubble('[data-lore-checkable="true"]');
+            setLoreSel(lore);
+            const pin = captureFromBubble('[data-message-id]');
+            setPinSel(pin);
+        };
         document.addEventListener('selectionchange', handle);
         return () => document.removeEventListener('selectionchange', handle);
     }, []);
 
     const handleLoreCheck = (e: React.MouseEvent | React.TouchEvent) => {
         e.preventDefault();
-        // Re-capture at click time — selection may have been refined via drag handles
-        // and the cached `loreSel` may be momentarily stale or null.
-        const snap = captureSelection() ?? loreSel;
+        const snap = captureFromBubble('[data-lore-checkable="true"]') ?? loreSel;
         if (!snap) return;
         const before = snap.bubbleText.slice(Math.max(0, snap.start - 200), snap.start);
         const after = snap.bubbleText.slice(snap.end, Math.min(snap.bubbleText.length, snap.end + 200));
@@ -74,6 +78,21 @@ export function Header() {
         });
         window.getSelection()?.removeAllRanges();
         setLoreSel(null);
+        setPinSel(null);
+    };
+
+    const handlePinSelection = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        const snap = captureFromBubble('[data-message-id]') ?? pinSel;
+        if (!snap) return;
+        const result = addPinnedExcerpt(snap.messageId, snap.text, false);
+        if (result.ok) {
+            window.getSelection()?.removeAllRanges();
+            setPinSel(null);
+            setLoreSel(null);
+        } else {
+            toast.warning(result.reason);
+        }
     };
 
     const handleClearChat = async () => {
@@ -94,15 +113,6 @@ export function Header() {
 
     return (
         <header className="bg-surface border-b border-border flex items-center px-2 sm:px-4 gap-1 shrink-0 safe-top min-h-9 md:min-h-10 py-0">
-            <button
-                onClick={toggleDrawer}
-                className="text-text-dim hover:text-terminal transition-colors p-1 touch-btn md:p-1 md:min-h-0 md:min-w-0"
-                title={drawerOpen ? 'Close context drawer' : 'Open context drawer'}
-                aria-label={drawerOpen ? 'Close context drawer' : 'Open context drawer'}
-            >
-                {drawerOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-            </button>
-
             <h1 className="hidden md:block text-terminal text-sm font-bold tracking-[0.3em] uppercase glow-green shrink-0">
                 Narrative Engine
             </h1>
@@ -170,6 +180,20 @@ export function Header() {
                     <ScanSearch size={16} />
                 </button>
             )}
+
+            <button
+                onMouseDown={handlePinSelection}
+                onTouchStart={handlePinSelection}
+                className={`transition-colors p-1 touch-btn md:p-1 md:min-h-0 md:min-w-0 ml-1 ${
+                    pinSel
+                        ? 'text-terminal animate-pulse'
+                        : 'text-text-dim hover:text-terminal'
+                }`}
+                title="Pin selected text as memory"
+                aria-label="Pin selection"
+            >
+                <Pin size={16} />
+            </button>
 
             <button
                 onMouseDown={handleLoreCheck}

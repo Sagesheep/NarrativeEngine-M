@@ -175,7 +175,7 @@ export function PinnedMemoriesPanel({ open, onClose }: Props) {
                                 No pinned memories yet
                             </p>
                             <p className="text-text-dim/60 text-[10px] max-w-[260px] leading-relaxed">
-                                Tap a message bubble to reveal the action bar, then tap the pin icon. Or select text and tap "Pin selection".
+                                Tap a message bubble to reveal the action bar, then tap the pin icon. Or select text and tap the pin button in the header.
                             </p>
                         </div>
                     ) : (

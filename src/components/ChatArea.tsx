@@ -12,7 +12,7 @@ import { useCondenser } from './hooks/useCondenser';
 import { toast } from './Toast';
 import { api } from '../services/apiClient';
 import { MessageBubble } from './chat/MessageBubble';
-import { PinSelectionButton } from './chat/PinSelectionButton';
+
 import { PinnedMemoriesPanel } from './chat/PinnedMemoriesPanel';
 import { CreateTroubleButton } from './chat/CreateTroubleButton';
 import { CreateTroubleModal } from './chat/CreateTroubleModal';
@@ -326,7 +326,6 @@ export function ChatArea() {
                     </div>
                 ) : null}
                 <div ref={bottomRef} />
-                <PinSelectionButton />
             </div>
 
             <div className="px-2 md:px-4 pb-1 flex gap-2 overflow-x-auto no-scrollbar">
