@@ -1,6 +1,12 @@
 import type { LLMProvider } from '../types';
 import { llmCall } from '../utils/llmCall';
 import { extractJson } from './payloadBuilder';
+import {
+    ANCHOR_BEFORE_INPUT,
+    INPUT_DELIMITER,
+    JSON_ARRAY_ONLY_FOOTER,
+    joinPromptSections,
+} from './utilityPrompts';
 
 /**
  * AI-powered tag population for Surprise & World engines.
@@ -23,25 +29,27 @@ export async function populateEngineTags(
         worldWhat: '"What happened" elements for world rumours — the inciting action that creates a quest hook (e.g. "spotted raiders near", "claims something was found at", "saw lights moving around"). These should create hooks, NOT permanent world-state changes.',
     };
 
-    const prompt = `You are a Campaign Tag Generator. Your job is to analyze the provided WORLD LORE and CURRENT TAGS, then generate contextually appropriate tags that fit this specific campaign's theme, factions, locations, and tone.
+    const prompt = joinPromptSections(
+        'You are a Campaign Tag Generator.',
+
+        `TASK: Analyze the provided WORLD LORE and CURRENT TAGS, then generate contextually appropriate tags that fit this specific campaign's theme, factions, locations, and tone.
 
 [FIELD TO GENERATE]
-${fieldDescriptions[field]}
+${fieldDescriptions[field]}`,
 
-[CURRENT TAGS — Use as reference for format and style]
-${currentTags.join(', ')}
-
-[WORLD LORE — Use to make tags thematically relevant]
-${worldLore.slice(0, 6000)}
-
-RULES:
+        `RULES:
 - Generate MINIMUM 3 and MAXIMUM 12 tags.
 - Tags must be thematically appropriate for this specific campaign world.
 - Keep the same format style as the current tags (uppercase for surprise types/tones, descriptive phrases for world engine).
-- Do NOT repeat any current tags verbatim — generate NEW ones inspired by the lore.
-- RESPOND ONLY WITH A VALID JSON ARRAY OF STRINGS. No markdown, no explanation.
+- Do NOT repeat any current tags verbatim — generate NEW ones inspired by the lore.`,
 
-Example output: ["TAG_ONE", "TAG_TWO", "TAG_THREE"]`;
+        JSON_ARRAY_ONLY_FOOTER,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
+
+        `[CURRENT TAGS — Use as reference for format and style]\n${currentTags.join(', ')}`,
+        `[WORLD LORE — Use to make tags thematically relevant]\n${worldLore.slice(0, 6000)}`,
+    );
 
     const fullJsonStr = await llmCall(provider, prompt, { priority: 'low' });
 

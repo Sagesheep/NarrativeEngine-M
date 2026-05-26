@@ -17,6 +17,13 @@ import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToResto
 import { mergeSealEntries } from './divergenceRegister';
 import { llmCall } from '../utils/llmCall';
 import { extractJson } from './payloadBuilder';
+import {
+    ANCHOR_BEFORE_INPUT,
+    INPUT_DELIMITER,
+    JSON_ARRAY_ONLY_FOOTER,
+    TTRPG_PERSONA_GM_ASSISTANT,
+    joinPromptSections,
+} from './utilityPrompts';
 
 const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*[:\-–—]?\s*(.+?)(?:\n|$)/i;
 
@@ -37,15 +44,19 @@ export function resolveNPCIds(names: string[], ledger: NPCEntry[]): string[] {
 
 async function auxWitnessFallback(gmText: string, ledger: NPCEntry[], provider: LLMProvider): Promise<string[]> {
     const roster = ledger.map(n => `- ${n.name} (id: ${n.id}${n.aliases ? ', aka: ' + n.aliases : ''})`).join('\n');
-    const prompt = `You are an NPC presence classifier. Given the GM narration below, list the canonical NPC IDs of characters who are PHYSICALLY PRESENT in the scene (not just mentioned).
+    const prompt = joinPromptSections(
+        TTRPG_PERSONA_GM_ASSISTANT,
 
-NPC LEDGER:
-${roster || '(none)'}
+        `TASK: Given the GM narration below, list the canonical NPC IDs of characters who are PHYSICALLY PRESENT in the scene (not just mentioned).
+Output schema: a JSON array of NPC ID strings, e.g. ["npc_1", "npc_3"]. If no NPCs are physically present, return [].`,
 
-GM NARRATION:
-${gmText.slice(0, 2000)}
+        JSON_ARRAY_ONLY_FOOTER,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
 
-Return ONLY a JSON array of NPC IDs, e.g. ["npc_1", "npc_3"]. If no NPCs are physically present, return [].`;
+        `NPC LEDGER:\n${roster || '(none)'}`,
+        `GM NARRATION:\n${gmText.slice(0, 2000)}`,
+    );
 
     try {
         const raw = await llmCall(provider, prompt, { priority: 'low', maxTokens: 200, thinkingEffort: 'off' });

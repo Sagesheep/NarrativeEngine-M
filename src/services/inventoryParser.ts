@@ -1,5 +1,10 @@
 import type { ChatMessage, LLMProvider } from '../types';
 import { llmCall } from '../utils/llmCall';
+import {
+    ANCHOR_BEFORE_INPUT,
+    INPUT_DELIMITER,
+    joinPromptSections,
+} from './utilityPrompts';
 
 export async function scanInventory(
     provider: LLMProvider,
@@ -13,21 +18,24 @@ export async function scanInventory(
         .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
         .join('\n\n');
 
-    const prompt = `You are an AI game engine parser responsible for maintaining the player's inventory.
-Review the recent chat history and the current inventory list below. Identify any items, currency, or equipment the player recently acquired or lost.
+    const prompt = joinPromptSections(
+        'You are an AI game engine parser responsible for maintaining the player\'s inventory.',
 
-=== CURRENT INVENTORY ===
-${currentInventory || '(Empty)'}
+        `TASK: Review the recent chat history and the current inventory list below. Identify any items, currency, or equipment the player recently acquired or lost.
 
-=== RECENT CHAT HISTORY ===
-${turns}
-
-=== INSTRUCTIONS ===
+INSTRUCTIONS:
 1. Analyze the chat history for explicit gains or losses of items/money.
 2. Update the "CURRENT INVENTORY" list accordingly.
-3. Output ONLY the updated, comprehensive inventory list. 
+3. Output ONLY the updated, comprehensive inventory list.
 4. Format as a clean markdown list (e.g., bullet points or categorized sections).
-5. DO NOT include any conversational text, explanations, or markdown formatting outside of the list itself. If nothing changed, return the current inventory exactly as is.`;
+5. DO NOT include any conversational text, explanations, or markdown formatting outside of the list itself. If nothing changed, return the current inventory exactly as is.`,
+
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
+
+        `=== CURRENT INVENTORY ===\n${currentInventory || '(Empty)'}`,
+        `=== RECENT CHAT HISTORY ===\n${turns}`,
+    );
 
     try {
         const result = await llmCall(provider, prompt, { priority: 'low' });

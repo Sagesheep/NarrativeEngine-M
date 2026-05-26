@@ -18,6 +18,12 @@ import type { LLMProvider, ArchiveIndexEntry, ArchiveChapter, ChatMessage } from
 import { llmCall } from '../utils/llmCall';
 import { getList, k, type SceneRecord } from './storage/_helpers';
 import { stripThink } from '../utils/stripThink';
+import {
+    ANCHOR_BEFORE_INPUT,
+    INPUT_DELIMITER,
+    JSON_ONLY_FOOTER,
+    joinPromptSections,
+} from './utilityPrompts';
 
 const EST_TOKENS = (text: string) => Math.ceil(text.length / 4);
 
@@ -131,19 +137,23 @@ function getScenesInChapters(
 }
 
 function makeScenePrompt(conversation: string, sceneOverview: string): string {
-    return `You are a narrative continuity analyst for a tabletop RPG campaign.
-Below are compact summaries of archived scenes. Identify ALL scenes relevant to the current narrative moment.
+    return joinPromptSections(
+        'You are a narrative continuity analyst for a tabletop RPG campaign.',
 
-Include scenes with: mentioned NPCs/locations, decisions with current consequences, events that inform current action, unresolved threads, foreshadowing.
-Return EVERY relevant scene — do not arbitrarily limit.
+        `TASK: Given the current narrative moment and the archived scene index below, identify ALL scenes relevant to the current moment.
+Output schema: {"scenes": ["042", "011", ...]}`,
 
-[CURRENT INPUT]
-${conversation}
+        `RULES:
+- Include scenes with: mentioned NPCs/locations, decisions with current consequences, events that inform current action, unresolved threads, foreshadowing.
+- Return EVERY relevant scene — do not arbitrarily limit.`,
 
-[SCENE INDEX]
-${sceneOverview}
+        JSON_ONLY_FOOTER,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
 
-Respond ONLY with JSON: {"scenes": ["042", "011", ...]}`;
+        `[CURRENT INPUT]\n${conversation}`,
+        `[SCENE INDEX]\n${sceneOverview}`,
+    );
 }
 
 // ── Summarization (single-pass or MapReduce) ──
@@ -159,12 +169,16 @@ async function summarizeSceneContent(
 
     if (totalTokens <= targetTokens * 3) {
         onStatus('[3/5] Deep Archive — synthesizing context brief...');
-        const prompt = `You are a narrative memory synthesizer for a tabletop RPG. Compress these archived scenes into an essential context brief. Preserve NPC states, decisions, outcomes, relationships, and unresolved threads. Target approximately ${targetTokens} tokens. Preserve specificity — names, places, consequences matter.
+        const prompt = joinPromptSections(
+            'You are a narrative memory synthesizer for a tabletop RPG.',
 
-SCENES:
-${sceneText}
+            `TASK: Compress the archived scenes below into an essential context brief. Preserve NPC states, decisions, outcomes, relationships, and unresolved threads. Target approximately ${targetTokens} tokens. Preserve specificity — names, places, consequences matter.`,
 
-Write the narrative context brief now:`;
+            ANCHOR_BEFORE_INPUT,
+            INPUT_DELIMITER,
+
+            `SCENES:\n${sceneText}`,
+        );
         return llmCall(utilityEndpoint, prompt, { temperature: 0.2, priority: 'high' });
     }
 
@@ -216,19 +230,23 @@ export async function deepArchiveScan(
     // ── Phase 1: Chapter scan ──
     onStatus('[3/5] Deep Archive — scanning chapters (round 1)...');
     const chapterOverview = buildChapterOverview(sealedChapters);
-    const chapterPrompt = `You are a narrative continuity analyst for a tabletop RPG campaign.
-Below is an index of all archived story chapters. Given the current player input and recent conversation, identify ALL chapters that contain scenes relevant to the current narrative moment.
+    const chapterPrompt = joinPromptSections(
+        'You are a narrative continuity analyst for a tabletop RPG campaign.',
 
-Include chapters with: direct NPC/location references, related plotlines, earlier decisions with current consequences, foreshadowing, or thematic echoes.
-Do NOT arbitrarily limit — include every relevant chapter.
+        `TASK: Given the current player input and recent conversation, identify ALL chapters that contain scenes relevant to the current narrative moment.
+Output schema: {"chapters": ["ch01", "ch03", ...]}`,
 
-[CURRENT INPUT]
-${conversation}
+        `RULES:
+- Include chapters with: direct NPC/location references, related plotlines, earlier decisions with current consequences, foreshadowing, or thematic echoes.
+- Do NOT arbitrarily limit — include every relevant chapter.`,
 
-[CHAPTER INDEX]
-${chapterOverview}
+        JSON_ONLY_FOOTER,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
 
-Respond ONLY with JSON: {"chapters": ["ch01", "ch03", ...]}`;
+        `[CURRENT INPUT]\n${conversation}`,
+        `[CHAPTER INDEX]\n${chapterOverview}`,
+    );
 
     let selectedChapterIds: string[] = [];
     try {

@@ -2,6 +2,12 @@ import type { NPCEntry, LLMProvider } from '../types';
 import { llmCall } from '../utils/llmCall';
 import { extractJson } from './payloadBuilder';
 import TITLES from '../data/titles.json';
+import {
+    ANCHOR_BEFORE_INPUT,
+    INPUT_DELIMITER,
+    JSON_ARRAY_ONLY_FOOTER,
+    joinPromptSections,
+} from './utilityPrompts';
 
 const TITLES_SET = new Set(TITLES.map(t => t.toLowerCase()));
 const NAME_CONNECTIVES = new Set(['of', 'the', 'von', 'de', 'di', 'al', 'el', 'ibn', 'bin']);
@@ -217,9 +223,10 @@ export async function validateNPCCandidates(
 
     const shortContext = narrativeContext.slice(-1000);
 
-    const prompt = `You are a strict data filter for a roleplay/RPG NPC ledger.
+    const prompt = joinPromptSections(
+        'You are a strict data filter for a roleplay/RPG NPC ledger.',
 
-Return ONLY items from the candidate list that are clearly the proper name of a SPECIFIC PERSON or sentient character (NPC). Each surviving candidate MUST be answerable to "is this the personal name of a specific individual person/being who could be addressed in dialogue?"
+        `TASK: Return ONLY items from the candidate list that are clearly the proper name of a SPECIFIC PERSON or sentient character (NPC). Each surviving candidate MUST be answerable to "is this the personal name of a specific individual person/being who could be addressed in dialogue?"
 
 A valid name refers to an individual addressable as a character: e.g. "Aldric", "Seraphine Thornmere", "Dorian Ashworth".
 
@@ -232,17 +239,15 @@ REJECT everything that is not unambiguously a character's personal name, includi
 - Combined dice/mechanic phrases: "Disadvantage Catastrophe", "Normal Failure"
 - Anything you cannot confidently identify as a person's name from context
 
-When in doubt, REJECT.
+When in doubt, REJECT. If none are valid names, return [].`,
 
-[NARRATIVE CONTEXT]
-${shortContext}
+        JSON_ARRAY_ONLY_FOOTER,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
 
-[CANDIDATES]
-${candidates.join(', ')}
-
-Respond ONLY with a valid JSON array of the surviving names exactly as given. No commentary, no explanations.
-If none are valid names, respond with [].
-Example: ["Aldric", "Seraphine Thornmere"]`;
+        `[NARRATIVE CONTEXT]\n${shortContext}`,
+        `[CANDIDATES]\n${candidates.join(', ')}`,
+    );
 
     try {
         const raw = await llmCall(provider, prompt, { priority: 'normal', maxTokens: 500 });
