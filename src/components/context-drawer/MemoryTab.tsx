@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, AlertTriangle, Trash2, Sparkles, Loader2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, AlertTriangle, Trash2, Sparkles } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { DivergenceCategory, DivergenceEntry } from '../../types';
-import { countRegisterTokens, EMPTY_REGISTER, CATEGORY_LABELS } from '../../services/divergenceRegister';
-import { runFactClustering } from '../../services/factClusterer';
+import { countRegisterTokens, EMPTY_REGISTER, CATEGORY_LABELS, DIVERGENCE_CATEGORIES } from '../../services/divergenceRegister';
+import { runFactDedup, type DedupResult, type DedupCancelled } from '../../services/factDeduper';
+import { DedupReviewModal } from '../DedupReviewModal';
 
 const CATEGORY_COLORS: Record<DivergenceCategory, string> = {
     locations: 'text-blue-400',
@@ -42,7 +43,7 @@ export function MemoryTab() {
     const pinDivergenceFact = useAppStore(s => s.pinDivergenceFact);
     const editDivergenceFact = useAppStore(s => s.editDivergenceFact);
     const setManyFactsEnabled = useAppStore(s => s.setManyFactsEnabled);
-    const setTopicClusters = useAppStore(s => s.setTopicClusters);
+    const npcLedger = useAppStore(s => s.npcLedger);
     const getActiveUtilityEndpoint = useAppStore(s => s.getActiveUtilityEndpoint);
 
     const [tab, setTab] = useState<Tab>('facts');
@@ -52,8 +53,14 @@ export function MemoryTab() {
     const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
     const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
-    const [clustering, setClustering] = useState(false);
-    const [clusterError, setClusterError] = useState<string | null>(null);
+
+    const [dedupOpen, setDedupOpen] = useState(false);
+    const [dedupRunning, setDedupRunning] = useState(false);
+    const [dedupProgress, setDedupProgress] = useState<{ msg: string; done: number; total: number } | null>(null);
+    const [dedupResult, setDedupResult] = useState<DedupResult | null>(null);
+    const [dedupSelections, setDedupSelections] = useState<Record<string, Set<string>>>({});
+    const [dedupError, setDedupError] = useState<string | null>(null);
+    const dedupCancelRef = useRef<DedupCancelled>({ cancelled: false });
 
     const reg = divergenceRegister ?? EMPTY_REGISTER;
     const tokenBudget = settings.divergenceTokenBudget ?? 2000;
@@ -100,38 +107,102 @@ export function MemoryTab() {
         setEditText('');
     };
 
-    const handleRecluster = async () => {
+    const handleToggleGroup = (factIds: string[], allEnabled: boolean) => {
+        setManyFactsEnabled(factIds.map(id => ({ id, enabled: !allEnabled })));
+    };
+
+    const handleStartDedup = () => {
         const utilityProvider = getActiveUtilityEndpoint();
-        if (!utilityProvider?.endpoint) {
-            setClusterError('No utility AI configured.');
+        if (!utilityProvider) {
+            setDedupError('No utility AI endpoint configured.');
+            setDedupOpen(true);
             return;
         }
-        setClustering(true);
-        setClusterError(null);
-        try {
-            const clusters = await runFactClustering(reg, utilityProvider, settings.contextLimit ?? 16000);
-            setTopicClusters(clusters);
-        } catch (err) {
-            setClusterError(err instanceof Error ? err.message : 'Clustering failed.');
-        } finally {
-            setClustering(false);
+        setDedupOpen(true);
+        setDedupRunning(true);
+        setDedupProgress(null);
+        setDedupResult(null);
+        setDedupSelections({});
+        setDedupError(null);
+        dedupCancelRef.current = { cancelled: false };
+
+        runFactDedup(reg, npcLedger ?? [], chapters ?? [], utilityProvider, dedupCancelRef.current, (msg, done, total) => {
+            setDedupProgress({ msg, done, total });
+        }).then(result => {
+            setDedupResult(result);
+            setDedupRunning(false);
+            setDedupProgress(null);
+            const sels: Record<string, Set<string>> = {};
+            for (const g of result.groups) {
+                sels[g.keepId] = new Set(g.disableIds);
+            }
+            setDedupSelections(sels);
+        }).catch(err => {
+            if (err.message === 'Dedup cancelled.') {
+                setDedupOpen(false);
+                setDedupRunning(false);
+                setDedupProgress(null);
+            } else {
+                setDedupError(err.message || String(err));
+                setDedupRunning(false);
+                setDedupProgress(null);
+            }
+        });
+    };
+
+    const handleStopDedup = () => {
+        dedupCancelRef.current.cancelled = true;
+        setDedupOpen(false);
+        setDedupRunning(false);
+        setDedupProgress(null);
+    };
+
+    const handleToggleDisable = (keepId: string, disableId: string) => {
+        setDedupSelections(prev => {
+            const current = prev[keepId];
+            if (!current) return prev;
+            const next = new Set(current);
+            if (next.has(disableId)) next.delete(disableId);
+            else next.add(disableId);
+            return { ...prev, [keepId]: next };
+        });
+    };
+
+    const handleSkipGroup = (keepId: string) => {
+        setDedupSelections(prev => ({
+            ...prev,
+            [keepId]: new Set<string>(),
+        }));
+    };
+
+    const handleApplyDedup = () => {
+        const updates: Array<{ id: string; enabled: boolean }> = [];
+        for (const g of dedupResult?.groups ?? []) {
+            const sel = dedupSelections[g.keepId];
+            if (!sel) continue;
+            for (const dId of sel) {
+                updates.push({ id: dId, enabled: false });
+            }
         }
+        if (updates.length > 0) setManyFactsEnabled(updates);
+        setDedupOpen(false);
+        setDedupResult(null);
+        setDedupSelections({});
+        setDedupError(null);
     };
 
-    const handleToggleGroup = (_groupId: string, factIds: string[], allEnabled: boolean) => {
-        const updates = factIds.map(id => ({ id, enabled: !allEnabled }));
-        setManyFactsEnabled(updates);
+    const handleCloseDedup = () => {
+        if (dedupRunning) return;
+        setDedupOpen(false);
+        setDedupResult(null);
+        setDedupSelections({});
+        setDedupError(null);
     };
 
-    const topicClusters = reg.topicClusters;
-    const totalFacts = entries.length;
-    const clusteredFacts = topicClusters
-        ? topicClusters.groups.reduce((sum, g) => sum + g.factIds.length, 0)
-        : 0;
-    const isStale = topicClusters && topicClusters.generatedFromFactCount !== totalFacts;
-    const minutesAgo = topicClusters
-        ? Math.round((Date.now() - new Date(topicClusters.generatedAt).getTime()) / 60_000)
-        : null;
+    // By-category grouping — computed from existing data, no AI needed
+    const byCategory = new Map<DivergenceCategory, DivergenceEntry[]>();
+    for (const cat of DIVERGENCE_CATEGORIES) byCategory.set(cat, []);
+    for (const e of unpinnedEntries) byCategory.get(e.category)!.push(e);
 
     return (
         <div className="p-3 space-y-3">
@@ -158,6 +229,17 @@ export function MemoryTab() {
             </div>
 
             {tab === 'facts' && (
+                <button
+                    onClick={handleStartDedup}
+                    disabled={dedupRunning}
+                    className="flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <Sparkles size={9} />
+                    Find Duplicates
+                </button>
+            )}
+
+            {tab === 'facts' && (
                 <div className="flex items-center gap-1">
                     <button
                         onClick={() => setFactsView('chapter')}
@@ -176,116 +258,80 @@ export function MemoryTab() {
 
             {tab === 'facts' && factsView === 'topic' && (
                 <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                        <button
-                            onClick={handleRecluster}
-                            disabled={clustering}
-                            className={`flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold px-2 py-1 rounded ${isStale ? 'text-amber-400 bg-amber-500/15 border border-amber-500/30' : 'text-terminal bg-terminal/10'} disabled:opacity-50`}
-                            title="Run AI to group facts by entity/theme"
-                        >
-                            {clustering ? <Loader2 size={9} className="animate-spin" /> : <Sparkles size={9} />}
-                            {topicClusters ? 'Re-cluster' : 'AI Cluster'}
-                        </button>
-                        {topicClusters && (
-                            <span className={`text-[8px] ${isStale ? 'text-amber-400' : 'text-text-dim'}`}>
-                                {clusteredFacts}/{totalFacts} facts · {minutesAgo}m ago{isStale ? ' · stale' : ''}
-                            </span>
-                        )}
-                        {clusterError && (
-                            <span className="text-[8px] text-red-400">{clusterError}</span>
-                        )}
-                    </div>
+                    {DIVERGENCE_CATEGORIES.map(cat => {
+                        const catEntries = byCategory.get(cat) ?? [];
+                        if (catEntries.length === 0) return null;
+                        const allEnabled = catEntries.every(e => e.enabled !== false);
+                        const someEnabled = catEntries.some(e => e.enabled !== false);
+                        const isExpanded = expandedGroup === cat;
 
-                    {!topicClusters || topicClusters.groups.length === 0 ? (
-                        <div className="text-center py-6 space-y-2">
-                            <p className="text-[11px] text-text-dim/60">No topic groups yet.</p>
-                            <p className="text-[10px] text-text-dim/40">Run AI clustering to organize your {totalFacts} facts by recurring entities and themes.</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-2">
-                            {topicClusters.groups.map(group => {
-                                const groupEntries = group.factIds
-                                    .map(id => entries.find(e => e.id === id))
-                                    .filter((e): e is DivergenceEntry => e !== undefined);
-                                const allEnabled = groupEntries.every(e => e.enabled !== false);
-                                const someEnabled = groupEntries.some(e => e.enabled !== false);
-                                const isExpanded = expandedGroup === group.id;
-
-                                return (
-                                    <div key={group.id} className="border border-border/30 rounded">
-                                        <button
-                                            className="w-full flex items-center justify-between px-2 py-1.5 text-left"
-                                            onClick={() => setExpandedGroup(isExpanded ? null : group.id)}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={someEnabled}
-                                                    ref={el => { if (el) el.indeterminate = someEnabled && !allEnabled; }}
-                                                    onChange={(ev) => { ev.stopPropagation(); handleToggleGroup(group.id, group.factIds, allEnabled); }}
-                                                    className="w-3 h-3 accent-terminal"
-                                                    onClick={(ev) => ev.stopPropagation()}
-                                                />
-                                                <span className="text-[11px] font-bold text-text-primary">{group.name}</span>
-                                                <span className="text-[9px] text-text-dim">{groupEntries.length} facts</span>
-                                            </div>
-                                            {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                                        </button>
-
-                                        {isExpanded && (
-                                            <div className="border-t border-border/20 px-3 pb-1.5 pt-1 space-y-0.5">
-                                                {groupEntries.map(e => (
-                                                    editingId === e.id ? (
-                                                        <div key={e.id} className="bg-void border border-amber-500/30 p-1.5 rounded space-y-1">
-                                                            <textarea
-                                                                value={editText}
-                                                                onChange={ev => setEditText(ev.target.value)}
-                                                                className="w-full bg-void border border-white/10 text-text-primary text-[10px] px-1 py-0.5 rounded outline-none resize-y min-h-[24px] max-h-[48px]"
-                                                                rows={2}
-                                                            />
-                                                            <div className="flex gap-1.5 justify-end">
-                                                                <button onClick={handleSaveEdit} className="flex items-center gap-0.5 text-[9px] text-emerald-400 hover:text-emerald-300 px-1">
-                                                                    <Check size={8} /> Save
-                                                                </button>
-                                                                <button onClick={() => setEditingId(null)} className="text-[9px] text-text-dim hover:text-red-400 px-1">
-                                                                    Cancel
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={e.enabled !== false}
-                                                                onChange={() => toggleDivergenceFact(e.id, e.enabled === false)}
-                                                                className="w-2.5 h-2.5 mt-0.5 accent-terminal shrink-0"
-                                                            />
-                                                            <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                                            <span className="min-w-0 flex-1">
-                                                                {e.text}
-                                                                <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
-                                                            </span>
-                                                            <span className="flex items-center gap-0.5 shrink-0">
-                                                                <button onClick={() => pinDivergenceFact(e.id)} className="text-text-muted hover:text-amber-400 p-0.5" title="Pin">
-                                                                    <Pin size={9} />
-                                                                </button>
-                                                                <button onClick={() => handleStartEdit(e)} className="text-text-muted hover:text-amber-400 p-0.5" title="Edit">
-                                                                    <Edit2 size={9} />
-                                                                </button>
-                                                                <button onClick={() => deleteDivergenceFact(e.id)} className="text-text-muted hover:text-red-400 p-0.5" title="Delete">
-                                                                    <Trash2 size={9} />
-                                                                </button>
-                                                            </span>
-                                                        </div>
-                                                    )
-                                                ))}
-                                            </div>
-                                        )}
+                        return (
+                            <div key={cat} className="border border-border/30 rounded">
+                                <button
+                                    className="w-full flex items-center justify-between px-2 py-1.5 text-left"
+                                    onClick={() => setExpandedGroup(isExpanded ? null : cat)}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={someEnabled}
+                                            ref={el => { if (el) el.indeterminate = someEnabled && !allEnabled; }}
+                                            onChange={(ev) => { ev.stopPropagation(); handleToggleGroup(catEntries.map(e => e.id), allEnabled); }}
+                                            className="w-3 h-3 accent-terminal"
+                                            onClick={(ev) => ev.stopPropagation()}
+                                        />
+                                        <span className={`text-[11px] font-bold ${CATEGORY_COLORS[cat]}`}>{CATEGORY_LABELS[cat]}</span>
+                                        <span className="text-[9px] text-text-dim">{catEntries.length} facts</span>
                                     </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                    {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+
+                                {isExpanded && (
+                                    <div className="border-t border-border/20 px-3 pb-1.5 pt-1 space-y-0.5">
+                                        {catEntries.map(e => (
+                                            editingId === e.id ? (
+                                                <div key={e.id} className="bg-void border border-amber-500/30 p-1.5 rounded space-y-1">
+                                                    <textarea
+                                                        value={editText}
+                                                        onChange={ev => setEditText(ev.target.value)}
+                                                        className="w-full bg-void border border-white/10 text-text-primary text-[10px] px-1 py-0.5 rounded outline-none resize-y min-h-[24px] max-h-[48px]"
+                                                        rows={2}
+                                                    />
+                                                    <div className="flex gap-1.5 justify-end">
+                                                        <button onClick={handleSaveEdit} className="flex items-center gap-0.5 text-[9px] text-emerald-400 hover:text-emerald-300 px-1">
+                                                            <Check size={8} /> Save
+                                                        </button>
+                                                        <button onClick={() => setEditingId(null)} className="text-[9px] text-text-dim hover:text-red-400 px-1">
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={e.enabled !== false}
+                                                        onChange={() => toggleDivergenceFact(e.id, e.enabled === false)}
+                                                        className="w-2.5 h-2.5 mt-0.5 accent-terminal shrink-0"
+                                                    />
+                                                    <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
+                                                    <span className="min-w-0 flex-1">
+                                                        {e.text}
+                                                        <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]</span>
+                                                    </span>
+                                                    <span className="flex items-center gap-0.5 shrink-0">
+                                                        <button onClick={() => pinDivergenceFact(e.id)} className="text-text-muted hover:text-amber-400 p-0.5"><Pin size={9} /></button>
+                                                        <button onClick={() => handleStartEdit(e)} className="text-text-muted hover:text-amber-400 p-0.5"><Edit2 size={9} /></button>
+                                                        <button onClick={() => deleteDivergenceFact(e.id)} className="text-text-muted hover:text-red-400 p-0.5"><Trash2 size={9} /></button>
+                                                    </span>
+                                                </div>
+                                            )
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
@@ -484,6 +530,22 @@ export function MemoryTab() {
                     )}
                 </div>
             )}
+
+            <DedupReviewModal
+                open={dedupOpen}
+                running={dedupRunning}
+                progress={dedupProgress}
+                groups={dedupResult?.groups ?? null}
+                failedBuckets={dedupResult?.failedBuckets ?? []}
+                selections={dedupSelections}
+                error={dedupError}
+                entries={entries}
+                onCancel={handleCloseDedup}
+                onStop={handleStopDedup}
+                onToggleDisable={handleToggleDisable}
+                onSkipGroup={handleSkipGroup}
+                onApply={handleApplyDedup}
+            />
         </div>
     );
 }
