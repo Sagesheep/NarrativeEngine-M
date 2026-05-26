@@ -21,6 +21,7 @@ import { llmCall } from '../utils/llmCall';
 import {
     ANCHOR_BEFORE_INPUT,
     INPUT_DELIMITER,
+    JSON_ARRAY_ONLY_FOOTER,
     JSON_ONLY_FOOTER,
     TTRPG_PERSONA_RETRIEVAL_PLANNER,
     joinPromptSections,
@@ -121,9 +122,18 @@ export async function runPlannerCall(
 async function expandQuery(query: string, npcLedger: import('../types').NPCEntry[], utilityEndpoint: LLMProvider, timeoutMs?: number): Promise<string[]> {
     try {
         const npcContext = npcLedger.slice(0, 10).map(n => n.name).join(', ');
-        const prompt = `User query: "${query}"
-Known NPCs: ${npcContext}
-Generate 2 alternative phrasings that expand pronouns, add likely entity names from context, and use synonyms. Return ONLY a JSON array of 2 strings. No prose.`;
+        const prompt = joinPromptSections(
+            'You are a query expansion assistant for a TTRPG archive search.',
+
+            'Generate 2 alternative phrasings of the user query that expand pronouns, add likely entity names from context, and use synonyms. Output a JSON array of exactly 2 strings.',
+
+            JSON_ARRAY_ONLY_FOOTER,
+            ANCHOR_BEFORE_INPUT,
+            INPUT_DELIMITER,
+
+            `User query: "${query}"`,
+            `Known NPCs: ${npcContext}`,
+        );
 
         const raw = await llmCall(utilityEndpoint, prompt, {
             temperature: 0.2,

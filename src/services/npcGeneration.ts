@@ -10,6 +10,7 @@ import {
     DRIVES_UPDATE_RULES,
     INPUT_DELIMITER,
     JSON_ONLY_FOOTER,
+    TTRPG_PERSONA_GM_ASSISTANT,
     TTRPG_PERSONA_STATE_ANALYZER,
     joinPromptSections,
 } from './utilityPrompts';
@@ -101,13 +102,10 @@ export async function generateNPCProfile(
 
         const recentHistory = history.slice(-15).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
 
-        const systemPrompt = `You are a background GM assistant running silently.
-The game mentioned a new character named "${npcName}".
-Your job is to generate a profile for this character based on the recent chat history.
-If the character is barely mentioned, invent a plausible, tropes-appropriate profile that fits the current scene context.
+        const systemPrompt = joinPromptSections(
+            `${TTRPG_PERSONA_GM_ASSISTANT} Your job is to generate a profile for a new character based on the recent chat history. If the character is barely mentioned, invent a plausible, tropes-appropriate profile that fits the current scene context.`,
 
-RESPOND ONLY WITH VALID JSON. NO MARKDOWN FORMATTING. NO EXPLANATIONS.
-The JSON must perfectly match this structure:
+            `OUTPUT FORMAT — respond with a JSON object matching this structure exactly:
 {
   "name": "String (The primary name)",
   "aliases": "String (Comma separated aliases or titles)",
@@ -116,9 +114,9 @@ The JSON must perfectly match this structure:
   "storyRelevance": "String (Why this NPC matters to the current story)",
   "disposition": "String (current mood/attitude: Helpful, Hostile, Suspicious, etc)",
   "goals": "String (Core motive)",
-   "voice": "String — describe HOW this NPC speaks: sentence length, vocabulary level, verbal quirks, catchphrases, accent notes. Be specific.",
-   "appearance": "String — physical description grounded in the RECENT CHAT HISTORY. Quote details mentioned in prose (hair color, clothing, distinguishing marks). If the chat history does not describe them, write a minimal trope-appropriate description and mark it as inferred with prefix '[inferred] '.",
-   "personality": "String — core personality traits in plain language. What drives them? How do they treat others? What do they fear?",
+  "voice": "String — describe HOW this NPC speaks: sentence length, vocabulary level, verbal quirks, catchphrases, accent notes. Be specific.",
+  "appearance": "String — physical description grounded in the RECENT CHAT HISTORY. Quote details mentioned in prose (hair color, clothing, distinguishing marks). If the chat history does not describe them, write a minimal trope-appropriate description and mark it as inferred with prefix '[inferred] '.",
+  "personality": "String — core personality traits in plain language. What drives them? How do they treat others? What do they fear?",
   "exampleOutput": "String — one line of in-character dialogue that demonstrates their voice and personality. Include a brief action in brackets if needed.",
   "drives": {
     "coreWant": "String — one sentence: a deep character truth this NPC carries (NOT a goal). Example: 'to be seen as capable, not just loyal'",
@@ -128,12 +126,21 @@ The JSON must perfectly match this structure:
   "behavioralTriggers": [
     { "keyword": "String — a word or phrase that, when it appears in player input or narrative, activates this trigger", "shift": "String — a PHYSICAL or VERBAL behavioral shift (NOT an emotion). Good: 'crosses arms, answers in single syllables'. Bad: 'becomes angry'." }
   ],
-   "hardBoundaries": ["String — something this NPC will never do. Example: 'will not betray her sister'"],
-   "softBoundaries": ["String — something this NPC dislikes but may tolerate under pressure. Example: 'dislikes being excluded from plans'"],
-   "tier": "String — one of: 'recurring' (named character likely to return), 'oneshot' (named but scene-bound), 'walkon' (background, minor speaking role). Default 'oneshot' if uncertain."
-}`;
+  "hardBoundaries": ["String — something this NPC will never do. Example: 'will not betray her sister'"],
+  "softBoundaries": ["String — something this NPC dislikes but may tolerate under pressure. Example: 'dislikes being excluded from plans'"],
+  "tier": "String — one of: 'recurring' (named character likely to return), 'oneshot' (named but scene-bound), 'walkon' (background, minor speaking role). Default 'oneshot' if uncertain."
+}`,
 
-        const fullPrompt = `${systemPrompt}\n\nRECENT CHAT HISTORY:\n${recentHistory}\n\nGenerate the JSON profile for "${npcName}".`;
+            JSON_ONLY_FOOTER,
+            ANCHOR_BEFORE_INPUT,
+            INPUT_DELIMITER,
+        );
+
+        const fullPrompt = joinPromptSections(
+            systemPrompt,
+            `NPC NAME: "${npcName}"`,
+            `RECENT CHAT HISTORY:\n${recentHistory}`,
+        );
 
         const parsed = await llmParseJson<Record<string, unknown>>(provider, fullPrompt, 'NPC Generator');
 
@@ -144,7 +151,12 @@ The JSON must perfectly match this structure:
 
             if (existingLedger && existingLedger.length > 0 && checkNameCollision(resolvedName, resolvedAliases, existingLedger)) {
                 console.warn(`[NPC Generator] Name collision detected: "${resolvedName}" already exists in ledger. Re-prompting for disambiguation.`);
-                const retryPrompt = `${systemPrompt}\n\nRECENT CHAT HISTORY:\n${recentHistory}\n\nName "${resolvedName}" is already used by an existing NPC. Pick a different name (consider regional/family disambiguators) and re-emit the JSON. Generate the JSON profile for "${npcName}" with a unique name.`;
+                const retryPrompt = joinPromptSections(
+                    systemPrompt,
+                    `NPC NAME: "${npcName}"`,
+                    `RECENT CHAT HISTORY:\n${recentHistory}`,
+                    `Name "${resolvedName}" is already used by an existing NPC. Pick a different name (consider regional/family disambiguators) and re-emit the JSON.`,
+                );
                 const retryParsed = await llmParseJson<Record<string, unknown>>(provider, retryPrompt, 'NPC Generator (name retry)');
 
                 if (retryParsed && !checkNameCollision((retryParsed.name as string) || resolvedName, (retryParsed.aliases as string) || '', existingLedger)) {
@@ -364,17 +376,10 @@ export async function backfillNPCDrives(
     for (const npc of npcsNeedingDrives) {
         const npcSummary = `Name: ${npc.name}\nPersonality: ${npc.personality || npc.disposition || 'Unknown'}\nVoice: ${npc.voice || 'Unknown'}\nGoals: ${npc.goals || 'Unknown'}\nFaction: ${npc.faction || 'Unknown'}\nAffinity: ${npc.affinity ?? 50}/100\nStory Relevance: ${npc.storyRelevance || 'Unknown'}`;
 
-        const prompt = `You are a background GM assistant. An existing NPC in a TTRPG campaign needs their drives, behavioral triggers, and boundaries populated. Based on their profile and recent game context, generate these fields.
+        const prompt = joinPromptSections(
+            `${TTRPG_PERSONA_GM_ASSISTANT} An existing NPC in a TTRPG campaign needs their drives, behavioral triggers, and boundaries populated. Based on their profile and recent game context, generate these fields.`,
 
-[NPC PROFILE]
-${npcSummary}
-[END PROFILE]
-
-[RECENT GAME CONTEXT]
-${recentContext}
-[END CONTEXT]
-
-RESPOND ONLY WITH VALID JSON. NO MARKDOWN FORMATTING. NO EXPLANATIONS.
+            `OUTPUT FORMAT — respond with a JSON object:
 {
   "coreWant": "String — one sentence: a deep character truth this NPC carries (NOT a goal). Example: 'to be seen as capable, not just loyal'",
   "sessionWant": "String — one sentence: what this NPC is working toward in the current arc based on context. If unclear, invent a plausible arc goal.",
@@ -384,7 +389,17 @@ RESPOND ONLY WITH VALID JSON. NO MARKDOWN FORMATTING. NO EXPLANATIONS.
   ],
   "hardBoundaries": ["String — something this NPC will never do"],
   "softBoundaries": ["String — something this NPC dislikes but may tolerate"]
-}`;
+}`,
+
+            DRIVES_UPDATE_RULES,
+
+            JSON_ONLY_FOOTER,
+            ANCHOR_BEFORE_INPUT,
+            INPUT_DELIMITER,
+
+            `[NPC PROFILE]\n${npcSummary}\n[END PROFILE]`,
+            `[RECENT GAME CONTEXT]\n${recentContext}\n[END CONTEXT]`,
+        );
 
         try {
             const parsed = await llmParseJson<Record<string, unknown>>(provider, prompt, `NPC Drives Backfill/${npc.name}`);

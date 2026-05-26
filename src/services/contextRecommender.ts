@@ -10,6 +10,12 @@
 
 import type { LLMProvider, NPCEntry, LoreChunk, ChatMessage, ArchiveChapter } from '../types';
 import { llmCall } from '../utils/llmCall';
+import {
+    ANCHOR_BEFORE_INPUT,
+    INPUT_DELIMITER,
+    JSON_ONLY_FOOTER,
+    joinPromptSections,
+} from './utilityPrompts';
 
 export type RecommenderResult = {
     relevantNPCNames: string[];   // NPC names the model considers relevant
@@ -83,18 +89,21 @@ function buildPinnedChapterContext(chapters: ArchiveChapter[]): string {
     }).join('\n\n');
 }
 
-const RECOMMENDER_PROMPT = `You are a context selector for a tabletop RPG game engine. Given a conversation excerpt, a roster of NPCs, and an index of lore entries, determine which NPCs and lore entries are RELEVANT to the current scene.
+const RECOMMENDER_PROMPT_STATIC = joinPromptSections(
+    'You are a context selector for a tabletop RPG game engine. Given a conversation excerpt, a roster of NPCs, and an index of lore entries, determine which NPCs and lore entries are RELEVANT to the current scene.',
 
-RULES:
+    `RULES:
 1. An NPC is relevant if they are: mentioned by name/alias, physically present in the scene, directly referenced, or their faction/goals are materially involved.
 2. A lore entry is relevant if: its subject matter relates to the current location, active quest, mentioned organizations, or ongoing conflict.
 3. Be SELECTIVE — only include truly relevant entries, not everything tangentially related.
 4. DM-PINNED CHAPTERS are manually flagged as important by the DM. Strongly favor NPCs and lore entries mentioned in pinned chapters.
-5. Return ONLY valid JSON in exactly this format, no other text:
+5. Output format: {"npcs": ["Name1", "Name2"], "lore": ["id1", "id2"]}
+If nothing is relevant, return: {"npcs": [], "lore": []}`,
 
-{"npcs": ["Name1", "Name2"], "lore": ["id1", "id2"]}
-
-If nothing is relevant, return: {"npcs": [], "lore": []}`;
+    JSON_ONLY_FOOTER,
+    ANCHOR_BEFORE_INPUT,
+    INPUT_DELIMITER,
+);
 
 /**
  * Calls the utility AI endpoint to determine which NPCs and lore chunks
@@ -117,21 +126,16 @@ export async function recommendContext(
     const conversation = buildConversationExcerpt(messages, userMessage);
 
     const pinnedSection = (pinnedChapters && pinnedChapters.length > 0)
-        ? `\n[DM-PINNED CHAPTERS — manually selected as relevant]\n${buildPinnedChapterContext(pinnedChapters)}\n`
+        ? `[DM-PINNED CHAPTERS — manually selected as relevant]\n${buildPinnedChapterContext(pinnedChapters)}`
         : '';
 
-    const userContent = `${RECOMMENDER_PROMPT}
-
-[NPC ROSTER — ${npcLedger.length} characters]
-${npcRoster}
-
-[LORE INDEX — ${loreChunks.filter(c => !c.alwaysInclude).length} entries]
-${loreIndex}
-${pinnedSection}
-[RECENT CONVERSATION]
-${conversation}
-
-Respond with the JSON object now:`;
+    const userContent = joinPromptSections(
+        RECOMMENDER_PROMPT_STATIC,
+        `[NPC ROSTER — ${npcLedger.length} characters]\n${npcRoster}`,
+        `[LORE INDEX — ${loreChunks.filter(c => !c.alwaysInclude).length} entries]\n${loreIndex}`,
+        pinnedSection,
+        `[RECENT CONVERSATION]\n${conversation}`,
+    );
 
     console.log(`[ContextRecommender] Sending recommendation request to ${utilityEndpoint.modelName}...`);
 

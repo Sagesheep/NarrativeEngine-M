@@ -5,6 +5,7 @@ import { llmCall } from '../utils/llmCall';
 import {
     ANCHOR_BEFORE_INPUT,
     INPUT_DELIMITER,
+    JSON_ONLY_FOOTER,
     KNOWNBY_RULES,
     NPC_INNER_STATE_RULES,
     SCENE_EVENT_RULES,
@@ -54,35 +55,37 @@ function buildChapterSummaryPrompt(
     const truncated = truncateScenesToBudget(scenes);
     const sceneContent = truncated.map(s => `--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n\n');
 
-    return [
-        'You are a TTRPG campaign archivist. Generate a structured chapter summary.',
-        '',
+    return joinPromptSections(
+        `${TTRPG_PERSONA_ARCHIVIST} Generate a structured chapter summary.`,
+
+        `OUTPUT FORMAT — respond with a JSON object:
+{
+    "title": "Short evocative chapter title",
+    "summary": "3-5 sentence narrative summary of what happened",
+    "keywords": ["keyword1", "keyword2", ...],
+    "npcs": ["NPC Name 1", "NPC Name 2", ...],
+    "majorEvents": ["Event description 1", "Event description 2"],
+    "unresolvedThreads": ["Thread 1", "Thread 2"],
+    "tone": "one of: combat-heavy, exploration, social, mystery, political, emotional, mixed",
+    "themes": ["theme1", "theme2"]
+}`,
+
+        `RULES:
+1. Keywords should be distinctive nouns/places/factions — not generic words
+2. NPCs should include all significant named characters who appeared or were discussed
+3. Major events are plot-critical beats only (not every combat round)
+4. Unresolved threads are open plot hooks, promises, or mysteries
+5. Title should be 2-5 words, evocative
+6. Summary should read like a campaign journal entry, not a list`,
+
+        JSON_ONLY_FOOTER,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
+
         `CHAPTER: ${chapterTitle || 'Untitled'}`,
         `SCENES: ${scenes.length} scenes`,
-        '',
-        'OUTPUT FORMAT — respond with a JSON object:',
-        '{',
-        '    "title": "Short evocative chapter title",',
-        '    "summary": "3-5 sentence narrative summary of what happened",',
-        '    "keywords": ["keyword1", "keyword2", ...],',
-        '    "npcs": ["NPC Name 1", "NPC Name 2", ...],',
-        '    "majorEvents": ["Event description 1", "Event description 2"],',
-        '    "unresolvedThreads": ["Thread 1", "Thread 2"],',
-        '    "tone": "one of: combat-heavy, exploration, social, mystery, political, emotional, mixed",',
-        '    "themes": ["theme1", "theme2"]',
-        '}',
-        '',
-        'RULES:',
-        '1. Keywords should be distinctive nouns/places/factions — not generic words',
-        '2. NPCs should include all significant named characters who appeared or were discussed',
-        '3. Major events are plot-critical beats only (not every combat round)',
-        '4. Unresolved threads are open plot hooks, promises, or mysteries',
-        '5. Title should be 2-5 words, evocative',
-        '6. Summary should read like a campaign journal entry, not a list',
-        '',
-        'SCENE CONTENT:',
-        sceneContent,
-    ].join('\n');
+        `SCENE CONTENT:\n${sceneContent}`,
+    );
 }
 
 /**

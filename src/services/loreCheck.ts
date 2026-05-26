@@ -12,6 +12,11 @@ import type {
 import { llmCall } from '../utils/llmCall';
 import { searchLoreByQuery } from './loreRetriever';
 import { deepArchiveScan } from './deepArchiveSearch';
+import {
+    ANCHOR_BEFORE_INPUT,
+    INPUT_DELIMITER,
+    joinPromptSections,
+} from './utilityPrompts';
 
 export type LoreCheckInput = {
     utilityEndpoint: LLMProvider;
@@ -114,26 +119,23 @@ export function buildVerifierPrompt(args: {
         const parts: string[] = [];
         if (catList) parts.push(`Categories: ${catList}`);
         if (note) parts.push(`Note: "${note}"`);
-        userConcernBlock = `
-
-[USER CONCERN]
+        userConcernBlock = `[USER CONCERN]
 ${parts.join('\n')}
 
 The user has flagged this sentence specifically because of the concern above.
-Focus your verdict on whether the concern is justified, but you may still flag other clear issues you notice.
-`;
+Focus your verdict on whether the concern is justified, but you may still flag other clear issues you notice.`;
     }
 
-    return `You are a narrative continuity auditor for a tabletop RPG campaign.
-A player has highlighted a sentence written by the GM and wants to know whether it is consistent with established lore and play history.
+    return joinPromptSections(
+        'You are a narrative continuity auditor for a tabletop RPG campaign. A player has highlighted a sentence written by the GM and wants to know whether it is consistent with established lore and play history.',
 
-You will receive:
+        `You will receive:
 - The highlighted SENTENCE
 - The surrounding CONTEXT (sentence before and after, for tone reference only)
 - LORE evidence (canonical world facts written by the player)
-- ARCHIVE evidence (a brief summarizing past scenes from the campaign)${hasConcern ? '\n- A USER CONCERN describing why they flagged this sentence' : ''}
+- ARCHIVE evidence (a brief summarizing past scenes from the campaign)${hasConcern ? '\n- A USER CONCERN describing why they flagged this sentence' : ''}`,
 
-Your job:
+        `Your job:
 1. Decide a verdict:
    - "consistent": the sentence is supported (or at least not contradicted) by the evidence.
    - "unsupported": the sentence makes specific factual claims that are not covered by lore or archive — possible hallucination but not a clear contradiction.
@@ -145,28 +147,26 @@ Your job:
    - Replaces ONLY the contradicted/fabricated facts with ones supported by the evidence.
    - Does NOT add new events or commitments.
    - If you cannot produce a confident rewrite from evidence, set suggestedRewrite to null.
-5. If verdict is "consistent", set suggestedRewrite to null.
-${userConcernBlock}
-Respond with ONLY a single JSON object, no prose, no code fence:
+5. If verdict is "consistent", set suggestedRewrite to null.`,
+
+        `OUTPUT SCHEMA:
 {
   "verdict": "consistent" | "unsupported" | "contradicts",
   "issues": ["..."],
   "citations": [{"ref": "lore:...", "label": "..."}, {"ref": "scene:042", "label": "..."}],
   "suggestedRewrite": "..." | null
-}
+}`,
 
-[SENTENCE]
-${args.selectedText}
+        'Respond with ONLY a single JSON object, no prose, no code fence.',
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
 
-[SURROUNDING CONTEXT]
-${args.surroundingContext}
-
-[LORE EVIDENCE]
-${args.loreText}
-
-[ARCHIVE EVIDENCE]
-${args.archiveText}
-`;
+        `[SENTENCE]\n${args.selectedText}`,
+        `[SURROUNDING CONTEXT]\n${args.surroundingContext}`,
+        `[LORE EVIDENCE]\n${args.loreText}`,
+        `[ARCHIVE EVIDENCE]\n${args.archiveText}`,
+        userConcernBlock,
+    );
 }
 
 function parseVerdict(raw: string, originalText: string): LoreCheckResult {
