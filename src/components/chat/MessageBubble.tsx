@@ -208,9 +208,7 @@ export function MessageBubble({
 
                 {/* Floating action row - visible on hover (desktop) or tap (mobile) */}
                 {!isEditing && (
-                    <div className={`absolute -top-3 ${msg.role === 'user' ? 'left-2' : 'right-2'} flex gap-1 transition-opacity bg-void-darker border border-border p-[2px] rounded z-10 ${
-                        showActions ? 'opacity-100' : 'opacity-0 sm:group-hover:opacity-100'
-                    }`}>
+                    <div className={`absolute -top-3 ${msg.role === 'user' ? 'left-2' : 'right-2'} flex gap-1 bg-void-darker border border-border p-[2px] rounded z-10 opacity-100`}>
                         {msg.role !== 'system' && !isStreaming && (
                             <button title="Edit" onClick={() => onStartEdit(msg)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
                                 <Edit2 size={10} />

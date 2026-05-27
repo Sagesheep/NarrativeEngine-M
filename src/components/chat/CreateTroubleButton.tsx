@@ -46,7 +46,7 @@ export function CreateTroubleButton() {
         <button
             onClick={handleClick}
             disabled={disabled}
-            className="flex items-center gap-1.5 bg-void border border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-amber-500/5 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="shrink-0 flex items-center gap-1.5 bg-void border border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-amber-500/5 disabled:opacity-40 disabled:cursor-not-allowed"
         >
             {troubleLoading ? <Loader2 size={13} className="animate-spin" /> : <Flame size={13} />} TROUBLE
         </button>
