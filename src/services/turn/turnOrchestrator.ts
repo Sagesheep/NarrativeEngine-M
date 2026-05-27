@@ -10,7 +10,6 @@ import { gatherContext } from './turnContext';
 import { handlePostTurn } from './turnPostProcess';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool } from './toolHandlers';
 import type { OpenAIMessage } from '../llm/llmService';
-import type { ToolCall } from '../../types/llmMessages';
 import { buildAssistantToolCallMessage, buildToolResultMessage } from '../../types/llmMessages';
 
 export async function runTurn(
@@ -67,7 +66,7 @@ export async function runTurn(
     const { payloadResult } = gathered;
 
     const payload = payloadResult.messages;
-    if (settings.debugMode && callbacks.setLastPayloadTrace) {
+    if (settings.debugMode && callbacks.setLastPayloadTrace && payloadResult.trace) {
         callbacks.setLastPayloadTrace(payloadResult.trace);
     }
 

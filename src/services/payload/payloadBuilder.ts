@@ -1,6 +1,5 @@
 import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveIndexEntry, SceneEvent } from '../../types';
 import type { OpenAIMessage } from '../llm/llmService';
-import { hasToolCalls } from '../../types/llmMessages';
 import { countTokens } from '../infrastructure';
 import { buildBehaviorDirective, buildDriftAlert } from '../npc';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
@@ -140,12 +139,12 @@ function fitHistory(
         const cost = countTokens(textToEstimate);
         if (historyUsed + cost > historyBudget) break;
 
-        const openAIMsg: OpenAIMessage = {
+        const openAIMsg = {
             role: msg.role as 'system' | 'user' | 'assistant' | 'tool',
-            content
-        };
-        if (msg.name) openAIMsg.name = msg.name;
-        if (msg.tool_call_id) openAIMsg.tool_call_id = msg.tool_call_id;
+            content,
+            ...(msg.name ? { name: msg.name } : {}),
+            ...(msg.tool_call_id ? { tool_call_id: msg.tool_call_id } : {}),
+        } as OpenAIMessage;
 
         fitted.unshift(openAIMsg);
         historyUsed += cost;

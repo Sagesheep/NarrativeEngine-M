@@ -1,4 +1,4 @@
-import type { LLMProvider, SamplingConfig, PayloadTrace } from '../../types';
+import type { LLMProvider, SamplingConfig } from '../../types';
 import type { LLMChatMessage, OpenAICompletionResponse } from '../../types/llmMessages';
 import { uid } from '../../utils/uid';
 import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent, extractStreamDelta, extractStreamToolCall } from '../../utils/llmApiHelper';

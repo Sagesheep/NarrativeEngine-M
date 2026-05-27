@@ -74,9 +74,10 @@ export const sanitizePayloadForApi = (rawPayload: LLMChatMessage[], allowTools: 
             continue;
         }
 
-        if (msg.role === 'user' && msg.reasoning_content !== undefined) {
-            const { reasoning_content: _rc, ...userMsg } = msg;
-            cleaned.push(userMsg);
+        if (msg.role === 'user' && (msg as unknown as Record<string, unknown>).reasoning_content !== undefined) {
+            const userMsg = Object.assign({}, msg) as unknown as Record<string, unknown>;
+            delete userMsg.reasoning_content;
+            cleaned.push(userMsg as unknown as LLMChatMessage);
             continue;
         }
 

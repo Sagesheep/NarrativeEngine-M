@@ -432,7 +432,7 @@ async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, act
                             const corrections = sealResult.witnessCorrections[entry.sceneId];
                             if (corrections) {
                                 const npcLedger = state.npcLedger ?? [];
-                                const validIds = corrections.filter(id =>
+                                const validIds = corrections.filter((id: string) =>
                                     npcLedger.some(n => n.id === id)
                                 );
                                 if (validIds.length > 0) {
