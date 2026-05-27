@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { X, Plus, LayoutGrid, List, ArrowLeft } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { updateExistingNPCs } from '../services/chatEngine';
-import { parseNPCsFromLore } from '../services/loreNPCParser';
+import { parseNPCsFromLore } from '../services/lore';
 import { dedupeNPCLedger } from '../store/slices/campaignSlice';
 import { api } from '../services/apiClient';
 

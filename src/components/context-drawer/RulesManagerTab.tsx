@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { X, Plus, RotateCcw } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { LoreChunk, RuleChunkMeta } from '../../types';
-import { chunkLoreFile } from '../../services/loreChunker';
-import { indexRules, deriveDefaultMeta, type IndexingProgress } from '../../services/rulesIndexer';
+import { chunkLoreFile, indexRules, deriveDefaultMeta } from '../../services/lore';
+import type { IndexingProgress } from '../../services/lore';
 
 type ChunkWithMeta = {
     chunk: LoreChunk;

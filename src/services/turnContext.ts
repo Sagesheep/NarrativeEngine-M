@@ -1,8 +1,7 @@
 import type { LoreChunk, ArchiveScene } from '../types';
 import type { TurnCallbacks, TurnState } from './turnTypes';
 import { buildPayload } from './chatEngine';
-import { retrieveRelevantLore } from './loreRetriever';
-import { retrieveRelevantRules } from './rulesRetriever';
+import { retrieveRelevantLore, retrieveRelevantRules } from './lore';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
 import { offlineStorage } from './storage';
 import { recommendContext } from './contextRecommender';
@@ -286,7 +285,7 @@ export async function gatherContext(
 
         if (rulesTokenCount > threshold) {
             try {
-                const { chunkLoreFile } = await import('./loreChunker');
+                const { chunkLoreFile } = await import('./lore');
                 const ruleChunks = chunkLoreFile(state.context.rulesRaw, 'rule');
                 const result = retrieveRelevantRules(
                     ruleChunks,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractEngineSeeds } from '../loreEngineSeeder';
+import { extractEngineSeeds } from '../lore';
 import type { LoreChunk } from '../../types';
 
 const makeChunk = (category: string, header: string, content: string): LoreChunk => ({

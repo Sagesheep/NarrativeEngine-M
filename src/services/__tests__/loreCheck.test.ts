@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { runLoreCheck, buildVerifierPrompt, buildSearchQuery } from '../loreCheck';
+import { runLoreCheck, buildVerifierPrompt, buildSearchQuery } from '../lore';
 
 vi.mock('../../utils/llmCall', () => ({ llmCall: vi.fn() }));
 vi.mock('../deepArchiveSearch', () => ({ deepArchiveScan: vi.fn(async () => 'mock archive brief') }));

@@ -1,9 +1,9 @@
-import type { LoreChunk, RuleChunkMeta, LLMProvider } from '../types';
+import type { LoreChunk, RuleChunkMeta, LLMProvider } from '../../types';
 import { chunkLoreFile } from './loreChunker';
-import { embeddingStorage } from './storage/embeddingStorage';
-import { embedText, getCurrentModelId } from './embedding';
-import { llmCall } from '../utils/llmCall';
-import { INPUT_DELIMITER } from './infrastructure';
+import { embeddingStorage } from '../storage/embeddingStorage';
+import { embedText, getCurrentModelId } from '../embedding';
+import { llmCall } from '../../utils/llmCall';
+import { INPUT_DELIMITER } from '../infrastructure';
 
 const STOP_WORDS = new Set([
     'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'has', 'her',

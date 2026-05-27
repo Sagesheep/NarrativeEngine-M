@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { retrieveRelevantLore } from '../loreRetriever';
+import { retrieveRelevantLore } from '../lore';
 import type { LoreChunk } from '../../types';
 
 const makeChunk = (

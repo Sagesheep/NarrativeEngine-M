@@ -1,5 +1,5 @@
-import type { NPCEntry, LoreChunk } from '../types';
-import { uid } from '../utils/uid';
+import type { NPCEntry, LoreChunk } from '../../types';
+import { uid } from '../../utils/uid';
 
 const CATEGORY_PREFIXES = [
     'CHARACTER', 'FACTION', 'NPC', 'HERO', 'VILLAIN',

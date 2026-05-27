@@ -6,9 +6,7 @@ import {
     saveCampaign, saveCampaignState, saveLoreChunks,
     getNPCLedger, saveNPCLedger,
 } from '../store/campaignStore';
-import { chunkLoreFile } from '../services/loreChunker';
-import { extractEngineSeeds } from '../services/loreEngineSeeder';
-import { parseNPCsFromLore } from '../services/loreNPCParser';
+import { chunkLoreFile, extractEngineSeeds, parseNPCsFromLore } from '../services/lore';
 import { dedupeNPCLedger, defaultContext } from '../store/slices/campaignSlice';
 import { api } from '../services/apiClient';
 import { downloadBundle, importBundle, readFileChunked } from '../services/campaignBundle';
@@ -114,7 +112,7 @@ export function CampaignHub() {
             // Non-blocking LLM keyword enrichment — fire and forget
             const utilityEndpointForEnrichment = useAppStore.getState().getActiveUtilityEndpoint();
             if (utilityEndpointForEnrichment?.endpoint) {
-                import('../services/loreKeywordEnricher').then(({ enrichLoreKeywords }) => {
+                import('../services/lore').then(({ enrichLoreKeywords }) => {
                     enrichLoreKeywords(campaign.id, chunks, utilityEndpointForEnrichment)
                         .catch(err => console.warn('[LoreEnricher] Background enrichment failed:', err));
                 }).catch(() => {});

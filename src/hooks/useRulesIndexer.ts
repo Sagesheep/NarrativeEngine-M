@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { indexRules, computeRulesThreshold } from '../services/rulesIndexer';
+import { indexRules, computeRulesThreshold } from '../services/lore';
 import { countTokens } from '../services/infrastructure';
 
 export function useRulesIndexer() {

@@ -1,12 +1,12 @@
-import type { LoreChunk, LLMProvider } from '../types';
-import { llmCall } from '../utils/llmCall';
-import { saveLoreChunks } from '../store/campaignStore';
+import type { LoreChunk, LLMProvider } from '../../types';
+import { llmCall } from '../../utils/llmCall';
+import { saveLoreChunks } from '../../store/campaignStore';
 import {
     JSON_ONLY_FOOTER,
     ANCHOR_BEFORE_INPUT,
     INPUT_DELIMITER,
     joinPromptSections,
-} from './infrastructure';
+} from '../infrastructure';
 
 const BATCH_SIZE = 8;
 const CONTENT_PREVIEW_CHARS = 300;

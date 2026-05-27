@@ -1,4 +1,4 @@
-import type { LoreChunk, ChatMessage, RuleChunkMeta } from '../types';
+import type { LoreChunk, ChatMessage, RuleChunkMeta } from '../../types';
 
 function stripChunkPrefix(header: string): string {
     return header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').trim();

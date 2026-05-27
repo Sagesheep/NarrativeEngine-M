@@ -1,4 +1,4 @@
-import type { LoreChunk, EngineSeed, CharacterIntroEntry } from '../types';
+import type { LoreChunk, EngineSeed, CharacterIntroEntry } from '../../types';
 
 const CATEGORY_PREFIXES = [
     'CHARACTER', 'FACTION', 'NPC', 'HERO', 'VILLAIN',

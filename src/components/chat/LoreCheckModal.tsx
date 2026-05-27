@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Check, Edit3, AlertTriangle, ShieldCheck, HelpCircle, Loader2, Search, Zap } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { runLoreCheck } from '../../services/loreCheck';
+import { runLoreCheck } from '../../services/lore';
 import type { LoreCheckCategory } from '../../types';
 
 const CATEGORY_CHIPS: { value: LoreCheckCategory; label: string }[] = [

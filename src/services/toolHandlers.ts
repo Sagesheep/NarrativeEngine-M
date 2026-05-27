@@ -1,5 +1,5 @@
 import type { DiceConfig, LoreChunk, NotebookNote } from '../types';
-import { searchLoreByQuery } from './loreRetriever';
+import { searchLoreByQuery } from './lore';
 import { uid } from '../utils/uid';
 import { mapTier } from './engine';
 

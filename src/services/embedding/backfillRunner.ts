@@ -117,7 +117,7 @@ export async function runBackfill(
 
 async function getLoreChunksForBackfill(_campaignId: string): Promise<Array<{ id: string; content: string }>> {
     try {
-        const { chunkLoreFile } = await import('../loreChunker');
+        const { chunkLoreFile } = await import('../lore');
         const { useAppStore } = await import('../../store/useAppStore');
         const state = useAppStore.getState();
         const loreRaw = state.context?.loreRaw;
@@ -132,7 +132,7 @@ async function getLoreChunksForBackfill(_campaignId: string): Promise<Array<{ id
 
 async function getRuleChunksForReindex(_campaignId: string): Promise<Array<{ id: string; content: string }>> {
     try {
-        const { chunkLoreFile } = await import('../loreChunker');
+        const { chunkLoreFile } = await import('../lore');
         const { useAppStore } = await import('../../store/useAppStore');
         const state = useAppStore.getState();
         const rulesRaw = state.context?.rulesRaw;

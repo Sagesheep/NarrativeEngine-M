@@ -8,15 +8,15 @@ import type {
     LoreCheckCitation,
     LoreCheckVerdict,
     LoreCheckCategory,
-} from '../types';
-import { llmCall } from '../utils/llmCall';
+} from '../../types';
+import { llmCall } from '../../utils/llmCall';
 import { searchLoreByQuery } from './loreRetriever';
-import { deepArchiveScan } from './deepArchiveSearch';
+import { deepArchiveScan } from '../deepArchiveSearch';
 import {
     ANCHOR_BEFORE_INPUT,
     INPUT_DELIMITER,
     joinPromptSections,
-} from './infrastructure';
+} from '../infrastructure';
 
 export type LoreCheckInput = {
     utilityEndpoint: LLMProvider;

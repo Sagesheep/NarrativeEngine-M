@@ -1,4 +1,4 @@
-import type { LoreChunk, ChatMessage } from '../types';
+import type { LoreChunk, ChatMessage } from '../../types';
 
 /**
  * Keyword-based World Info retrieval.
