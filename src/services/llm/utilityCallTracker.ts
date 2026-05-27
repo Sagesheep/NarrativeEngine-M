@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { uid } from '../utils/uid';
+import { uid } from '../../utils/uid';
 
 export type UtilityCallStatus = 'running' | 'success' | 'timeout' | 'error' | 'aborted';
 

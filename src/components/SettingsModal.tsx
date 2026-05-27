@@ -11,8 +11,8 @@ import { ProviderConfigSection } from './settings/ProviderConfigSection';
 import { switchEmbeddingModel, getCurrentModelId, runFullReindex, rebuildAllEmbeddings } from '../services/embedding';
 import type { DownloadProgress } from '../services/embedding';
 import { embeddingStorage } from '../services/storage/embeddingStorage';
-import { useUtilityCalls, clearHistory } from '../services/utilityCallTracker';
-import type { UtilityCallStatus } from '../services/utilityCallTracker';
+import { useUtilityCalls, clearHistory } from '../services/llm/utilityCallTracker';
+import type { UtilityCallStatus } from '../services/llm/utilityCallTracker';
 
 type ProviderSection = 'storyAI' | 'summarizerAI' | 'utilityAI' | 'auxiliaryAI';
 

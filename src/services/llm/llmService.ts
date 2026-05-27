@@ -1,6 +1,6 @@
-import type { LLMProvider, SamplingConfig } from '../types';
-import { uid } from '../utils/uid';
-import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent, extractStreamDelta, extractStreamToolCall } from '../utils/llmApiHelper';
+import type { LLMProvider, SamplingConfig } from '../../types';
+import { uid } from '../../utils/uid';
+import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent, extractStreamDelta, extractStreamToolCall } from '../../utils/llmApiHelper';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 export type OpenAIMessage = {

@@ -1,5 +1,5 @@
 import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveIndexEntry, SceneEvent } from '../../types';
-import type { OpenAIMessage } from '../llmService';
+import type { OpenAIMessage } from '../llm/llmService';
 import { countTokens } from '../infrastructure';
 import { buildBehaviorDirective, buildDriftAlert } from '../npc';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';

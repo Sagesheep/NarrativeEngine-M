@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useUtilityCalls, extendCall } from '../services/utilityCallTracker';
+import { useUtilityCalls, extendCall } from '../services/llm/utilityCallTracker';
 
 const LABEL_MAP: Record<string, string> = {
     'expandQuery': 'Query Expansion',

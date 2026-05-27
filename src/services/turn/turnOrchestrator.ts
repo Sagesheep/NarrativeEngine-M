@@ -5,7 +5,7 @@ import { sendMessage } from '../chatEngine';
 import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from '../payload';
 import { rollEngines, rollDiceFairness, rollCharacterIntroEngine } from '../engine';
 import { toast } from '../../components/Toast';
-import { sanitizePayloadForApi } from '../payloadSanitizer';
+import { sanitizePayloadForApi } from '../llm/payloadSanitizer';
 import { gatherContext } from './turnContext';
 import { handlePostTurn } from './turnPostProcess';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool } from './toolHandlers';
@@ -129,7 +129,7 @@ export async function runTurn(
                         content: finalText || "",
                         reasoning_content: reasoningContent || undefined,
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('./llmService').OpenAIMessage);
+                    } as unknown as import('../llm/llmService').OpenAIMessage);
 
                     const { toolResult } = handleLoreTool(toolCall.arguments, { loreChunks, notebook: context.notebook });
 
@@ -148,7 +148,7 @@ export async function runTurn(
                         content: toolResult,
                         name: toolCall.name,
                         tool_call_id: toolCall.id
-                    } as unknown as import('./llmService').OpenAIMessage);
+                    } as unknown as import('../llm/llmService').OpenAIMessage);
 
                     setTimeout(() => {
                         if (abortController.signal.aborted) {
@@ -182,7 +182,7 @@ export async function runTurn(
                         content: finalText || "",
                         reasoning_content: reasoningContent || undefined,
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('./llmService').OpenAIMessage);
+                    } as unknown as import('../llm/llmService').OpenAIMessage);
 
                     const { toolResult, updatedNotebook } = handleNotebookTool(toolCall.arguments, { loreChunks, notebook: context.notebook });
                     callbacks.updateContext({ notebook: updatedNotebook });
@@ -202,7 +202,7 @@ export async function runTurn(
                         content: toolResult,
                         name: toolCall.name,
                         tool_call_id: toolCall.id
-                    } as unknown as import('./llmService').OpenAIMessage);
+                    } as unknown as import('../llm/llmService').OpenAIMessage);
 
                     setTimeout(() => {
                         if (abortController.signal.aborted) {
@@ -235,7 +235,7 @@ export async function runTurn(
                         content: finalText || "",
                         reasoning_content: reasoningContent || undefined,
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('./llmService').OpenAIMessage);
+                    } as unknown as import('../llm/llmService').OpenAIMessage);
 
                     const { toolResult } = handleDiceTool(toolCall.arguments, { diceConfig: context.diceConfig });
 
@@ -254,7 +254,7 @@ export async function runTurn(
                         content: toolResult,
                         name: toolCall.name,
                         tool_call_id: toolCall.id
-                    } as unknown as import('./llmService').OpenAIMessage);
+                    } as unknown as import('../llm/llmService').OpenAIMessage);
 
                     setTimeout(() => {
                         if (abortController.signal.aborted) {
