@@ -1,9 +1,18 @@
 export {
     buildPayload,
     pinnedExcerptsTokenCost,
-    extractJson,
     type BuildPayloadOptions,
+    type BudgetMap,
+    type WorldBlock,
+    type NpcStrategy,
 } from './payloadBuilder';
+
+export { computeBudgets } from './payloadBudgeter';
+export { buildStablePreamble, buildDivergenceBlock } from './payloadStableContent';
+export { assembleWorldBlocks, trimWorldBlocks } from './payloadWorldContext';
+export { fitHistory, spliceSceneNote, splicePinnedMemories } from './payloadHistoryFitting';
+
+export { extractJson } from '../infrastructure';
 
 export {
     getCondenseBudgetRatio,
