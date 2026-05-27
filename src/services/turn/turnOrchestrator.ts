@@ -9,6 +9,9 @@ import { sanitizePayloadForApi } from '../llm/payloadSanitizer';
 import { gatherContext } from './turnContext';
 import { handlePostTurn } from './turnPostProcess';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool } from './toolHandlers';
+import type { OpenAIMessage } from '../llm/llmService';
+import type { ToolCall } from '../../types/llmMessages';
+import { buildAssistantToolCallMessage, buildToolResultMessage } from '../../types/llmMessages';
 
 export async function runTurn(
     state: TurnState,
@@ -79,7 +82,7 @@ export async function runTurn(
         }
     };
 
-    const executeTurn = async (currentPayload: any[], toolCallCount = 0, apiRetryCount = 0) => {
+    const executeTurn = async (currentPayload: OpenAIMessage[], toolCallCount = 0, apiRetryCount = 0) => {
         if (abortController.signal.aborted) {
             callbacks.setStreaming(false);
             callbacks.onCheckingNotes(false);
@@ -124,12 +127,11 @@ export async function runTurn(
                         ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
                     });
 
-                    currentPayload.push({
-                        role: 'assistant',
-                        content: finalText || "",
-                        reasoning_content: reasoningContent || undefined,
-                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('../llm/llmService').OpenAIMessage);
+                    currentPayload.push(buildAssistantToolCallMessage(
+                        finalText || "",
+                        [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }],
+                        reasoningContent || undefined,
+                    ));
 
                     const { toolResult } = handleLoreTool(toolCall.arguments, { loreChunks, notebook: context.notebook });
 
@@ -143,12 +145,7 @@ export async function runTurn(
                         tool_call_id: toolCall.id
                     });
 
-                    currentPayload.push({
-                        role: 'tool',
-                        content: toolResult,
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id
-                    } as unknown as import('../llm/llmService').OpenAIMessage);
+                    currentPayload.push(buildToolResultMessage(toolCall.id, toolResult, toolCall.name));
 
                     setTimeout(() => {
                         if (abortController.signal.aborted) {
@@ -177,12 +174,11 @@ export async function runTurn(
                         ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
                     });
 
-                    currentPayload.push({
-                        role: 'assistant',
-                        content: finalText || "",
-                        reasoning_content: reasoningContent || undefined,
-                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('../llm/llmService').OpenAIMessage);
+                    currentPayload.push(buildAssistantToolCallMessage(
+                        finalText || "",
+                        [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }],
+                        reasoningContent || undefined,
+                    ));
 
                     const { toolResult, updatedNotebook } = handleNotebookTool(toolCall.arguments, { loreChunks, notebook: context.notebook });
                     callbacks.updateContext({ notebook: updatedNotebook });
@@ -197,12 +193,7 @@ export async function runTurn(
                         tool_call_id: toolCall.id
                     });
 
-                    currentPayload.push({
-                        role: 'tool',
-                        content: toolResult,
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id
-                    } as unknown as import('../llm/llmService').OpenAIMessage);
+                    currentPayload.push(buildToolResultMessage(toolCall.id, toolResult, toolCall.name));
 
                     setTimeout(() => {
                         if (abortController.signal.aborted) {
@@ -230,12 +221,11 @@ export async function runTurn(
                         ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
                     });
 
-                    currentPayload.push({
-                        role: 'assistant',
-                        content: finalText || "",
-                        reasoning_content: reasoningContent || undefined,
-                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('../llm/llmService').OpenAIMessage);
+                    currentPayload.push(buildAssistantToolCallMessage(
+                        finalText || "",
+                        [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }],
+                        reasoningContent || undefined,
+                    ));
 
                     const { toolResult } = handleDiceTool(toolCall.arguments, { diceConfig: context.diceConfig });
 
@@ -249,12 +239,7 @@ export async function runTurn(
                         tool_call_id: toolCall.id
                     });
 
-                    currentPayload.push({
-                        role: 'tool',
-                        content: toolResult,
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id
-                    } as unknown as import('../llm/llmService').OpenAIMessage);
+                    currentPayload.push(buildToolResultMessage(toolCall.id, toolResult, toolCall.name));
 
                     setTimeout(() => {
                         if (abortController.signal.aborted) {

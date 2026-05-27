@@ -1,5 +1,6 @@
 import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveIndexEntry, SceneEvent } from '../../types';
 import type { OpenAIMessage } from '../llm/llmService';
+import { hasToolCalls } from '../../types/llmMessages';
 import { countTokens } from '../infrastructure';
 import { buildBehaviorDirective, buildDriftAlert } from '../npc';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
@@ -122,8 +123,8 @@ function fitHistory(
         // Skip completed tool-call exchanges — only the final narrative response matters.
         // reasoning_content overhead is not needed in fitted history.
         if (msg.role === 'tool') continue;
-        if (msg.role === 'assistant' && Array.isArray((msg as any).tool_calls) && (msg as any).tool_calls.length > 0) continue;
-        if ((msg as any).name === 'scene-marker') continue;
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) continue;
+        if (msg.name === 'scene-marker') continue;
 
         let content = msg.content ?? null;
         if (msg.role === 'user' && typeof content === 'string') {
@@ -168,7 +169,9 @@ export function pinnedExcerptsTokenCost(pinnedExcerpts: PinnedExcerpt[]): number
 function buildPinnedMemoriesBlock(pinnedExcerpts: PinnedExcerpt[], messages: ChatMessage[]): string {
     const msgSceneMap = new Map<string, string>();
     for (const m of messages) {
-        if ((m as any).sceneNumber) msgSceneMap.set(m.id, (m as any).sceneNumber);
+        // TYPE-TODO: sceneNumber is a runtime-added property not on ChatMessage; consider adding optional field to type
+        const sceneNum = (m as Record<string, unknown>).sceneNumber;
+        if (sceneNum) msgSceneMap.set(m.id, String(sceneNum));
     }
     const lines = pinnedExcerpts.map(e => {
         const scene = msgSceneMap.get(e.sourceMessageId);

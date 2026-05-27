@@ -1,52 +1,56 @@
-// Models that require reasoning_content to be echoed back on every assistant message that had tool_calls.
+import type { LLMChatMessage, AssistantMessage, ToolCall } from '../../types/llmMessages';
+import { isAssistantMessage, hasToolCalls, isToolResultMessage } from '../../types/llmMessages';
+
 const THINKING_MODEL_RE = /deepseek-r|deepseek-v[34]|deepseek.*think|qwq|qwen.*think|r1/i;
 
-export const sanitizePayloadForApi = (rawPayload: any[], allowTools: boolean, modelName?: string): any[] => {
+function isValidToolCall(tc: unknown): tc is ToolCall {
+    if (!tc || typeof tc !== 'object') return false;
+    const c = tc as Record<string, unknown>;
+    if (c.type !== 'function' || typeof c.id !== 'string') return false;
+    if (!c.function || typeof (c.function as Record<string, unknown>).name !== 'string') return false;
+    if ((c.function as Record<string, unknown>).arguments !== undefined) {
+        try { JSON.parse((c.function as Record<string, unknown>).arguments as string); } catch { return false; }
+    }
+    return true;
+}
+
+export const sanitizePayloadForApi = (rawPayload: LLMChatMessage[], allowTools: boolean, modelName?: string): LLMChatMessage[] => {
     const isThinkingModel = modelName ? THINKING_MODEL_RE.test(modelName) : false;
 
-    const cleaned: any[] = [];
+    const cleaned: LLMChatMessage[] = [];
     const openToolCalls = new Set<string>();
 
     for (const msg of rawPayload) {
         if (!msg || typeof msg !== 'object') continue;
 
-        if (msg.role === 'assistant') {
-            const hasToolCalls = Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
+        if (isAssistantMessage(msg)) {
+            const toolCalls = hasToolCalls(msg) ? msg.tool_calls : undefined;
+            const hasCalls = toolCalls !== undefined;
 
-            // Thinking-model guard: DeepSeek requires reasoning_content on every assistant message
-            // that previously had tool_calls. If it's missing (e.g. captured from an older session
-            // before the fix), strip tool_calls so the turn looks like a plain non-tool assistant
-            // turn — preventing a 400. The orphaned tool message will be dropped below.
-            if (isThinkingModel && hasToolCalls && !msg.reasoning_content) {
-                console.warn('[Sanitizer] Thinking-model: stripping tool_calls from assistant missing reasoning_content — would cause 400. ids:', msg.tool_calls.map((tc: any) => tc.id));
-                const { tool_calls, ...stripped } = msg;
+            if (isThinkingModel && hasCalls && !msg.reasoning_content) {
+                console.warn('[Sanitizer] Thinking-model: stripping tool_calls from assistant missing reasoning_content — would cause 400. ids:', toolCalls.map(tc => tc.id));
+                const stripped: AssistantMessage = { ...msg };
+                delete (stripped as Partial<AssistantMessage>).tool_calls;
                 cleaned.push(stripped);
                 continue;
             }
 
-            if (!allowTools || !hasToolCalls) {
+            if (!allowTools || !hasCalls) {
                 if (allowTools && Array.isArray(msg.tool_calls)) {
                     console.warn('[Payload] Stripped empty tool_calls from assistant message');
-                } else if (!allowTools && hasToolCalls) {
+                } else if (!allowTools && hasCalls) {
                     console.warn('[Payload] Stripped tool_calls from assistant message (tools disabled)');
                 }
-                const { tool_calls, ...assistantNoTools } = msg;
+                const { tool_calls: _tc, ...assistantNoTools } = msg;
                 cleaned.push(assistantNoTools);
                 continue;
             }
 
-            const validCalls = msg.tool_calls.filter((tc: any) => {
-                if (!tc || tc.type !== 'function' || typeof tc.id !== 'string' ||
-                    !tc.function || typeof tc.function.name !== 'string') return false;
-                if (tc.function.arguments !== undefined) {
-                    try { JSON.parse(tc.function.arguments); } catch { return false; }
-                }
-                return true;
-            });
+            const validCalls = toolCalls.filter(isValidToolCall);
 
             if (validCalls.length === 0) {
                 console.warn('[Payload] All tool_calls invalid for assistant message, stripping', msg.tool_calls?.length, 'calls');
-                const { tool_calls, ...assistantNoTools } = msg;
+                const { tool_calls: _tc, ...assistantNoTools } = msg;
                 cleaned.push(assistantNoTools);
                 continue;
             }
@@ -56,7 +60,7 @@ export const sanitizePayloadForApi = (rawPayload: any[], allowTools: boolean, mo
             continue;
         }
 
-        if (msg.role === 'tool') {
+        if (isToolResultMessage(msg)) {
             if (!allowTools) continue;
 
             const callId = typeof msg.tool_call_id === 'string' ? msg.tool_call_id : '';
@@ -70,9 +74,8 @@ export const sanitizePayloadForApi = (rawPayload: any[], allowTools: boolean, mo
             continue;
         }
 
-        // Defensive: reasoning_content must never appear on a user-role message.
         if (msg.role === 'user' && msg.reasoning_content !== undefined) {
-            const { reasoning_content, ...userMsg } = msg;
+            const { reasoning_content: _rc, ...userMsg } = msg;
             cleaned.push(userMsg);
             continue;
         }
@@ -81,15 +84,14 @@ export const sanitizePayloadForApi = (rawPayload: any[], allowTools: boolean, mo
     }
 
     const resolvedCallIds = new Set(
-        cleaned.filter(m => m.role === 'tool' && typeof m.tool_call_id === 'string')
-               .map(m => m.tool_call_id as string)
+        cleaned.filter(isToolResultMessage).map(m => m.tool_call_id)
     );
     const result = cleaned.map(msg => {
-        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-            const resolved = msg.tool_calls.filter((tc: any) => resolvedCallIds.has(tc.id));
+        if (hasToolCalls(msg)) {
+            const resolved = msg.tool_calls.filter(tc => resolvedCallIds.has(tc.id));
             if (resolved.length !== msg.tool_calls.length) {
                 console.warn('[Payload] Stripping unresolved tool_calls from assistant message to prevent 400');
-                const { tool_calls, ...rest } = msg;
+                const { tool_calls: _tc, ...rest } = msg;
                 return resolved.length > 0 ? { ...rest, tool_calls: resolved } : rest;
             }
         }

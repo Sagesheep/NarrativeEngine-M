@@ -13,6 +13,7 @@ import type {
     PipelinePhase,
     StreamingStats,
     DivergenceRegister,
+    PayloadTrace,
 } from '../../types';
 
 export type TurnCallbacks = {
@@ -26,7 +27,7 @@ export type TurnCallbacks = {
     addNPC: (npc: NPCEntry) => void;
     setCondensed: (upToIndex: number) => void;
     setStreaming: (v: boolean) => void;
-    setLastPayloadTrace?: (trace: any) => void;
+    setLastPayloadTrace?: (trace: PayloadTrace[]) => void;
     setLoadingStatus?: (status: string | null) => void;
     setSemanticFacts?: (facts: SemanticFact[]) => void;
     setChapters?: (chapters: ArchiveChapter[]) => void;

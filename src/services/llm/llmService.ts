@@ -1,16 +1,11 @@
-import type { LLMProvider, SamplingConfig } from '../../types';
+import type { LLMProvider, SamplingConfig, PayloadTrace } from '../../types';
+import type { LLMChatMessage, OpenAICompletionResponse } from '../../types/llmMessages';
 import { uid } from '../../utils/uid';
 import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent, extractStreamDelta, extractStreamToolCall } from '../../utils/llmApiHelper';
+import { isAbortError } from '../../types/llmMessages';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
-export type OpenAIMessage = {
-    role: 'system' | 'user' | 'assistant' | 'tool';
-    content: string | null;
-    name?: string;
-    tool_calls?: unknown[];
-    tool_call_id?: string;
-    reasoning_content?: string;
-};
+export type OpenAIMessage = LLMChatMessage;
 
 export async function sendMessage(
     provider: LLMProvider,
@@ -48,7 +43,7 @@ export async function sendMessage(
                 return;
             }
             const nativeText = extractContent(nativeRes.data, provider);
-            const nativeReasoning = (nativeRes.data as any)?.choices?.[0]?.message?.reasoning_content as string | undefined;
+            const nativeReasoning = (nativeRes.data as OpenAICompletionResponse)?.choices?.[0]?.message?.reasoning_content as string | undefined;
             onChunk(nativeText);
             onDone(nativeText, undefined, nativeReasoning || undefined);
             return;
@@ -87,7 +82,7 @@ export async function sendMessage(
             clearTimeout(timeoutId);
             const data = await res.json();
             const text = extractContent(data, provider);
-            const reasoning = (data as any)?.choices?.[0]?.message?.reasoning_content as string | undefined;
+            const reasoning = (data as OpenAICompletionResponse)?.choices?.[0]?.message?.reasoning_content as string | undefined;
             onChunk(text);
             onDone(text, undefined, reasoning || undefined);
             return;
@@ -230,10 +225,7 @@ export async function sendMessage(
             onDone(fullText, undefined, reasoningContent || undefined);
         }
     } catch (err) {
-        const isAbort = (err instanceof DOMException && err.name === 'AbortError')
-            || (err instanceof Error && err.name === 'AbortError')
-            || (err as any)?.name === 'AbortError';
-        if (isAbort) {
+        if (isAbortError(err)) {
             onError('__ABORT__');
             return;
         }
