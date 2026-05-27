@@ -43,7 +43,7 @@ export function DivergenceEntryModal({ onAdd, onClose, provider, chapterId = 'ma
         setStructuring(true);
         try {
             const { llmCall } = await import('../../utils/llmCall');
-            const { extractJson } = await import('../../services/payloadBuilder');
+            const { extractJson } = await import('../../services/payload');
             const { INPUT_DELIMITER: DELIM, JSON_ONLY_FOOTER: JSON_FOOTER, joinPromptSections } = await import('../../services/infrastructure');
             const prompt = joinPromptSections(
                 'You are a TTRPG campaign archivist.',

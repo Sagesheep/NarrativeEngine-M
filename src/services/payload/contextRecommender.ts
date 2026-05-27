@@ -8,14 +8,14 @@
  * Falls back silently on any error (caller handles fallback to substring scan).
  */
 
-import type { LLMProvider, NPCEntry, LoreChunk, ChatMessage, ArchiveChapter } from '../types';
-import { llmCall } from '../utils/llmCall';
+import type { LLMProvider, NPCEntry, LoreChunk, ChatMessage, ArchiveChapter } from '../../types';
+import { llmCall } from '../../utils/llmCall';
 import {
     ANCHOR_BEFORE_INPUT,
     INPUT_DELIMITER,
     JSON_ONLY_FOOTER,
     joinPromptSections,
-} from './infrastructure';
+} from '../infrastructure';
 
 export type RecommenderResult = {
     relevantNPCNames: string[];   // NPC names the model considers relevant

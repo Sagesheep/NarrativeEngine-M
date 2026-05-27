@@ -1,11 +1,11 @@
-import type { LLMProvider } from '../types';
-import { llmCall } from '../utils/llmCall';
+import type { LLMProvider } from '../../types';
+import { llmCall } from '../../utils/llmCall';
 import {
     JSON_ARRAY_ONLY_FOOTER,
     ANCHOR_BEFORE_INPUT,
     INPUT_DELIMITER,
     joinPromptSections,
-} from './infrastructure';
+} from '../infrastructure';
 
 export type RerankCandidate = {
     id: string;

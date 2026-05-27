@@ -1,6 +1,6 @@
-import type { ChatMessage, CondenseAggressiveness } from '../types';
+import type { ChatMessage, CondenseAggressiveness } from '../../types';
 
-import { countTokens } from './infrastructure';
+import { countTokens } from '../infrastructure';
 
 const VERBATIM_WINDOW = 10;
 const DEFAULT_BUDGET_RATIO = 0.75;

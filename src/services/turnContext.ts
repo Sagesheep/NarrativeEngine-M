@@ -4,10 +4,10 @@ import { buildPayload } from './chatEngine';
 import { retrieveRelevantLore, retrieveRelevantRules } from './lore';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes, deepArchiveScan, recallWithChapterFunnel } from './archive';
 import { offlineStorage } from './storage';
-import { recommendContext } from './contextRecommender';
+import { recommendContext } from './payload';
 import { queryFacts, formatFactsForContext, formatResolvedForContext, getDivergenceSceneIds, EMPTY_REGISTER } from './campaign-state';
 import { semanticSearch, isEmbedderReady } from './embedding';
-import { rerankCandidates, type RerankCandidate } from './semanticReranker';
+import { rerankCandidates, type RerankCandidate } from './payload';
 import type { LLMProvider } from '../types';
 import { llmCall } from '../utils/llmCall';
 import {

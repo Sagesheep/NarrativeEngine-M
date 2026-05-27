@@ -8,7 +8,7 @@
  * Original lore files stay human-readable; this is transport-only.
  */
 
-import type { LoreChunk, NPCEntry } from '../types';
+import type { LoreChunk, NPCEntry } from '../../types';
 
 /**
  * Strip markdown formatting from a block of text.

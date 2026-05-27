@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { rerankCandidates, type RerankCandidate } from '../semanticReranker';
+import { rerankCandidates, type RerankCandidate } from '../payload';
 import type { LLMProvider } from '../../types';
 
 const mockEndpoint: LLMProvider = {
@@ -51,7 +51,7 @@ describe('semanticReranker', () => {
             type: 'scene' as const,
         }));
 
-        const { rerankCandidates: rerank } = await import('../semanticReranker');
+        const { rerankCandidates: rerank } = await import('../payload');
         try {
             const result = await rerank('test', candidates, mockEndpoint);
             expect(result.length).toBeGreaterThan(0);

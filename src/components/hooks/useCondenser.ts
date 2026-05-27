@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type { ChatMessage } from '../../types';
-import { computeTrimIndex, getVerbatimWindow } from '../../services/condenser';
+import { computeTrimIndex, getVerbatimWindow } from '../../services/payload';
 
 interface UseCondenserDeps {
     messages: ChatMessage[];
