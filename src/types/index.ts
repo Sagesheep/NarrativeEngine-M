@@ -1,5 +1,7 @@
 export type ApiFormat = 'openai' | 'ollama' | 'claude' | 'gemini';
 
+export type AiTier = 'lite' | 'pro' | 'max';
+
 export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 
 export type LLMProvider = {
@@ -78,6 +80,7 @@ export type AppSettings = {
 
     utilityTimeoutSeconds?: number;   // soft deadline for utility AI calls (reranker, recommender, expandQuery). Default 45. User can EXTEND +1m mid-flight.
     verboseUtilityLogging?: boolean;  // when true, utility call tracker records extra detail (slot waits, retries, payload sizes)
+    aiTier?: AiTier;
 
     // Legacy fields kept for migration only
     providers?: LLMProvider[];
@@ -401,6 +404,7 @@ export type NPCEntry = {
     archivedReason?: string;
     tier?: 'recurring' | 'oneshot' | 'walkon';
     recalledByEmbedding?: boolean;
+    lastUpdateScene?: number;
 };
 
 

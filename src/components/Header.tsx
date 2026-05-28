@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Settings, Trash2, LogOut, Users, Save, Archive, ScanSearch, BookCheck, Pin } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import type { AiTier } from '../types';
+
+const TIER_CYCLE: Record<AiTier, AiTier> = { lite: 'pro', pro: 'max', max: 'lite' };
+const TIER_NEXT_LABEL: Record<AiTier, string> = { lite: 'Switch to Pro', pro: 'Switch to Max', max: 'Switch to Lite' };
 import { TokenGauge } from './TokenGauge';
 import { saveCampaignState, saveDivergenceRegister } from '../store/campaignStore';
 import { api } from '../services/apiClient';
@@ -27,6 +31,7 @@ export function Header() {
     const deepArmed = useAppStore(s => s.deepArmed);
     const toggleDeepArmed = useAppStore(s => s.toggleDeepArmed);
     const settings = useAppStore(s => s.settings);
+    const updateSettings = useAppStore(s => s.updateSettings);
     const openLoreCheck = useAppStore(s => s.openLoreCheck);
     const addPinnedExcerpt = useAppStore(s => s.addPinnedExcerpt);
 
@@ -205,6 +210,18 @@ export function Header() {
                 aria-label="Lore Check selection"
             >
                 <BookCheck size={16} />
+            </button>
+
+            <button
+                onClick={() => {
+                    const current = settings.aiTier ?? 'pro';
+                    updateSettings({ aiTier: TIER_CYCLE[current] });
+                }}
+                className="hidden md:inline-flex text-text-dim hover:text-terminal transition-colors p-1 ml-1 text-[10px] font-bold font-mono uppercase tracking-widest"
+                title={TIER_NEXT_LABEL[settings.aiTier ?? 'pro']}
+                aria-label={`AI tier: ${settings.aiTier ?? 'pro'}. ${TIER_NEXT_LABEL[settings.aiTier ?? 'pro']}`}
+            >
+                {(settings.aiTier ?? 'pro').toUpperCase()}
             </button>
 
             <button

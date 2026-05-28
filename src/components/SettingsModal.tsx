@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, ArrowLeft, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { testConnection } from '../services/chatEngine';
-import type { AIPreset, CondenseAggressiveness, LLMProvider, ApiFormat, SamplingConfig } from '../types';
+import type { AIPreset, CondenseAggressiveness, LLMProvider, ApiFormat, SamplingConfig, AiTier } from '../types';
 import { detectFormatFromEndpoint } from '../utils/llmApiHelper';
 import { toast } from './Toast';
 import { uid } from '../utils/uid';
@@ -328,6 +328,55 @@ export function SettingsModal() {
               )}
 
              </div>
+
+             {/* AI Tier */}
+            <div className="bg-void p-4 border border-border rounded">
+              <div className="mb-3">
+                <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">AI Call Budget</label>
+                <p className="text-[10px] text-text-dim">Controls how many AI calls fire per turn. Lower tiers save cost; the engine and on-device embedder handle recall at every tier.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  {
+                    value: 'lite' as const,
+                    label: 'Lite',
+                    calls: '~1',
+                    desc: 'Story only',
+                  },
+                  {
+                    value: 'pro' as const,
+                    label: 'Pro',
+                    calls: '~4–6',
+                    desc: 'Balanced',
+                  },
+                  {
+                    value: 'max' as const,
+                    label: 'Max',
+                    calls: '~9–10',
+                    desc: 'Full fidelity',
+                  },
+                ] as { value: AiTier; label: string; calls: string; desc: string }[]).map(({ value, label, calls, desc }) => (
+                  <button
+                    key={value}
+                    onClick={() => updateSettings({ aiTier: value })}
+                    className={`py-3 text-center border rounded transition-colors ${
+                      (settings.aiTier ?? 'pro') === value
+                        ? 'bg-terminal border-terminal text-void'
+                        : 'bg-surface border-border text-text-dim hover:border-terminal/50'
+                    }`}
+                  >
+                    <div className="text-[11px] font-bold">{label}</div>
+                    <div className="text-[16px] font-mono font-bold">{calls}</div>
+                    <div className="text-[9px] text-current opacity-60">{desc}</div>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-border/60 text-[9px] text-text-dim space-y-1.5">
+                <p><span className="text-text-primary font-bold">Lite</span> — Only the storyteller runs; memory recall, NPC tracking, and bookkeeping are handled by the built-in engine and the free on-device embedder. Past-scene recall still works via semantic similarity, but there is no AI chapter summarization or NPC profiling. Best for tight budgets, local/weak models, and shorter campaigns.</p>
+                <p><span className="text-text-primary font-bold">Pro</span> — Adds the high-impact context calls (search planner, chapter recall funnel, NPC/lore recommender) and maintains the memory they rely on (chapter summaries + NPC profiles, with throttled NPC updates). Skips polish calls. Balanced cost and quality for long campaigns on a budget.</p>
+                <p><span className="text-text-primary font-bold">Max</span> — Everything fires: reranking, query expansion, per-turn importance rating, NPC intro engine, and periodic profile/inventory scans. Highest continuity and fidelity, highest cost. Best for capable models where quality outweighs spend.</p>
+              </div>
+            </div>
 
              {/* Divergence Register */}
             <div className="bg-void p-4 border border-amber-500/20 rounded">

@@ -103,4 +103,45 @@ describe('migrateSettings', () => {
         expect(result.presets).toHaveLength(1);
         expect(result.contextLimit).toBe(4096);
     });
+
+    it('aiTier defaults to pro on already-migrated settings without aiTier', () => {
+        const existing: Record<string, unknown> = {
+            settings: {
+                presets: [{ id: 'p1', name: 'Test', storyAI: { endpoint: 'http://test', apiKey: 'k', modelName: 'm' }, summarizerAI: { endpoint: 'http://test', apiKey: 'k', modelName: 'm' } }],
+                activePresetId: 'p1',
+            },
+        };
+        const result = migrateSettings(existing);
+        expect(result.aiTier).toBe('pro');
+    });
+
+    it('aiTier defaults to pro on legacy migration without aiTier', () => {
+        const legacy: Record<string, unknown> = {
+            settings: {
+                endpoint: 'http://localhost:11434/v1',
+                apiKey: '',
+                modelName: 'llama3',
+            },
+        };
+        const result = migrateSettings(legacy);
+        expect(result.aiTier).toBe('pro');
+    });
+
+    it('preserves explicit aiTier through migration', () => {
+        const existing: Record<string, unknown> = {
+            settings: {
+                presets: [{ id: 'p1', name: 'Test', storyAI: { endpoint: 'http://test', apiKey: 'k', modelName: 'm' }, summarizerAI: { endpoint: 'http://test', apiKey: 'k', modelName: 'm' } }],
+                activePresetId: 'p1',
+                aiTier: 'lite',
+            },
+        };
+        const result = migrateSettings(existing);
+        expect(result.aiTier).toBe('lite');
+    });
+});
+
+describe('defaultSettings aiTier', () => {
+    it('defaults to pro', () => {
+        expect(defaultSettings.aiTier).toBe('pro');
+    });
 });

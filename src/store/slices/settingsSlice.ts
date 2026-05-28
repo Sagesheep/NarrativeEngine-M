@@ -103,6 +103,7 @@ export const defaultSettings: AppSettings = {
     embeddingModel: 'standard' as const,
     utilityTimeoutSeconds: 45,
     verboseUtilityLogging: false,
+    aiTier: 'pro' as const,
 };
 
 export function resolveTheme(theme: 'light' | 'dark' | 'system'): 'light' | 'dark' {
@@ -160,6 +161,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
             embeddingModel: (raw.embeddingModel as 'standard' | 'high') ?? 'standard',
             utilityTimeoutSeconds: (raw.utilityTimeoutSeconds as number) ?? 45,
             verboseUtilityLogging: (raw.verboseUtilityLogging as boolean) ?? false,
+            aiTier: (raw.aiTier as AppSettings['aiTier']) ?? 'pro',
         };
     }
 
@@ -211,6 +213,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         embeddingModel: (raw.embeddingModel as 'standard' | 'high') ?? 'standard',
         utilityTimeoutSeconds: (raw.utilityTimeoutSeconds as number) ?? 45,
         verboseUtilityLogging: (raw.verboseUtilityLogging as boolean) ?? false,
+        aiTier: (raw.aiTier as AppSettings['aiTier']) ?? 'pro',
     };
 }
 

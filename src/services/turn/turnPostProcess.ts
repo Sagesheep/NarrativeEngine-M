@@ -1,4 +1,5 @@
 import type { NPCEntry, ArchiveChapter, ArchiveIndexEntry, LLMProvider, WitnessSource } from '../../types';
+import { tierAllows, NPC_UPDATE_COOLDOWN } from './aiTier';
 import type { TurnCallbacks, TurnState } from './turnTypes';
 import { generateNPCProfile, updateExistingNPCs, backfillNPCDrives } from '../chatEngine';
 import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from '../npc';
@@ -214,9 +215,9 @@ function queueIndexPatch(
             const entry = index.find(e => e.sceneId === sceneId);
             if (!entry) return;
 
-            // (a) Importance rating — summarizer-primary, story fallback
+            // (a) Importance rating — summarizer-primary, story fallback (Max tier only)
             const ratingProvider = summarizerProvider ?? storyProvider;
-            if (ratingProvider) {
+            if (ratingProvider && tierAllows(state.settings.aiTier, 'importanceRating')) {
                 try {
                     const recentMsgs = state.getMessages();
                     const llmImportance = await tryWithFallback(
@@ -243,7 +244,7 @@ function queueIndexPatch(
                 let source: WitnessSource = 'empty';
 
                 const extractionProvider = state.getExtractionProvider?.();
-                if (extractionProvider?.endpoint) {
+                if (tierAllows(state.settings.aiTier, 'witnessAux') && extractionProvider?.endpoint) {
                     try {
                         const auxIds = await auxWitnessFallback(gmText, npcLedgerSnap, extractionProvider);
                         if (auxIds.length > 0) {
@@ -283,7 +284,7 @@ function queueNPCValidation(
     lastAssistantContent: string,
     activeCampaignId: string
 ): void {
-    if (extractedNames.length > 0) {
+    if (extractedNames.length > 0 && tierAllows(state.settings.aiTier, 'npcValidate')) {
         backgroundQueue.push('NPC-Validate', async () => {
             const provider = state.getExtractionProvider?.() ?? state.getFreshProvider();
             const validatedNames = provider ?
@@ -295,6 +296,7 @@ function queueNPCValidation(
                 const allMsgs = state.getMessages();
 
                 for (const potentialName of newNames) {
+                    if (!tierAllows(state.settings.aiTier, 'npcProfileGen')) break;
                     console.log(`[NPC Auto-Gen] Spawning profile: "${potentialName}"`);
                     const storyProvider = state.getFreshProvider();
                     const summarizerProvider = state.getFreshSummarizerProvider?.();
@@ -310,17 +312,36 @@ function queueNPCValidation(
                     }
                 }
 
-                if (existingNpcsToUpdate.length > 0) {
-                    const updateProvider = state.getFreshSummarizerProvider?.() ?? state.getFreshProvider();
-                    if (updateProvider) {
-                        updateExistingNPCs(updateProvider, allMsgs, existingNpcsToUpdate, callbacks.updateNPC, activeCampaignId).catch((e) => console.warn('[TurnPostProcess] updateExistingNPCs failed:', e));
+                if (existingNpcsToUpdate.length > 0 && tierAllows(state.settings.aiTier, 'npcUpdate')) {
+                    const archiveIndex = state.archiveIndex;
+                    const sceneNow = archiveIndex.length > 0
+                        ? parseInt(archiveIndex[archiveIndex.length - 1].sceneId, 10) || 0
+                        : 0;
+                    const cooldown = NPC_UPDATE_COOLDOWN[state.settings.aiTier ?? 'pro'];
+                    const npcsEligibleForUpdate = existingNpcsToUpdate.filter(npc =>
+                        sceneNow - (npc.lastUpdateScene ?? -Infinity) >= cooldown
+                    );
+
+                    if (npcsEligibleForUpdate.length > 0) {
+                        const updateProvider = state.getFreshSummarizerProvider?.() ?? state.getFreshProvider();
+                        if (updateProvider) {
+                            updateExistingNPCs(updateProvider, allMsgs, npcsEligibleForUpdate, callbacks.updateNPC, activeCampaignId)
+                                .then(() => {
+                                    for (const npc of npcsEligibleForUpdate) {
+                                        callbacks.updateNPC(npc.id, { lastUpdateScene: sceneNow });
+                                    }
+                                })
+                                .catch((e) => console.warn('[TurnPostProcess] updateExistingNPCs failed:', e));
+                        }
                     }
 
-                    const npcsNeedingDrives = existingNpcsToUpdate.filter(n => !n.drives);
-                    if (npcsNeedingDrives.length > 0) {
-                        const backfillProvider = state.getFreshSummarizerProvider?.() ?? state.getFreshProvider();
-                        if (backfillProvider) {
-                            backgroundQueue.push('NPC-Drives-Backfill', () => backfillNPCDrives(backfillProvider, allMsgs, npcsNeedingDrives, callbacks.updateNPC)).catch((e) => console.warn('[TurnPostProcess] NPC drives backfill failed:', e));
+                    if (tierAllows(state.settings.aiTier, 'drivesBackfill')) {
+                        const npcsNeedingDrives = existingNpcsToUpdate.filter(n => !n.drives);
+                        if (npcsNeedingDrives.length > 0) {
+                            const backfillProvider = state.getFreshSummarizerProvider?.() ?? state.getFreshProvider();
+                            if (backfillProvider) {
+                                backgroundQueue.push('NPC-Drives-Backfill', () => backfillNPCDrives(backfillProvider, allMsgs, npcsNeedingDrives, callbacks.updateNPC)).catch((e) => console.warn('[TurnPostProcess] NPC drives backfill failed:', e));
+                            }
                         }
                     }
                 }
@@ -341,15 +362,19 @@ function runBookkeepingScans(
         if (bkProvider) {
             const sceneId = appendedSceneId;
             const allMsgs = state.getMessages();
-            backgroundQueue.push('Profile-Scan', async () => {
-                const newProfile = await scanCharacterProfile(bkProvider, allMsgs, state.context.characterProfile);
-                callbacks.updateContext({ characterProfile: newProfile, characterProfileLastScene: sceneId });
-            }).catch((e) => console.warn('[TurnPostProcess] Profile scan failed:', e));
+            if (tierAllows(state.settings.aiTier, 'profileScan')) {
+                backgroundQueue.push('Profile-Scan', async () => {
+                    const newProfile = await scanCharacterProfile(bkProvider, allMsgs, state.context.characterProfile);
+                    callbacks.updateContext({ characterProfile: newProfile, characterProfileLastScene: sceneId });
+                }).catch((e) => console.warn('[TurnPostProcess] Profile scan failed:', e));
+            }
 
-            backgroundQueue.push('Inventory-Scan', async () => {
-                const newInventory = await scanInventory(bkProvider, allMsgs, state.context.inventory);
-                callbacks.updateContext({ inventory: newInventory, inventoryLastScene: sceneId });
-            }).catch((e) => console.warn('[TurnPostProcess] Inventory scan failed:', e));
+            if (tierAllows(state.settings.aiTier, 'inventoryScan')) {
+                backgroundQueue.push('Inventory-Scan', async () => {
+                    const newInventory = await scanInventory(bkProvider, allMsgs, state.context.inventory);
+                    callbacks.updateContext({ inventory: newInventory, inventoryLastScene: sceneId });
+                }).catch((e) => console.warn('[TurnPostProcess] Inventory scan failed:', e));
+            }
         }
     }
 }
@@ -430,7 +455,7 @@ async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, act
             const summarizerProvider = state.getFreshSummarizerProvider?.();
             const storyProvider = state.getFreshProvider();
             const sealProvider = summarizerProvider ?? storyProvider;
-            if (sealProvider) {
+            if (sealProvider && tierAllows(state.settings.aiTier, 'sealChapter')) {
                 const sealResult = await tryWithFallback(
                     'SealChapter',
                     () => runCombinedSeal(activeCampaignId, sealed, summarizerProvider ?? storyProvider!, state.npcLedger ?? [], state.archiveIndex),

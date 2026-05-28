@@ -1,5 +1,6 @@
 import type { LoreChunk, ArchiveScene } from '../../types';
 import type { TurnCallbacks, TurnState } from './turnTypes';
+import { tierAllows } from './aiTier';
 import { buildPayload } from '../chatEngine';
 import { retrieveRelevantLore, retrieveRelevantRules } from '../lore';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes, deepArchiveScan, recallWithChapterFunnel } from '../archive';
@@ -180,7 +181,7 @@ export async function gatherContext(
     const plannerEndpoint = state.getUtilityEndpoint?.();
     let plannerResult: PlannerResult | null = null;
     let plannerPromise: Promise<PlannerResult | null> = Promise.resolve(null);
-    if (plannerEndpoint?.endpoint) {
+    if (tierAllows(settings.aiTier, 'planner') && plannerEndpoint?.endpoint) {
         const recentForPlanner = state.getMessages().filter(m => m.id !== userMsgId).slice(-8);
         const chapterSummary = state.chapters.length > 0 ? state.chapters[state.chapters.length - 1].summary : undefined;
         plannerPromise = runPlannerCall(finalInput, recentForPlanner, npcLedger, chapterSummary, plannerEndpoint, settings.utilityTimeoutSeconds);
@@ -195,7 +196,7 @@ export async function gatherContext(
 
             const [resolvedPlanner, expandedQueries] = await Promise.all([
                 plannerPromise,
-                (isCallback || isShort) && expansionEndpoint?.endpoint
+                (isCallback || isShort) && expansionEndpoint?.endpoint && tierAllows(settings.aiTier, 'expandQuery')
                     ? expandQuery(finalInput, npcLedger, expansionEndpoint, utilityTimeoutMs)
                     : Promise.resolve([finalInput]),
             ]);
@@ -230,7 +231,7 @@ export async function gatherContext(
     }
 
     const rerankerEndpoint = state.getUtilityEndpoint?.();
-    if (rerankerEndpoint?.endpoint && (semanticArchiveIds?.length || semanticLoreIds?.length)) {
+    if (tierAllows(settings.aiTier, 'reranker') && rerankerEndpoint?.endpoint && (semanticArchiveIds?.length || semanticLoreIds?.length)) {
         try {
             if (semanticArchiveIds && semanticArchiveIds.length >= 5) {
                 const sceneCandidates: RerankCandidate[] = semanticArchiveIds.map(id => {
@@ -307,7 +308,7 @@ export async function gatherContext(
     }
 
     // If the embedder path didn't run, still resolve the planner before archive recall.
-    if (!plannerResult && plannerEndpoint?.endpoint) {
+    if (!plannerResult && tierAllows(settings.aiTier, 'planner') && plannerEndpoint?.endpoint) {
         plannerResult = await plannerPromise;
     }
 
@@ -317,7 +318,7 @@ export async function gatherContext(
     let archiveResult = { scenes: [] as ArchiveScene[], usedTokens: 0 };
     const { chapters, semanticFacts } = state;
 
-    if (chapters.length > 0 && activeCampaignId) {
+    if (tierAllows(settings.aiTier, 'archiveFunnel') && chapters.length > 0 && activeCampaignId) {
         try {
             const utilityEndpoint = state.getUtilityEndpoint?.();
             if (!utilityEndpoint) throw new Error('No utility endpoint');
@@ -351,6 +352,7 @@ export async function gatherContext(
             }
         }
     } else if (archiveIndex.length > 0 && activeCampaignId) {
+        // Covers: (a) no chapters yet, (b) archiveFunnel tier-gated — fall through to engine flat-recall
         const flatRecall = await recallArchiveScenes(
             activeCampaignId, archiveIndex, finalInput, messages, 3000, npcLedger, semanticFacts, semanticArchiveIds, getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), undefined, plannerFilters
         );
@@ -391,7 +393,7 @@ export async function gatherContext(
 
     // ── Deep Archive Scan (one-shot when GM long-presses Send) ──
     let deepContextSummary: string | undefined;
-    if (state.deepContextSearch && activeCampaignId) {
+    if (state.deepContextSearch && tierAllows(settings.aiTier, 'deepScan') && activeCampaignId) {
         const utilityForDeep = state.getUtilityEndpoint?.();
         if (utilityForDeep?.endpoint) {
             try {
@@ -437,7 +439,7 @@ export async function gatherContext(
     const pinnedChaptersForRecommender = state.pinnedChapterIds.length > 0
         ? state.chapters.filter(c => state.pinnedChapterIds.includes(c.chapterId))
         : undefined;
-    if (utilityEndpoint?.endpoint) {
+    if (tierAllows(settings.aiTier, 'recommender') && utilityEndpoint?.endpoint) {
         callbacks.setLoadingStatus?.('[4/5] Consulting AI Recommender...');
         try {
             const recommenderResult = await recommendContext(utilityEndpoint, npcLedger, loreChunks, messages, finalInput, pinnedChaptersForRecommender, utilityTimeoutMs);
