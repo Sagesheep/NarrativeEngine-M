@@ -133,7 +133,7 @@ describe('fuseRecall (RRF)', () => {
         const keywordRanked = ['a', 'b'];
         const embeddingRanked = ['b', 'a'];
 
-        const fused = fuseRecall(keywordRanked, embeddingRanked, 60, 1.0, 1.0);
+        fuseRecall(keywordRanked, embeddingRanked, 60, 1.0, 1.0);
         const fusedKwHeavy = fuseRecall(keywordRanked, embeddingRanked, 60, 2.0, 1.0);
 
         expect(fusedKwHeavy[0]).toBe('a');
