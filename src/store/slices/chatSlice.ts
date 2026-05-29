@@ -10,6 +10,16 @@ export type { PinnedExcerpt };
 
 const PINNED_EXCERPTS_TOKEN_CAP = 3000;
 
+// The divergence register persists to its own `divergence_<id>` key, separate from
+// the campaign-state payload. UI-edit actions only debounce-saved campaign state
+// (which omits the register), so manual MemoryTab edits were lost on reload.
+function saveDivergence(campaignId: string | null, register: DivergenceRegister) {
+    if (!campaignId) return;
+    import('../../store/campaignStore')
+        .then(m => m.saveDivergenceRegister(campaignId, register))
+        .catch(e => console.error('Failed to save divergence register', e));
+}
+
 // ── Slice type ─────────────────────────────────────────────────────────
 
 export type ChatSlice = {
@@ -94,6 +104,7 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
     setDivergenceRegister: (register) =>
         set((s) => {
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, register);
             return { divergenceRegister: register };
         }),
     editDivergenceEntry: (id, patch) =>
@@ -102,8 +113,10 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
                 if (e.id !== id) return e;
                 return { ...e, ...patch };
             });
+            const reg = { ...s.divergenceRegister, entries, lastUpdatedAt: Date.now() };
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
-            return { divergenceRegister: { ...s.divergenceRegister, entries, lastUpdatedAt: Date.now() } };
+            saveDivergence(s.activeCampaignId, reg);
+            return { divergenceRegister: reg };
         }),
     updateMessageDivergence: (messageId, divergenceIds) =>
         set((s) => {
@@ -118,36 +131,42 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
         set((s) => {
             const reg = dismissReviewFlag(s.divergenceRegister, id);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     deleteReviewedEntry: (id) =>
         set((s) => {
             const reg = deleteFact(s.divergenceRegister, id);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     toggleDivergenceChapter: (chapterId, on) =>
         set((s) => {
             const reg = toggleChapter(s.divergenceRegister, chapterId, on);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     toggleDivergenceCategory: (chapterId, category, on) =>
         set((s) => {
             const reg = toggleCategory(s.divergenceRegister, chapterId, category, on);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     pinDivergenceFact: (entryId) =>
         set((s) => {
             const reg = pinFact(s.divergenceRegister, entryId);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     editDivergenceFact: (entryId, text) =>
         set((s) => {
             const reg = editFact(s.divergenceRegister, entryId, text);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     deleteDivergenceFact: (entryId) =>
@@ -161,24 +180,28 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
                 reg = { ...reg, topicClusters: { ...reg.topicClusters, groups } };
             }
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     dismissDivergenceReviewFlag: (entryId) =>
         set((s) => {
             const reg = dismissReviewFlag(s.divergenceRegister, entryId);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     deleteDivergenceChapter: (chapterId) =>
         set((s) => {
             const reg = deleteChapter(s.divergenceRegister, chapterId);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     toggleDivergenceFact: (entryId, on) =>
         set((s) => {
             const reg = toggleFact(s.divergenceRegister, entryId, on);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     setManyFactsEnabled: (updates) =>
@@ -189,12 +212,14 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
                 reg = toggleFact(reg, id, on);
             }
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     setTopicClusters: (clusters) =>
         set((s) => {
             const reg = { ...s.divergenceRegister, topicClusters: clusters };
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
     migrateDivergenceIfNeeded: () =>
@@ -203,6 +228,7 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             if (reg.version < 2) {
                 const migrated = migrateV1ToV2(reg as any);
                 debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+                saveDivergence(s.activeCampaignId, migrated);
                 return { divergenceRegister: migrated };
             }
             return s;

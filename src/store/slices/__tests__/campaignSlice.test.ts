@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dedupeNPCLedger } from '../campaignSlice';
+import { dedupeNPCLedger } from '../npcSlice';
 import type { NPCEntry } from '../../../types';
 
 const makeNPC = (name: string, id?: string): NPCEntry => ({

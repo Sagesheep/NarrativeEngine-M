@@ -1,13 +1,13 @@
 import type { StateCreator } from 'zustand';
-import type { GameContext, ChatMessage, CondenserState, LoreChunk, ArchiveIndexEntry, NPCEntry, ArchiveChapter, SemanticFact, TimelineEvent, EntityEntry, DivergenceRegister } from '../../types';
+import type { GameContext, ChatMessage, CondenserState, DivergenceRegister } from '../../types';
+import type { ArchiveSlice } from './archiveSlice';
+import type { LoreSlice } from './loreSlice';
+import type { NPCSlice } from './npcSlice';
 import { toast } from '../../components/Toast';
 import { debouncedSaveSettings } from './settingsSlice';
-import { embedText, getCurrentModelId, runFullReindex } from '../../services/embedding';
+import { runFullReindex } from '../../services/embedding';
 import { embeddingStorage } from '../../services/storage/embeddingStorage';
-import { buildNPCEmbeddingText } from '../../services/npc';
 import { EMPTY_REGISTER } from '../../services/campaign-state';
-
-const NPC_EMBED_FIELDS: (keyof NPCEntry)[] = ['name', 'aliases', 'faction', 'tier', 'appearance', 'personality', 'voice', 'goals', 'storyRelevance'];
 import {
     DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES,
     DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES,
@@ -17,7 +17,6 @@ import {
 // ── Debounced save helpers ─────────────────────────────────────────────
 
 let stateTimer: ReturnType<typeof setTimeout> | null = null;
-let loreTimer: ReturnType<typeof setTimeout> | null = null;
 let autoBackupTimer: ReturnType<typeof setInterval> | null = null;
 import type { PinnedExcerpt } from '../../types';
 let _getStateForSave: (() => { context: GameContext; messages: ChatMessage[]; condenser: CondenserState; pinnedExcerpts?: PinnedExcerpt[] }) | null = null;
@@ -35,85 +34,6 @@ export function debouncedSaveCampaignState(campaignId: string | null, _state: { 
             toast.error('Failed to save campaign state');
         }
     }, 1000);
-}
-
-export function debouncedSaveLoreChunks(campaignId: string, chunks: import('../../types').LoreChunk[]) {
-    if (!campaignId) return;
-    if (loreTimer) clearTimeout(loreTimer);
-    loreTimer = setTimeout(async () => {
-        const { saveLoreChunks } = await import('../../store/campaignStore');
-        await saveLoreChunks(campaignId, chunks);
-    }, 1000);
-}
-
-let npcTimer: ReturnType<typeof setTimeout> | null = null;
-export function debouncedSaveNPCLedger(campaignId: string | null, npcs: NPCEntry[]) {
-    if (!campaignId) return;
-    if (npcTimer) clearTimeout(npcTimer);
-    npcTimer = setTimeout(async () => {
-        try {
-            const { saveNPCLedger } = await import('../../store/campaignStore');
-            await saveNPCLedger(campaignId, npcs);
-        } catch (e) {
-            console.error(e);
-            toast.error('Failed to save NPC ledger');
-        }
-    }, 1000);
-}
-
-/**
- * Deduplicates the NPC ledger by name comparison:
- *   Rule 1: Exact full-name match -> keep the newer (later in array) entry
- *   Rule 2: First-name-only entry matches a full-name entry -> keep the fuller/newer entry
- *   Rule 3: Same first name but different last names -> do NOT touch
- */
-export function dedupeNPCLedger(ledger: NPCEntry[]): NPCEntry[] {
-    const removeIndices = new Set<number>();
-
-    for (let i = 0; i < ledger.length; i++) {
-        if (removeIndices.has(i)) continue;
-
-        const nameI = ledger[i].name.trim().toLowerCase();
-        const partsI = nameI.split(/\s+/);
-        const firstI = partsI[0];
-        const hasLastI = partsI.length > 1;
-
-        for (let j = i + 1; j < ledger.length; j++) {
-            if (removeIndices.has(j)) continue;
-
-            const nameJ = ledger[j].name.trim().toLowerCase();
-            const partsJ = nameJ.split(/\s+/);
-            const firstJ = partsJ[0];
-            const hasLastJ = partsJ.length > 1;
-
-            // Rule 1: Exact full name match -> remove the older (i)
-            if (nameI === nameJ) {
-                console.log(`[NPC Dedup] Exact match: "${ledger[i].name}" == "${ledger[j].name}" → removing older entry`);
-                removeIndices.add(i);
-                break;
-            }
-
-            // Rule 2: First-name-only entry matches a first+last entry
-            if (!hasLastI && hasLastJ && firstI === firstJ) {
-                console.log(`[NPC Dedup] Partial match: "${ledger[i].name}" ⊂ "${ledger[j].name}" → removing shorter entry`);
-                removeIndices.add(i);
-                break;
-            }
-            if (hasLastI && !hasLastJ && firstI === firstJ) {
-                console.log(`[NPC Dedup] Partial match: "${ledger[j].name}" ⊂ "${ledger[i].name}" → removing shorter entry`);
-                removeIndices.add(j);
-                continue;
-            }
-
-            // Rule 3: Same first name, different last names -> do NOT touch
-        }
-    }
-
-    if (removeIndices.size > 0) {
-        console.log(`[NPC Dedup] Removed ${removeIndices.size} duplicate(s) from ledger`);
-    }
-
-    return ledger.filter((_, idx) => !removeIndices.has(idx));
 }
 
 // ── Default context ────────────────────────────────────────────────────
@@ -184,49 +104,12 @@ export const defaultContext: GameContext = {
 export type CampaignSlice = {
     activeCampaignId: string | null;
     setActiveCampaign: (id: string | null) => Promise<void>;
-    loreChunks: LoreChunk[];
-    setLoreChunks: (chunks: LoreChunk[]) => void;
-    updateLoreChunk: (id: string, patch: Partial<LoreChunk>) => void;
-    archiveIndex: ArchiveIndexEntry[];
-    setArchiveIndex: (entries: ArchiveIndexEntry[]) => void;
-    npcLedger: NPCEntry[];
-    setNPCLedger: (npcs: NPCEntry[]) => void;
-    addNPC: (npc: NPCEntry) => void;
-    addNPCs: (newNpcs: NPCEntry[]) => void;
-    updateNPC: (id: string, patch: Partial<NPCEntry>) => void;
-    removeNPC: (id: string) => void;
-    archiveNPC: (id: string, turn: number, reason: string) => void;
-    restoreNPC: (id: string) => void;
 
     context: GameContext;
     updateContext: (patch: Partial<GameContext>) => void;
 
-    // Phase 6: Chapter and semantic fact support
-    chapters: ArchiveChapter[];
-    semanticFacts: SemanticFact[];
-    setChapters: (chapters: ArchiveChapter[]) => void;
-    setSemanticFacts: (facts: SemanticFact[]) => void;
     preOpBackup: (campaignId: string, trigger: string) => Promise<void>;
     _registerCampaignStateGetter: (getter: () => { context: GameContext; messages: ChatMessage[]; condenser: CondenserState; pinnedExcerpts?: PinnedExcerpt[] }) => void;
-
-    // Timeline / World State
-    timeline: TimelineEvent[];
-    setTimeline: (events: TimelineEvent[]) => void;
-    addTimelineEvent: (event: TimelineEvent) => void;
-    removeTimelineEvent: (eventId: string) => void;
-
-    // Entity Registry
-    entities: EntityEntry[];
-    setEntities: (entities: EntityEntry[]) => void;
-
-    // Pinned Chapters
-    pinnedChapterIds: string[];
-    pinChapter: (chapterId: string) => void;
-    clearPinnedChapters: () => void;
-
-    // On-stage NPC tracking (perception bounding)
-    onStageNpcIds: string[];
-    setOnStageNpcIds: (ids: string[]) => void;
 
     // Auto Bookkeeping
     bookkeepingTurnCounter: number;
@@ -238,7 +121,7 @@ export type CampaignSlice = {
 
 // ── Combined state needed for cross-slice access ───────────────────────
 
-type CampaignDeps = CampaignSlice & {
+type CampaignDeps = CampaignSlice & ArchiveSlice & LoreSlice & NPCSlice & {
     settings: import('../../types').AppSettings;
     messages: ChatMessage[];
     condenser: CondenserState;
@@ -344,70 +227,6 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             }
         }, 10 * 60 * 1000);
     },
-    loreChunks: [],
-    setLoreChunks: (chunks) => set({ loreChunks: chunks } as Partial<CampaignDeps>),
-    updateLoreChunk: (id, patch) => set((s) => {
-        const newChunks = s.loreChunks.map(c => c.id === id ? { ...c, ...patch } : c);
-        if (s.activeCampaignId) {
-            import('../../store/campaignStore').then(mod => mod.saveLoreChunks(s.activeCampaignId!, newChunks));
-        }
-        return { loreChunks: newChunks };
-    }),
-    archiveIndex: [],
-    setArchiveIndex: (entries) => set({ archiveIndex: entries } as Partial<CampaignDeps>),
-    npcLedger: [],
-    setNPCLedger: (npcs) => set((s) => {
-        debouncedSaveNPCLedger(s.activeCampaignId, npcs);
-        return { npcLedger: npcs };
-    }),
-    addNPC: (npc) => set((s) => {
-        const withNew = [...s.npcLedger, npc];
-        const deduped = dedupeNPCLedger(withNew);
-        debouncedSaveNPCLedger(s.activeCampaignId, deduped);
-        return { npcLedger: deduped };
-    }),
-    addNPCs: (newNpcs) => set((s) => {
-        const withNew = [...s.npcLedger, ...newNpcs];
-        const deduped = dedupeNPCLedger(withNew);
-        debouncedSaveNPCLedger(s.activeCampaignId, deduped);
-        return { npcLedger: deduped };
-    }),
-    updateNPC: (id, patch) => set((s) => {
-        const oldNpc = s.npcLedger.find(n => n.id === id);
-        const newLedger = s.npcLedger.map(n => n.id === id ? { ...n, ...patch } : n);
-        debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
-        if (oldNpc && s.activeCampaignId && NPC_EMBED_FIELDS.some(f => f in patch)) {
-            const updatedNpc = { ...oldNpc, ...patch };
-            const cId = s.activeCampaignId;
-            embedText(buildNPCEmbeddingText(updatedNpc))
-                .then(vec => vec && embeddingStorage.store(cId, id, Array.from(vec), 'npc', getCurrentModelId()))
-                .catch(e => console.warn(`[NPC] Re-embed failed for ${updatedNpc.name}:`, e));
-        }
-        return { npcLedger: newLedger };
-    }),
-    removeNPC: (id) => set((s) => {
-        const newLedger = s.npcLedger.filter(n => n.id !== id);
-        debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
-        if (s.activeCampaignId) {
-            embeddingStorage.deleteByTypeAndId(s.activeCampaignId, 'npc', id)
-                .catch(e => console.warn('[NPC] Vector delete failed:', e));
-        }
-        return { npcLedger: newLedger };
-    }),
-    archiveNPC: (id, turn, reason) => set((s) => {
-        const newLedger = s.npcLedger.map(n =>
-            n.id === id ? { ...n, archived: true, archivedAtTurn: turn, archivedReason: reason } : n
-        );
-        debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
-        return { npcLedger: newLedger };
-    }),
-    restoreNPC: (id) => set((s) => {
-        const newLedger = s.npcLedger.map(n =>
-            n.id === id ? { ...n, archived: false, archivedAtTurn: undefined, archivedReason: undefined } : n
-        );
-        debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
-        return { npcLedger: newLedger };
-    }),
 
     context: { ...defaultContext },
     updateContext: (patch) =>
@@ -417,11 +236,6 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             return { context: newContext };
         }),
 
-    // Phase 6: Chapter and semantic fact state
-    chapters: [],
-    semanticFacts: [],
-    setChapters: (chapters) => set({ chapters } as Partial<CampaignDeps>),
-    setSemanticFacts: (facts) => set({ semanticFacts: facts } as Partial<CampaignDeps>),
     preOpBackup: async (campaignId, trigger) => {
         const { api } = await import('../../services/apiClient');
         await api.backup.create(campaignId, { trigger, isAuto: true });
@@ -429,30 +243,6 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
     _registerCampaignStateGetter: (getter) => {
         _getStateForSave = getter;
     },
-
-    // Timeline
-    timeline: [],
-    setTimeline: (events) => set({ timeline: events } as Partial<CampaignDeps>),
-    addTimelineEvent: (event) => set((s) => ({ timeline: [...s.timeline, event] })) as any,
-    removeTimelineEvent: (eventId) => set((s) => ({ timeline: s.timeline.filter((e: TimelineEvent) => e.id !== eventId) })) as any,
-
-    // Entities
-    entities: [],
-    setEntities: (entities) => set({ entities } as Partial<CampaignDeps>),
-
-    // Pinned Chapters
-    pinnedChapterIds: [],
-    pinChapter: (chapterId) => set((s) => {
-        const pinned = s.pinnedChapterIds.includes(chapterId)
-            ? s.pinnedChapterIds.filter((id: string) => id !== chapterId)
-            : [...s.pinnedChapterIds, chapterId];
-        return { pinnedChapterIds: pinned };
-    }) as any,
-    clearPinnedChapters: () => set({ pinnedChapterIds: [] } as Partial<CampaignDeps>),
-
-    // On-stage NPC tracking
-    onStageNpcIds: [],
-    setOnStageNpcIds: (ids) => set({ onStageNpcIds: ids } as Partial<CampaignDeps>),
 
     // Auto Bookkeeping
     bookkeepingTurnCounter: 0,

@@ -7,7 +7,8 @@ import {
     getNPCLedger, saveNPCLedger,
 } from '../store/campaignStore';
 import { chunkLoreFile, extractEngineSeeds, parseNPCsFromLore } from '../services/lore';
-import { dedupeNPCLedger, defaultContext } from '../store/slices/campaignSlice';
+import { defaultContext } from '../store/slices/campaignSlice';
+import { dedupeNPCLedger } from '../store/slices/npcSlice';
 import { api } from '../services/apiClient';
 import { downloadBundle, importBundle, readFileChunked } from '../services/campaignBundle';
 import { toast } from './Toast';

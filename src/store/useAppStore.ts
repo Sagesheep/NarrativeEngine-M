@@ -4,6 +4,9 @@ import { createSettingsSlice, type SettingsSlice } from './slices/settingsSlice'
 import { createCampaignSlice, type CampaignSlice } from './slices/campaignSlice';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice';
 import { createUISlice, type UISlice } from './slices/uiSlice';
+import { createArchiveSlice, type ArchiveSlice } from './slices/archiveSlice';
+import { createLoreSlice, type LoreSlice } from './slices/loreSlice';
+import { createNPCSlice, type NPCSlice } from './slices/npcSlice';
 
 // Re-export DEFAULT_* constants for backward compatibility
 export {
@@ -20,7 +23,7 @@ export type { ReindexState } from './slices/uiSlice';
 
 // ── Combined store type ────────────────────────────────────────────────
 
-type AppState = SettingsSlice & CampaignSlice & ChatSlice & UISlice;
+type AppState = SettingsSlice & CampaignSlice & ChatSlice & UISlice & ArchiveSlice & LoreSlice & NPCSlice;
 
 // ── Store ──────────────────────────────────────────────────────────────
 
@@ -29,12 +32,18 @@ export const useAppStore = create<AppState>()((set, get, store) => {
     const campaignSlice = createCampaignSlice(set, get, store);
     const chatSlice = createChatSlice(set, get, store);
     const uiSlice = createUISlice(set, get, store);
+    const archiveSlice = createArchiveSlice(set, get, store);
+    const loreSlice = createLoreSlice(set, get, store);
+    const npcSlice = createNPCSlice(set, get, store);
 
     return {
         ...settingsSlice,
         ...campaignSlice,
         ...chatSlice,
         ...uiSlice,
+        ...archiveSlice,
+        ...loreSlice,
+        ...npcSlice,
     };
 });
 
