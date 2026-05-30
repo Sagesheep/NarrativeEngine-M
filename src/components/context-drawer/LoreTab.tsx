@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import type { LoreChunk } from '../../types';
 
-export function LoreTab() {
+export function LoreTab({ onOpenManager }: { onOpenManager?: () => void }) {
     const loreChunks = useAppStore((s) => s.loreChunks);
     const updateLoreChunk = useAppStore((s) => s.updateLoreChunk);
     const [newKeyword, setNewKeyword] = useState<Record<string, string>>({});
@@ -99,9 +99,19 @@ export function LoreTab() {
 
     return (
         <div className="px-4 py-4 space-y-4">
-            <p className="text-[9px] text-text-dim/50">
-                Chunks trigger when keywords appear in recent messages
-            </p>
+            <div className="flex items-center justify-between">
+                <p className="text-[9px] text-text-dim/50">
+                    Chunks trigger when keywords appear in recent messages
+                </p>
+                {onOpenManager && (
+                    <button
+                        onClick={onOpenManager}
+                        className="flex items-center gap-1 text-[9px] text-terminal hover:text-text-primary transition-colors"
+                    >
+                        Manage
+                    </button>
+                )}
+            </div>
             {loreChunks.length === 0 ? (
                 <p className="text-text-dim/50 text-xs text-center mt-8">
                     No lore uploaded for this campaign.

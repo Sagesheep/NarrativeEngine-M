@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 import { RulesTab } from './context-drawer/RulesTab';
 import { RulesManagerTab } from './context-drawer/RulesManagerTab';
 import { LoreTab } from './context-drawer/LoreTab';
+import { LoreManagerTab } from './context-drawer/LoreManagerTab';
 import { EnginesTab } from './context-drawer/EnginesTab';
 import { ChapterTab } from './context-drawer/ChapterTab';
 import { BookkeepingTab } from './context-drawer/BookkeepingTab';
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'sys',      label: 'System',   icon: ScrollText },
   { id: 'rules-mgr', label: 'RuleMgr', icon: Sliders },
   { id: 'world',    label: 'World',    icon: Globe },
+  { id: 'world-mgr', label: 'LoreMgr', icon: Sliders },
   { id: 'mem',      label: 'Memory',   icon: Brain },
   { id: 'eng',      label: 'Engines',  icon: Zap },
   { id: 'chapters', label: 'Chapters', icon: BookOpen },
@@ -71,7 +73,8 @@ export function ContextDrawer() {
     <>
       {activeTab === 'sys' && <RulesTab onOpenManager={() => setActiveTab('rules-mgr')} />}
       {activeTab === 'rules-mgr' && <RulesManagerTab onBack={() => setActiveTab('sys')} />}
-      {activeTab === 'world' && <LoreTab />}
+      {activeTab === 'world' && <LoreTab onOpenManager={() => setActiveTab('world-mgr')} />}
+      {activeTab === 'world-mgr' && <LoreManagerTab onBack={() => setActiveTab('world')} />}
       {activeTab === 'mem' && <MemoryTab />}
       {activeTab === 'eng' && <EnginesTab />}
       {activeTab === 'chapters' && <ChapterTab />}

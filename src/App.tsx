@@ -13,6 +13,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastContainer } from './components/Toast';
 import { MobileNavBar } from './components/MobileNavBar';
 import { useRulesIndexer } from './hooks/useRulesIndexer';
+import { useLoreIndexer } from './hooks/useLoreIndexer';
 import {
     loadCampaignState, getLoreChunks, getNPCLedger, loadArchiveIndex,
   loadChapters, loadSemanticFacts, loadDivergenceRegister,
@@ -146,5 +147,6 @@ export default function App() {
 
 function RulesIndexerWrapper() {
   useRulesIndexer();
+  useLoreIndexer();
   return null;
 }

@@ -1,12 +1,5 @@
 import type { LoreChunk, ChatMessage } from '../../types';
 
-/**
- * Keyword-based World Info retrieval.
- * Scans the last N messages (per chunk's scanDepth) for exact keyword matches.
- * Only injects chunks whose trigger keywords appear in recent conversation.
- * alwaysInclude chunks bypass keyword matching entirely.
- * Enforces a token budget — ranked by keyword hit count, most relevant first.
- */
 export function retrieveRelevantLore(
     chunks: LoreChunk[],
     userMessage: string,
@@ -20,9 +13,13 @@ export function retrieveRelevantLore(
     const includedSet = new Set<string>();
     let usedTokens = 0;
 
-    // Always-include chunks get priority (deducted from budget)
+    // Always-include: chunks with 'always' activation mode or legacy alwaysInclude flag
     for (const chunk of chunks) {
-        if (chunk.alwaysInclude) {
+        const modes = chunk.activationModes;
+        const isAlways = modes
+            ? modes.includes('always')
+            : chunk.alwaysInclude;
+        if (isAlways) {
             results.push(chunk);
             includedSet.add(chunk.id);
             usedTokens += chunk.tokens;
@@ -33,32 +30,36 @@ export function retrieveRelevantLore(
     const defaultDepth = 2;
 
     const textByDepth = new Map<number, string>();
-    for (const chunk of chunks) {
-        if (chunk.alwaysInclude) continue;
-        const depth = chunk.scanDepth || defaultDepth;
+    const getScanText = (depth: number) => {
         if (!textByDepth.has(depth)) {
-            const sliceForDepth = history.length > depth ? history.slice(-depth) : history;
-            const text = sliceForDepth.map(m => (m.content || '').toLowerCase()).join(' ')
+            const slice = history.length > depth ? history.slice(-depth) : history;
+            const text = slice.map(m => (m.content || '').toLowerCase()).join(' ')
                 + ' ' + userMessage.toLowerCase();
             textByDepth.set(depth, text);
         }
-    }
+        return textByDepth.get(depth)!;
+    };
 
+    // Ensure default depth text is computed
     if (!textByDepth.has(defaultDepth)) {
-        const slice = history.length > defaultDepth ? history.slice(-defaultDepth) : history;
-        textByDepth.set(defaultDepth, slice.map(m => (m.content || '').toLowerCase()).join(' ')
-            + ' ' + userMessage.toLowerCase());
+        getScanText(defaultDepth);
     }
 
-    // Score chunks
     const scored: { chunk: LoreChunk; score: number }[] = [];
     const semanticSet = new Set(semanticLoreIds || []);
 
     for (const chunk of chunks) {
-        if (chunk.alwaysInclude) continue;
+        if (includedSet.has(chunk.id)) continue;
+
+        const modes = chunk.activationModes;
+        // Back-compat: undefined = legacy hybrid behavior (vector + keyword + alwaysInclude)
+        const isKeywordMode = modes ? modes.includes('keyword') : true;
+        const isVectorMode = modes ? modes.includes('vector') : true;
+
+        if (!isKeywordMode && !isVectorMode) continue;
 
         const depth = chunk.scanDepth || defaultDepth;
-        const scanText = textByDepth.get(depth) || userMessage.toLowerCase();
+        const scanText = getScanText(depth);
 
         const keywords = chunk.triggerKeywords || [];
 
@@ -71,8 +72,11 @@ export function retrieveRelevantLore(
 
         const isSemanticHit = semanticSet.has(chunk.id);
 
-        if (matchCount > 0) {
-            // Secondary-key AND-gate: if secondaryKeywords exist, at least one must match
+        let score = 0;
+        let keywordMatched = false;
+
+        if (isKeywordMode && matchCount > 0) {
+            // Secondary-key AND-gate: if secondaryKeywords exist, at least one must also match
             const secondaryKws = chunk.secondaryKeywords || [];
             if (secondaryKws.length > 0) {
                 const secondaryMatch = secondaryKws.some(kw => {
@@ -80,15 +84,27 @@ export function retrieveRelevantLore(
                     const regex = new RegExp(`\\b${lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
                     return regex.test(scanText);
                 });
-                if (!secondaryMatch) continue; // AND-gate not satisfied — skip
+                if (!secondaryMatch) continue;
             }
 
-            let score = matchCount * 10;
-
-            // Boost by priority
+            score += matchCount * 10;
             score += (chunk.priority || 5);
+            keywordMatched = true;
+        }
 
-            // Context heuristics
+        if (isVectorMode) {
+            if (isSemanticHit) {
+                score += 25 + (chunk.priority || 5);
+                if (keywordMatched) score += 20;
+            } else if (matchCount > 0 && !isKeywordMode) {
+                // Vector-only chunk with keyword overlap but no semantic hit still gets a small score
+                score += matchCount * 10;
+                score += (chunk.priority || 5);
+            }
+        }
+
+        // Category heuristics (applied when keyword matched, mirroring original logic)
+        if (keywordMatched || (modes === undefined && matchCount > 0)) {
             if (chunk.category === 'power_system' && (scanText.includes('combat') || scanText.includes('attack') || scanText.includes('damage') || scanText.includes('cast'))) {
                 score += 15;
             }
@@ -98,23 +114,15 @@ export function retrieveRelevantLore(
             if (chunk.category === 'economy' && (scanText.includes('buy') || scanText.includes('sell') || scanText.includes('cost') || scanText.includes('gold') || scanText.includes('money'))) {
                 score += 15;
             }
+        }
 
-            if (isSemanticHit) {
-                score += 20;
-            }
-
-            scored.push({ chunk, score });
-        } else if (isSemanticHit) {
-            // Semantic-only path: no keyword match but embedding matched — add with base score
-            // Bypasses the secondary-key AND-gate (earned inclusion by meaning)
-            const score = 25 + (chunk.priority || 5);
+        if (score > 0) {
             scored.push({ chunk, score });
         }
     }
 
     scored.sort((a, b) => b.score - a.score);
 
-    // Pass 1: Fill based on direct hits
     for (const { chunk } of scored) {
         if (includedSet.has(chunk.id)) continue;
         if (usedTokens + chunk.tokens > tokenBudget) continue;
@@ -124,7 +132,6 @@ export function retrieveRelevantLore(
     }
 
     // Pass 2: Linked entities cross-pull
-    // If we still have budget, pull in chunks that are referenced by included chunks
     if (usedTokens < tokenBudget) {
         const linkedNames = new Set<string>();
         for (const chunk of results) {
@@ -132,7 +139,6 @@ export function retrieveRelevantLore(
         }
 
         if (linkedNames.size > 0) {
-            // Sort remaining chunks by priority just to be safe
             const remaining = chunks.filter(c => !includedSet.has(c.id)).sort((a, b) => (b.priority || 5) - (a.priority || 5));
             for (const chunk of remaining) {
                 const headerLower = chunk.header.toLowerCase();
@@ -172,7 +178,6 @@ export function searchLoreByQuery(
         }
     }
 
-    // Score chunks by how many query keywords match their content + triggerKeywords
     const scored = chunks
         .map((chunk) => {
             const searchText = (chunk.header + ' ' + chunk.content).toLowerCase();
@@ -180,9 +185,9 @@ export function searchLoreByQuery(
             let score = 0;
 
             for (const kw of queryKeywords) {
-                if (triggerSet.has(kw)) score += 3;        // trigger keyword match = high
-                else if (chunk.header.toLowerCase().includes(kw)) score += 2;  // header match
-                else if (searchText.includes(kw)) score += 1;                  // content match
+                if (triggerSet.has(kw)) score += 3;
+                else if (chunk.header.toLowerCase().includes(kw)) score += 2;
+                else if (searchText.includes(kw)) score += 1;
             }
             return { chunk, score };
         })

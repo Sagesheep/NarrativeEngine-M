@@ -7,3 +7,5 @@ export { parseNPCsFromLore } from './loreNPCParser';
 export { indexRules, computeRulesThreshold, deriveDefaultMeta, extractHeaderKeywords, extractBoldKeywords } from './rulesIndexer';
 export type { IndexingProgress } from './rulesIndexer';
 export { retrieveRelevantRules } from './rulesRetriever';
+export { indexLore, deriveDefaultLoreMeta } from './loreIndexer';
+export type { IndexingProgress as LoreIndexingProgress } from './loreIndexer';
