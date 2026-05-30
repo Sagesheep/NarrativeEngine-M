@@ -6,6 +6,21 @@ export type SearchHit = {
     score: number;
 };
 
+/** Internal hit that carries the vector for MMR computation. Discarded before return. */
+type ScoredVector = SearchHit & { vector: number[] };
+
+/**
+ * Balance between query-relevance (1.0) and diversity (0.0).
+ * 0.7 = strongly relevance-leaning, still penalises near-duplicates.
+ */
+const MMR_LAMBDA = 0.7;
+
+/**
+ * Minimum pool size before MMR is worth running.
+ * Below this the diversity benefit is negligible and we skip for speed.
+ */
+const MMR_MIN_POOL = 4;
+
 export function cosineSimilarity(a: number[], b: number[]): number {
     let dot = 0, normA = 0, normB = 0;
     for (let i = 0; i < a.length; i++) {
@@ -16,8 +31,51 @@ export function cosineSimilarity(a: number[], b: number[]): number {
     return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
 }
 
-function dedupeSubChunks(hits: SearchHit[]): SearchHit[] {
-    const bestByBase = new Map<string, SearchHit>();
+/**
+ * Greedy Maximal Marginal Relevance selection.
+ * Picks `topK` items from `pool` balancing query-relevance against similarity
+ * to already-selected items, using `lambda` to weight the trade-off.
+ *
+ * Pure computation — no I/O, no async. Runs fine in Lite mode.
+ */
+export function mmrSelect(pool: ScoredVector[], topK: number, lambda = MMR_LAMBDA): SearchHit[] {
+    if (pool.length <= topK) return pool.map(({ id, score }) => ({ id, score }));
+
+    const selected: ScoredVector[] = [];
+    const remaining = [...pool];
+
+    // Seed with the highest-relevance candidate
+    remaining.sort((a, b) => b.score - a.score);
+    selected.push(remaining.shift()!);
+
+    while (selected.length < topK && remaining.length > 0) {
+        let bestIdx = -1;
+        let bestMmr = -Infinity;
+
+        for (let i = 0; i < remaining.length; i++) {
+            const candidate = remaining[i];
+            // Max similarity to any already-selected item
+            let maxSim = 0;
+            for (const sel of selected) {
+                const sim = cosineSimilarity(candidate.vector, sel.vector);
+                if (sim > maxSim) maxSim = sim;
+            }
+            const mmr = lambda * candidate.score - (1 - lambda) * maxSim;
+            if (mmr > bestMmr) {
+                bestMmr = mmr;
+                bestIdx = i;
+            }
+        }
+
+        if (bestIdx === -1) break;
+        selected.push(remaining.splice(bestIdx, 1)[0]);
+    }
+
+    return selected.map(({ id, score }) => ({ id, score }));
+}
+
+function dedupeSubChunks(hits: ScoredVector[]): ScoredVector[] {
+    const bestByBase = new Map<string, ScoredVector>();
     for (const hit of hits) {
         const baseId = hit.id.replace(/#w\d+$/, '');
         const existing = bestByBase.get(baseId);
@@ -40,22 +98,28 @@ export async function searchVectors(
     const allEmbeddings = await offlineStorage.embeddings.getAll(campaignId, type);
     if (allEmbeddings.length === 0) return [];
 
-    const scored = allEmbeddings.map(entry => {
+    const scored: ScoredVector[] = allEmbeddings.map(entry => {
         let maxScore = 0;
         for (const qv of queryVectors) {
             const s = cosineSimilarity(qv, entry.vector);
             if (s > maxScore) maxScore = s;
         }
-        return { id: entry.id, score: maxScore };
+        return { id: entry.id, score: maxScore, vector: entry.vector };
     });
 
     scored.sort((a, b) => b.score - a.score);
 
     const filtered = minScore > 0 ? scored.filter(h => h.score >= minScore) : scored;
 
-    const topHits = filtered.slice(0, topK);
+    // Dedupe sub-chunks (preserves vectors for MMR) before diversity selection
+    const deduped = dedupeSubChunks(filtered);
 
-    return dedupeSubChunks(topHits);
+    // Apply MMR diversity for scene type only; other types use plain top-K
+    if (type === 'scene' && deduped.length >= MMR_MIN_POOL) {
+        return mmrSelect(deduped, topK);
+    }
+
+    return deduped.slice(0, topK).map(({ id, score }) => ({ id, score }));
 }
 
 export async function semanticSearch(

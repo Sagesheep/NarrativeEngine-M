@@ -407,7 +407,12 @@ export function retrieveArchiveMemory(
 
 /**
  * Fetch full verbatim scene content from the server for a set of scene IDs.
- * Returns scenes within the token budget, sorted chronologically.
+ *
+ * Inclusion is decided by **rank order** (the order of `sceneIds` as passed in,
+ * which comes from `retrieveArchiveMemory`'s relevance ranking). The token budget
+ * is filled greedily from highest-rank to lowest-rank, so a high-ranked scene is
+ * never dropped just because it has a later scene number. Once selected, scenes
+ * are sorted chronologically for readable injection.
  */
 export async function fetchArchiveScenes(
     campaignId: string,
@@ -421,24 +426,37 @@ export async function fetchArchiveScenes(
         const raw = await offlineStorage.archive.getScenes(campaignId, sceneIds);
 
         const deduped = excludeSceneIds ? raw.filter(s => !excludeSceneIds.has(s.sceneId)) : raw;
-        const sorted = deduped.sort((a, b) => parseInt(a.sceneId) - parseInt(b.sceneId));
+
+        // Build a map for O(1) lookup so we can walk in rank order
+        const byId = new Map<string, ArchiveScene>(deduped.map(s => [s.sceneId, s]));
+
+        // Walk sceneIds in rank order (highest relevance first) and fill the budget
         const selected: ArchiveScene[] = [];
         let usedTokens = 0;
 
-        for (const scene of sorted) {
+        for (const id of sceneIds) {
+            const scene = byId.get(id);
+            if (!scene) continue; // not fetched (missing or excluded)
+
             const tokens = countTokens(scene.content);
             if (usedTokens + tokens > tokenBudget) {
+                // Truncate if meaningful space remains; either way stop — lower-ranked
+                // scenes are even less likely to fit
                 const remaining = tokenBudget - usedTokens;
                 if (remaining > 150) {
                     const maxChars = Math.floor(remaining * 4);
                     const truncated = scene.content.slice(0, maxChars) + '\n[...scene truncated for context budget...]';
                     selected.push({ sceneId: scene.sceneId, content: truncated, tokens: remaining });
+                    usedTokens += remaining;
                 }
                 break;
             }
             selected.push({ sceneId: scene.sceneId, content: scene.content, tokens });
             usedTokens += tokens;
         }
+
+        // Sort chronologically for readable injection (does not affect which scenes were chosen)
+        selected.sort((a, b) => parseInt(a.sceneId) - parseInt(b.sceneId));
 
         console.log(
             `[Archive Retrieval] Fetched ${selected.length}/${raw.length} scenes ` +
