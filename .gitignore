@@ -28,3 +28,14 @@ data
 .opencode/
 reddit_post.json
 *.apk
+
+# Graphify Outputs
+graphify-out/
+
+# AI agent tooling / local artifacts
+.agent/
+.graphifyignore
+AGENTS.md
+CLAUDE.md
+opencode.json
+

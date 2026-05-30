@@ -2,32 +2,39 @@
 
 **AI Tier: Strong AI** (Opus 4.7 / GPT-5 / GLM-5.1)
 
-ChatArea is the heart of the user-facing turn loop: it subscribes to 62 store fields, manages 23 useState + 4 useRef, and orchestrates `runTurn` via 15+ callbacks plus an abort controller. A hook extraction here can plausibly compile clean but break: streaming, abort-mid-stream, edit-and-regenerate, scroll-during-stream, scene note banner, deep archive arming, divergence extraction, or pinned memories.
+> [!IMPORTANT]
+> **Reconciled against live code on 2026-05-29 (phases 1–6 complete).** This doc predates several features that have since been added to ChatArea (forced-intervention AIs, pending arc seed / CreateTrouble, deep-archive arming, the explicit divergence-save wrap). Counts and the file path below were stale and are corrected. Verify against source before acting.
+
+ChatArea is the heart of the user-facing turn loop: it subscribes to ~38 store fields (via one `useShallow` selector), manages 9 `useState` + 5 `useRef`, and orchestrates `runTurn` via ~16 callbacks plus an abort controller. A hook extraction here can plausibly compile clean but break: streaming, abort-mid-stream, edit-and-regenerate, scroll-during-stream, scene note banner, deep archive arming, divergence extraction/persistence, pinned memories, forced interventions, or the arc-seed queue.
 
 **MANDATORY:** Runtime test the listed scenarios after extraction. Type-check alone is insufficient.
 
 ## Current state
 
-`src/components/chat/ChatArea.tsx` (391 lines):
-- `handleSend()` (78 lines): runTurn invocation + streaming state + abort + callbacks
-- 4 useEffect hooks for scroll behavior + streaming stats polling
-- Inline confirmation dialog for clear archive
-- 62 store subscriptions
-- Already uses `useMessageEditor` and `useCondenser` (good base to build on)
+`src/components/ChatArea.tsx` (439 lines) — **note: the file is at `src/components/ChatArea.tsx`, NOT `src/components/chat/`. The `chat/` subfolder holds its sub-components (`MessageBubble`, `ChatInput`, `PinnedMemoriesPanel`, `CreateTroubleButton/Modal`).**
+- `handleSend()` (~lines 122–211, ~90 lines): builds the large `runTurn` input object + the ~16-callback object + abort controller. Includes arc-seed injection and deep-scan gating.
+- 4 `useEffect` hooks: scroll-to-bottom on `messages.length`; reset `streamStartRef` on `pipelinePhase`; streaming-stats `setInterval` (500ms) on `pipelinePhase`; scroll listener that toggles `showScrollFab` at >400px from bottom.
+- `handleStop`, `handleClearArchive` (uses `window.confirm`, NOT a dialog component), `handleInputChange` (textarea auto-grow).
+- **`isStreaming` is LOCAL `useState` in ChatArea (line 103), not the store.** chatSlice also has its own `isStreaming`/`setStreaming` — but ChatArea uses its local one and passes `setStreaming` into `runTurn`. Don't accidentally cross these wires during extraction.
+- The divergence-extraction callback (line 204) wraps the store action AND explicitly calls `saveDivergenceRegister` — this is the turn-path divergence persistence (see Phase 7 divergence note). Preserve it.
+- Already uses `useMessageEditor` and `useCondenser` from `src/components/hooks/` (good base to build on). **New hooks should go in `src/components/hooks/`, matching the existing location — NOT `src/hooks/`.**
 
 ## Target structure
 
 ```
-src/components/chat/
-  ChatArea.tsx              ← shell (~120 lines): wire store, hooks, sub-components
-  MessageList.tsx           ← renders bubbles + load-more (~80 lines)
-  ChatFooter.tsx            ← action button bar TRIM/LORE/PINS/CLEAR (~60 lines)
-  ClearArchiveDialog.tsx    ← confirmation modal (~40 lines)
-src/hooks/
-  useTurnOrchestrator.ts    ← handleSend, handleStop, isStreaming, streamingStats, abortRef
-  useScrollBehavior.ts      ← auto-scroll-to-bottom, showScrollFab
-  useStreamingStats.ts      ← polling loop for token/sec display (extracted from useEffect)
+src/components/
+  ChatArea.tsx              ← shell: wire store, hooks, sub-components (stays at components/, or move to chat/ — pick one and update imports)
+src/components/chat/        ← (existing sub-component folder)
+  MessageList.tsx           ← NEW: renders visibleMessages + load-more button
+  ChatFooter.tsx            ← NEW: TRIM / CreateTrouble / PINS / CLEAR button bar
+  ClearArchiveDialog.tsx    ← NEW: replaces the current window.confirm in handleClearArchive
+src/components/hooks/       ← existing hooks live here (useMessageEditor, useCondenser)
+  useTurnOrchestrator.ts    ← handleSend, handleStop, isStreaming(local), loadingStatus, isCheckingNotes, abortRef, forcedAIs, arc-seed wiring
+  useScrollBehavior.ts      ← bottomRef, scrollContainerRef, showScrollFab
+  useStreamingStats.ts      ← the 500ms polling loop + streamStartRef (extracted from the two phase-driven useEffects)
 ```
+
+> **CORRECTION:** put new hooks in `src/components/hooks/` (where `useMessageEditor`/`useCondenser` already live), not `src/hooks/`. `src/hooks/` currently holds only `useRulesIndexer.ts`.
 
 ## useTurnOrchestrator shape
 
@@ -55,11 +62,13 @@ export function useTurnOrchestrator(): UseTurnOrchestratorResult {
 ```
 
 The hook owns:
-- `isStreaming`, `isCheckingNotes`, `loadingStatus` state
+- `isStreaming` (local), `isCheckingNotes`, `loadingStatus`, `forcedAIs` state
 - `abortControllerRef`
-- `runTurn` callback object construction
-- Streaming stats polling
-- Cleanup on unmount
+- `runTurn` input + ~16-callback object construction (including the `saveDivergenceRegister` wrap and the `getState()`-based fresh reads for messages/semanticFacts/chapters/timeline/etc.)
+- The arc-seed read/clear (`pendingArcSeed` → injected into `llmInput`) and deep-scan gating (`deepArmed && settings.enableDeepArchiveSearch`)
+- Cleanup on unmount (abort in-flight stream)
+
+> **CORRECTION:** the doc's claim that the hook should be "parameter-free, reading everything from the store" is mostly right, but note `handleSend` currently mixes store reads with `useAppStore.getState()` fresh reads (to avoid stale closures during a turn). Preserve that pattern — converting those `getState()` calls to selector subscriptions would reintroduce the staleness bugs they were added to fix. Streaming-stats polling is better split into its own `useStreamingStats` hook (it keys off `pipelinePhase`, not turn state).
 
 ChatArea calls `const { handleSend, isStreaming, ... } = useTurnOrchestrator();` — that's it.
 
@@ -81,6 +90,8 @@ export function useScrollBehavior(
 ```
 
 ## ChatArea after extraction
+
+> **NOTE (illustrative, not literal):** the snippet below references components that do NOT exist yet — `SceneNoteBanner` (currently inline amber JSX, lines 315–329), `ScrollFab` (currently an inline `<button>`, line 432), and props on `ChatInput` that differ from the real signature (`input`, `isStreaming`, `onChange`, `onSend`, `onStop`, `inputRef`). It also omits live features: `UtilityCallStrip`, `NPCPressureInspector`, `GenerationProgress`, `CreateTroubleButton/Modal`, the pending-arc-seed banner, and the load-older-messages control. Treat this as the shape to aim for, not a checklist of existing parts.
 
 ```tsx
 export function ChatArea() {
