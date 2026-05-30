@@ -1,6 +1,7 @@
 import type { LoreChunk } from '../../types';
 import { embeddingStorage } from '../storage/embeddingStorage';
-import { embedText, getCurrentModelId } from '../embedding';
+import { getCurrentModelId } from '../embedding';
+import { enqueueProgressiveWithExistingCheck } from '../embedding/embeddingScheduler';
 
 export type IndexingProgress = {
     phase: 'embedding' | 'orphan-cleanup' | 'done';
@@ -29,7 +30,6 @@ export async function indexLore(
 
     const currentChunkIds = new Set(chunks.map(c => c.id));
 
-    // Determine which chunks need embedding (new or model changed)
     const toEmbed: LoreChunk[] = [];
     for (const chunk of chunks) {
         if (!existingIds.has(chunk.id) || chunk.embeddedModelId !== modelId) {
@@ -37,36 +37,40 @@ export async function indexLore(
         }
     }
 
-    onProgress?.({ phase: 'embedding', current: 0, total: toEmbed.length });
-
-    let embeddedCount = 0;
     for (const chunk of toEmbed) {
-        try {
-            const vec = await embedText(chunk.content.slice(0, 500));
-            if (vec) {
-                await embeddingStorage.store(campaignId, chunk.id, Array.from(vec), 'lore', modelId);
-            }
-            chunk.embeddedModelId = modelId;
-        } catch (e) {
-            console.warn(`[LoreIndexer] Embed failed for ${chunk.id}:`, e);
-        }
-        embeddedCount++;
-        onProgress?.({ phase: 'embedding', current: embeddedCount, total: toEmbed.length });
+        chunk.embeddedModelId = modelId;
     }
 
-    // Orphan cleanup: delete embeddings for chunks that no longer exist
+    onProgress?.({ phase: 'embedding', current: 0, total: toEmbed.length });
+
+    const vectorChunks = toEmbed.filter(c => {
+        const modes = deriveDefaultLoreMeta(c);
+        return modes.includes('vector');
+    });
+
+    if (vectorChunks.length > 0) {
+        await enqueueProgressiveWithExistingCheck({
+            campaignId,
+            type: 'lore',
+            chunks: vectorChunks.map(c => ({
+                id: c.id,
+                content: c.content,
+                modes: deriveDefaultLoreMeta(c),
+                priority: c.priority,
+            })),
+        });
+    }
+
     onProgress?.({ phase: 'orphan-cleanup', current: 0, total: existingIds.size });
     let orphanCount = 0;
     for (const existingId of existingIds) {
         if (!currentChunkIds.has(existingId)) {
-            // existingIds already contains any stored #wN sub-chunk ids verbatim, so an
-            // exact-id delete covers both base chunks and window sub-chunks.
             await embeddingStorage.deleteByTypeAndId(campaignId, 'lore', existingId).catch(() => {});
             orphanCount++;
         }
         onProgress?.({ phase: 'orphan-cleanup', current: orphanCount, total: existingIds.size });
     }
 
-    console.log(`[LoreIndexer] Indexed ${toEmbed.length} chunks, cleaned ${orphanCount} orphans`);
+    console.log(`[LoreIndexer] Queued ${vectorChunks.length} chunks for progressive embedding, cleaned ${orphanCount} orphans`);
     onProgress?.({ phase: 'done', current: chunks.length, total: chunks.length });
 }

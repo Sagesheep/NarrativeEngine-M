@@ -11,14 +11,18 @@ vi.mock('../storage/embeddingStorage', () => ({
 }));
 
 vi.mock('../embedding', () => ({
-    embedText: vi.fn(() => Promise.resolve(new Float32Array([0.1, 0.2, 0.3]))),
     getCurrentModelId: vi.fn(() => 'test-model-v1'),
 }));
 
+vi.mock('../embedding/embeddingScheduler', () => ({
+    enqueueProgressiveWithExistingCheck: vi.fn(() => Promise.resolve()),
+}));
+
 import { embeddingStorage } from '../storage/embeddingStorage';
-import { embedText } from '../embedding';
+import { enqueueProgressiveWithExistingCheck } from '../embedding/embeddingScheduler';
 
 const mockGetAll = embeddingStorage.getAll as ReturnType<typeof vi.fn>;
+const mockEnqueue = enqueueProgressiveWithExistingCheck as ReturnType<typeof vi.fn>;
 
 const makeChunk = (id: string, opts: Partial<LoreChunk> = {}): LoreChunk => ({
     id,
@@ -66,7 +70,7 @@ describe('indexLore', () => {
         vi.clearAllMocks();
     });
 
-    it('embeds only new chunks (skips existing ids)', async () => {
+    it('enqueues only vector-mode chunks that need embedding', async () => {
         const existingChunk = makeChunk('existing-1', { embeddedModelId: 'test-model-v1' });
         const newChunk = makeChunk('new-1');
 
@@ -75,10 +79,13 @@ describe('indexLore', () => {
         const chunks = [existingChunk, newChunk];
         await indexLore('campaign-1', chunks);
 
-        // Only the new chunk should be embedded (existing-1 already embedded with current model)
-        expect(embedText).toHaveBeenCalledTimes(1);
-        expect(embedText).toHaveBeenCalledWith(expect.stringContaining('new-1'));
-        expect(embeddingStorage.store).toHaveBeenCalledTimes(1);
+        expect(mockEnqueue).toHaveBeenCalledTimes(1);
+        const callArgs = mockEnqueue.mock.calls[0][0];
+        expect(callArgs.campaignId).toBe('campaign-1');
+        expect(callArgs.type).toBe('lore');
+        const enqueuedIds = callArgs.chunks.map((c: any) => c.id);
+        expect(enqueuedIds).toContain('new-1');
+        expect(enqueuedIds).not.toContain('existing-1');
     });
 
     it('re-embeds chunks whose embeddedModelId differs from current model', async () => {
@@ -88,7 +95,7 @@ describe('indexLore', () => {
 
         await indexLore('campaign-1', [chunk]);
 
-        expect(embedText).toHaveBeenCalledTimes(1);
+        expect(mockEnqueue).toHaveBeenCalledTimes(1);
         expect(chunk.embeddedModelId).toBe('test-model-v1');
     });
 
@@ -99,13 +106,22 @@ describe('indexLore', () => {
 
         await indexLore('campaign-1', [chunk]);
 
-        expect(embedText).not.toHaveBeenCalled();
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('skips always-mode chunks from enqueue', async () => {
+        const alwaysChunk = makeChunk('always-1', { alwaysInclude: true });
+
+        mockGetAll.mockResolvedValue([]);
+
+        await indexLore('campaign-1', [alwaysChunk]);
+
+        expect(mockEnqueue).not.toHaveBeenCalled();
     });
 
     it('deletes orphan embeddings', async () => {
         const chunk = makeChunk('kept-1');
 
-        // Embedding storage has 'orphan-1' and 'kept-1', but chunk list only has 'kept-1'
         mockGetAll.mockResolvedValue([
             { id: 'kept-1', vector: [0.1] },
             { id: 'orphan-1', vector: [0.2] },
@@ -118,7 +134,7 @@ describe('indexLore', () => {
 
     it('does nothing when chunks array is empty', async () => {
         await indexLore('campaign-1', []);
-        expect(embedText).not.toHaveBeenCalled();
+        expect(mockEnqueue).not.toHaveBeenCalled();
         expect(embeddingStorage.store).not.toHaveBeenCalled();
     });
 });

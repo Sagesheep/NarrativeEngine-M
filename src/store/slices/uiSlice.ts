@@ -5,7 +5,7 @@ export type ReindexState = {
     active: boolean;
     total: number;
     done: number;
-    reason: 'switch' | 'lazy' | null;
+    reason: 'switch' | 'lazy' | 'progressive' | null;
 };
 
 export type UISlice = {

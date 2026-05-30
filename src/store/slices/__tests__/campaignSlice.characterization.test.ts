@@ -45,6 +45,7 @@ vi.mock('../../../services/embedding', () => ({
     getCurrentModelId: vi.fn(() => 'test-model'),
     warmupEmbedder: vi.fn(async () => {}),
     runFullReindex: vi.fn(async () => {}),
+    abortForCampaignSwitch: vi.fn(),
 }));
 
 // NOTE: apiClient is intentionally NOT mocked. The api-backed loaders

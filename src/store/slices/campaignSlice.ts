@@ -5,7 +5,7 @@ import type { LoreSlice } from './loreSlice';
 import type { NPCSlice } from './npcSlice';
 import { toast } from '../../components/Toast';
 import { debouncedSaveSettings } from './settingsSlice';
-import { runFullReindex } from '../../services/embedding';
+import { runFullReindex, abortForCampaignSwitch } from '../../services/embedding';
 import { embeddingStorage } from '../../services/storage/embeddingStorage';
 import { EMPTY_REGISTER } from '../../services/campaign-state';
 import {
@@ -133,6 +133,8 @@ type CampaignDeps = CampaignSlice & ArchiveSlice & LoreSlice & NPCSlice & {
 export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSlice> = (set, get) => ({
     activeCampaignId: null,
     setActiveCampaign: async (id) => {
+        abortForCampaignSwitch();
+
         import('../../services/infrastructure').then(({ backgroundQueue }) => {
             backgroundQueue.clear('Campaign switched');
         }).catch(() => {});

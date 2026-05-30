@@ -4,3 +4,6 @@ export { searchVectors, semanticSearch, semanticSearchScored, cosineSimilarity, 
 export type { SearchHit } from './vectorSearch';
 export { runBackfill, getBackfillCursor, backfillScenes, backfillNPCs, rebuildAllEmbeddings, runFullReindex } from './backfillRunner';
 export type { BackfillProgress } from './backfillRunner';
+export { enqueueProgressive, enqueueProgressiveWithExistingCheck, abortForCampaignSwitch, abortForModelSwitch, getQueueStats } from './embeddingScheduler';
+export type { ProgressiveChunk } from './embeddingScheduler';
+export { getForegroundPoolSize, poolEmbed, terminatePool, getActivePoolSize } from './embedderPool';

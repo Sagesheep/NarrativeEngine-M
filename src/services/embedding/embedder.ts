@@ -157,6 +157,8 @@ export async function switchEmbeddingModel(
     modelSetting: 'standard' | 'high',
     onProgress?: (progress: DownloadProgress) => void,
 ): Promise<void> {
+    import('./embeddingScheduler').then(({ abortForModelSwitch }) => abortForModelSwitch()).catch(() => {});
+
     const modelId = modelIdFromSetting(modelSetting);
     const allowRemote = allowRemoteForModel(modelId);
 

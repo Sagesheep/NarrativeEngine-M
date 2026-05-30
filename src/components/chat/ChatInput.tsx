@@ -21,13 +21,20 @@ export function ChatInput({
     const settings = useAppStore(s => s.settings);
     const reindexing = useAppStore(s => s.embeddingsReindexing);
 
-    const isReindexing = reindexing.active;
+    const blocking = reindexing.active && reindexing.reason !== 'progressive';
+    const showProgress = reindexing.active;
 
     return (
         <div className="flex-shrink-0 bg-void border-t border-border">
-            {isReindexing && (
-                <div className="px-2 py-1 bg-amber-500/10 border-b border-amber-500/30 text-amber-400 text-[10px] text-center">
-                    Re-indexing lore… {reindexing.done}/{reindexing.total}. AI turns paused.
+            {showProgress && (
+                <div className={`px-2 py-1 text-[10px] text-center ${
+                    reindexing.reason === 'progressive'
+                        ? 'bg-terminal/10 border-b border-terminal/20 text-terminal'
+                        : 'bg-amber-500/10 border-b border-amber-500/30 text-amber-400'
+                }`}>
+                    {reindexing.reason === 'progressive'
+                        ? `Embedding progress ${reindexing.done}/${reindexing.total}`
+                        : `Re-indexing lore… ${reindexing.done}/${reindexing.total}. AI turns paused.`}
                 </div>
             )}
             <div className="px-2 sm:px-4 pb-1 pt-1">
@@ -43,13 +50,13 @@ export function ChatInput({
                         ref={inputRef}
                         value={input}
                         onChange={onChange}
-                        placeholder={isReindexing ? 'Re-indexing…' : 'What do you do?'}
-                        disabled={isReindexing}
+                        placeholder={blocking ? 'Re-indexing…' : 'What do you do?'}
+                        disabled={blocking}
                         className="flex-1 bg-transparent px-2 py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[40px] leading-5 disabled:opacity-50"
                     />
                     <button
                         onClick={isStreaming ? onStop : onSend}
-                        disabled={(!isStreaming && !input.trim()) || isReindexing}
+                        disabled={(!isStreaming && !input.trim()) || blocking}
                         className={`h-[32px] w-[40px] rounded transition-all flex items-center justify-center shrink-0 ${
                             isStreaming ? 'text-amber-500 hover:bg-amber-500/10' :
                             'text-terminal hover:bg-terminal/10'

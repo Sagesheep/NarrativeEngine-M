@@ -1,7 +1,7 @@
 import type { LoreChunk, RuleChunkMeta, LLMProvider } from '../../types';
 import { chunkLoreFile } from './loreChunker';
 import { embeddingStorage } from '../storage/embeddingStorage';
-import { embedText, getCurrentModelId } from '../embedding';
+import { enqueueProgressiveWithExistingCheck } from '../embedding/embeddingScheduler';
 import { llmCall } from '../../utils/llmCall';
 import { INPUT_DELIMITER } from '../infrastructure';
 
@@ -174,19 +174,22 @@ export async function indexRules(
 
     onProgress?.({ phase: 'embedding', current: 0, total: newOrChanged.length });
 
-    let embeddedCount = 0;
-    const modelId = getCurrentModelId();
-    for (const chunk of newOrChanged) {
-        try {
-            const vec = await embedText(chunk.content.slice(0, 500));
-            if (vec) {
-                await embeddingStorage.store(campaignId, chunk.id, Array.from(vec), 'rule', modelId);
-            }
-        } catch (e) {
-            console.warn(`[RulesIndexer] Embed failed for ${chunk.id}:`, e);
-        }
-        embeddedCount++;
-        onProgress?.({ phase: 'embedding', current: embeddedCount, total: newOrChanged.length });
+    const vectorChunks = newOrChanged.filter(c => {
+        const modes = deriveDefaultMeta(c).activationModes;
+        return modes.includes('vector');
+    });
+
+    if (vectorChunks.length > 0) {
+        await enqueueProgressiveWithExistingCheck({
+            campaignId,
+            type: 'rule',
+            chunks: vectorChunks.map(c => ({
+                id: c.id,
+                content: c.content,
+                modes: deriveDefaultMeta(c).activationModes,
+                priority: c.priority,
+            })),
+        });
     }
 
     const currentIds = new Set(chunks.map(c => c.id));
