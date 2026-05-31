@@ -169,7 +169,9 @@ function reembeddedCampaign(cid: string, scenes: SceneRecord[], lore: LoreChunk[
                     .catch(() => {});
             }
             for (const chunk of lore) {
-                embedText(chunk.content.slice(0, 500))
+                // Full content — the embedder worker windows long text (mean-pooled),
+                // so truncating here would silently drop the tail of long lore chunks.
+                embedText(chunk.content)
                     .then(vec => { if (vec) offlineStorage.embeddings.store(cid, chunk.id, Array.from(vec), 'lore', modelId); })
                     .catch(() => {});
             }

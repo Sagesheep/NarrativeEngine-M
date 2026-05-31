@@ -42,6 +42,9 @@ export function retrieveRelevantRules(
     // ─── IDF computation over corpus ───
     const idf = computeIdf(chunks.map(c => (meta[c.id]?.triggerKeywords ?? c.triggerKeywords ?? [])));
 
+    const chunkById = new Map(chunks.map(c => [c.id, c]));
+    const semanticSet = new Set(semanticRuleIds || []);
+
     // ─── Keyword ranking (IDF-weighted) ───
     const keywordScored: { chunk: LoreChunk; score: number }[] = [];
 
@@ -85,9 +88,7 @@ export function retrieveRelevantRules(
         }
 
         if (!isKeywordMode && idfScore > 0) {
-            const semanticSet = new Set(semanticRuleIds || []);
-            const isSemanticHit = semanticSet.has(chunk.id);
-            if (!isSemanticHit) {
+            if (!semanticSet.has(chunk.id)) {
                 idfScore *= 0.5;
             }
         }
@@ -102,7 +103,7 @@ export function retrieveRelevantRules(
 
     // ─── Embedding ranking (already cosine-ranked) ───
     const embeddingRanked = (semanticRuleIds || []).filter(id => {
-        const chunk = chunks.find(c => c.id === id);
+        const chunk = chunkById.get(id);
         if (!chunk) return false;
         const cm = meta[chunk.id];
         const modes = cm ? cm.activationModes : ['vector'];
@@ -111,8 +112,6 @@ export function retrieveRelevantRules(
 
     // ─── RRF fusion ───
     const fused = fuseRRF(keywordRanked, embeddingRanked);
-
-    const chunkById = new Map(chunks.map(c => [c.id, c]));
 
     for (const id of fused) {
         const chunk = chunkById.get(id);

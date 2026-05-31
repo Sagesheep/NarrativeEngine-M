@@ -48,6 +48,9 @@ export function retrieveRelevantLore(
     // ─── IDF computation over corpus ───
     const idf = computeIdf(chunks.map(c => c.triggerKeywords ?? []));
 
+    const chunkById = new Map(chunks.map(c => [c.id, c]));
+    const semanticSet = new Set(semanticLoreIds || []);
+
     // ─── Keyword ranking (IDF-weighted) ───
     const keywordScored: { chunk: LoreChunk; score: number }[] = [];
 
@@ -77,9 +80,7 @@ export function retrieveRelevantLore(
 
         // Vector-only chunks with keyword overlap but no semantic hit get reduced weight
         if (idfScore > 0 && !isKeywordMode) {
-            const semanticSet = new Set(semanticLoreIds || []);
-            const isSemanticHit = semanticSet.has(chunk.id);
-            if (!isSemanticHit) {
+            if (!semanticSet.has(chunk.id)) {
                 idfScore *= 0.5;
             }
         }
@@ -124,7 +125,7 @@ export function retrieveRelevantLore(
     // ─── Embedding ranking (already cosine-ranked) ───
     const embeddingRanked = (semanticLoreIds || [])
         .filter(id => {
-            const chunk = chunks.find(c => c.id === id);
+            const chunk = chunkById.get(id);
             if (!chunk) return false;
             const modes = chunk.activationModes;
             const isVectorMode = modes ? modes.includes('vector') : true;
@@ -133,9 +134,6 @@ export function retrieveRelevantLore(
 
     // ─── RRF fusion ───
     const fused = fuseRRF(keywordRanked, embeddingRanked);
-
-    // Build a map for quick chunk lookup
-    const chunkById = new Map(chunks.map(c => [c.id, c]));
 
     for (const id of fused) {
         const chunk = chunkById.get(id);
