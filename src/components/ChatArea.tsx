@@ -239,9 +239,6 @@ export function ChatArea() {
         resetCondenser,
     });
 
-    useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages.length]);
 
     const pipelinePhase = useAppStore(s => s.pipelinePhase);
 
