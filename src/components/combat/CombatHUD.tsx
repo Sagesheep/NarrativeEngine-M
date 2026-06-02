@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Sword, Move, Shield, Crosshair, Send } from 'lucide-react';
+import { Sword, Move, Shield, Crosshair, Send, LogOut } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { checkRangeLegality } from '../../services/engine/combatEngine';
@@ -253,8 +253,19 @@ export function CombatHUD({ onActionCommitted }: CombatHUDProps) {
                         <div className="h-full bg-blue-500 transition-all duration-300 rounded-full" style={{ width: `${Math.max(0, focPercent)}%` }} />
                     </div>
                 </div>
-                <div className="text-[9px] text-text-dim uppercase tracking-widest">
-                    R{combatState.round}
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[9px] text-text-dim uppercase tracking-widest">R{combatState.round}</span>
+                    <button
+                        onClick={() => {
+                            terminateCombat({ writeBack: true });
+                            toast.success('Combat ended');
+                            onActionCommitted?.();
+                        }}
+                        title="End combat"
+                        className="flex items-center gap-1 px-2 py-1 text-[9px] uppercase tracking-widest font-bold rounded border border-red-500/40 text-red-400/80 hover:bg-red-500/10 hover:text-red-400 transition-all min-h-[32px]"
+                    >
+                        <LogOut size={11} /> End
+                    </button>
                 </div>
             </div>
 
