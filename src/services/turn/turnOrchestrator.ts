@@ -628,8 +628,9 @@ export async function handleCombatAction(
     callbacks.addMessage(ledgerMsg);
 
     if (turnResult.terminated) {
+        // Clear the live fight (HUD closes via combatState). Leave combatModeActive (the
+        // feature master switch) ON — ending one fight must not disable Combat Mode.
         callbacks.terminateCombat({ writeBack: true });
-        callbacks.updateContext({ combatModeActive: false });
     }
 
     if (llmCallCount < 2) {

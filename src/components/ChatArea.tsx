@@ -107,6 +107,7 @@ export function ChatArea() {
     })));
 
     const initiateCombatFromStore = useAppStore(s => s.initiateCombat);
+    const combatState = useAppStore(s => s.combatState);
     const items = useAppStore(s => s.items);
     const skills = useAppStore(s => s.skills);
 
@@ -151,7 +152,7 @@ export function ChatArea() {
         const combatConfig = context.combatConfig ?? {};
         const combatAutoDetect = combatConfig.combatAutoDetect ?? false;
 
-        if (combatAutoDetect && !context.combatModeActive && !skipCombatScan) {
+        if (context.combatModeActive && combatAutoDetect && !combatState?.active && !skipCombatScan) {
             const derivedNouns = [
                 ...items.map(i => i.name),
                 ...skills.map(s => s.name),
@@ -539,7 +540,7 @@ export function ChatArea() {
                 </div>
             )}
 
-            {context.combatModeActive ? (
+            {combatState?.active ? (
                 <CombatHUD onActionCommitted={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })} />
             ) : (
                 <ChatInput
