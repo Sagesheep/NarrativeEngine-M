@@ -44,6 +44,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         npcLedger,
         archiveRecall,
         onStageNpcIds,
+        sceneNumber,
         recommendedNPCNames,
         semanticFactText,
         deepContextSummary,
@@ -69,6 +70,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         context,
         relevantRules,
         budgetMap,
+        sceneNumber,
         addTrace,
     });
 

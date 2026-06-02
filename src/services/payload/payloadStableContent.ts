@@ -46,11 +46,13 @@ export function buildStablePreamble(opts: {
     context: { rulesRaw?: string; starterActive?: boolean; starter?: string; continuePromptActive?: boolean; continuePrompt?: string; diceFairnessActive?: boolean };
     relevantRules?: { header: string; content: string }[];
     budgetMap: BudgetMap;
+    sceneNumber?: string;
     addTrace: (t: PayloadTrace) => void;
 }): StableContentResult {
-    const { settings, context, relevantRules, budgetMap, addTrace } = opts;
+    const { settings, context, relevantRules, budgetMap, sceneNumber, addTrace } = opts;
 
     const stableParts: string[] = [];
+    if (sceneNumber) stableParts.push(`[CURRENT SCENE: #${sceneNumber}]`);
     let retrievedRulesContent: string | undefined;
     if (context.rulesRaw) {
         const rulesTokenCount = countTokens(context.rulesRaw);
