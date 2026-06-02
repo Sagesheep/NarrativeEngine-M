@@ -70,7 +70,6 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         context,
         relevantRules,
         budgetMap,
-        sceneNumber,
         addTrace,
     });
 
