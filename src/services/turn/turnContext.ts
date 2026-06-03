@@ -429,7 +429,9 @@ export async function gatherContext(
     let semanticFactText = '';
     try {
         semanticFactText = formatFactsForContext(queryFacts(semanticFacts, finalInput, messages, npcLedger, 500));
-    } catch {}
+    } catch (_e) {
+        // Ignored
+    }
 
     try {
         const timeline = state.timeline;
@@ -438,7 +440,9 @@ export async function gatherContext(
             const resolvedText = formatResolvedForContext(resolveTimeline(timeline));
             if (resolvedText) semanticFactText += '\n' + resolvedText;
         }
-    } catch {}
+    } catch (_e) {
+        // Ignored
+    }
 
     let recommendedNPCNames: string[] | undefined;
     const utilityEndpoint = state.getUtilityEndpoint?.();

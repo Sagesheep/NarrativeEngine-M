@@ -11,6 +11,8 @@ import {
 import type { LLMProvider } from '../../types';
 
 const openaiProvider: LLMProvider = {
+    id: 'openai-test',
+    label: 'OpenAI Test',
     endpoint: 'https://api.openai.com/v1',
     apiKey: 'sk-test',
     modelName: 'gpt-4',
@@ -18,6 +20,8 @@ const openaiProvider: LLMProvider = {
 };
 
 const ollamaProvider: LLMProvider = {
+    id: 'ollama-test',
+    label: 'Ollama Test',
     endpoint: 'http://localhost:11434',
     apiKey: '',
     modelName: 'llama3',
@@ -25,6 +29,8 @@ const ollamaProvider: LLMProvider = {
 };
 
 const claudeProvider: LLMProvider = {
+    id: 'claude-test',
+    label: 'Claude Test',
     endpoint: 'https://api.anthropic.com/v1',
     apiKey: 'sk-ant-test',
     modelName: 'claude-3-opus',
@@ -32,6 +38,8 @@ const claudeProvider: LLMProvider = {
 };
 
 const geminiProvider: LLMProvider = {
+    id: 'gemini-test',
+    label: 'Gemini Test',
     endpoint: 'https://generativelanguage.googleapis.com/v1beta',
     apiKey: 'AIza-test',
     modelName: 'gemini-pro',
@@ -40,7 +48,7 @@ const geminiProvider: LLMProvider = {
 
 describe('getApiFormat', () => {
     it('returns openai by default', () => {
-        expect(getApiFormat({ endpoint: '', apiKey: '', modelName: '' })).toBe('openai');
+        expect(getApiFormat({ id: 'default', label: 'Default', endpoint: '', apiKey: '', modelName: '' })).toBe('openai');
     });
     it('returns the specified format', () => {
         expect(getApiFormat(ollamaProvider)).toBe('ollama');

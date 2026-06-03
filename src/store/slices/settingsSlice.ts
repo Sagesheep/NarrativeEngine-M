@@ -12,7 +12,7 @@ import {
     defaultSettings,
     migrateSettings
 } from '../settingsMigration';
-import { uid } from '../../utils/uid';
+
 
 export const DEFAULT_SURPRISE_TYPES = [
     "STREET_DRAMA", "FOUND_OBJECT", "OVERHEARD_GOSSIP", "ANIMAL_INCIDENT",

@@ -873,6 +873,8 @@ describe('handleCombatAction — engine-before-narration via real handler', () =
             getAuxiliaryProvider: () => undefined,
             getStoryProvider: () => undefined,
             narrateCombatOutcome: narrateSpy,
+            items: [],
+            skills: [],
         });
 
         expect(callOrder[0]).toBe('engine');
@@ -884,11 +886,9 @@ describe('handleCombatAction — engine-before-narration via real handler', () =
 
     it('freeform action: 2 LLM calls max per round (adjudicate + narrate)', async () => {
         const combatState = makeCombatState();
-        let llmCalls = 0;
         const callOrder: string[] = [];
 
         const narrateSpy = vi.fn().mockImplementation(async () => {
-            llmCalls++;
             callOrder.push('narrate');
         });
 
@@ -908,7 +908,6 @@ describe('handleCombatAction — engine-before-narration via real handler', () =
             baseAction: { type: 'attack', actorId: 'hero', targetId: 'enemy', weaponRange: 'Close', attackBonus: 5, weaponDie: 8, scalingStatMod: 3 },
         };
 
-        llmCalls = 0;
         await handleCombatAction(source, combatState, {
             addMessage: () => {},
             updateContext: () => {},
@@ -917,6 +916,8 @@ describe('handleCombatAction — engine-before-narration via real handler', () =
             getAuxiliaryProvider: () => undefined,
             getStoryProvider: () => undefined,
             narrateCombatOutcome: narrateSpy,
+            items: [],
+            skills: [],
         });
 
         expect(callOrder[0]).toBe('engine');
@@ -945,6 +946,8 @@ describe('handleCombatAction — engine-before-narration via real handler', () =
             getAuxiliaryProvider: () => undefined,
             getStoryProvider: () => undefined,
             narrateCombatOutcome: async () => {},
+            items: [],
+            skills: [],
         });
 
         expect(capturedState).not.toBeNull();
@@ -969,6 +972,8 @@ describe('handleCombatAction — engine-before-narration via real handler', () =
             getAuxiliaryProvider: () => undefined,
             getStoryProvider: () => undefined,
             narrateCombatOutcome: async () => {},
+            items: [],
+            skills: [],
         });
 
         const ledgerMsg = messages.find(m => m.name === 'combat-ledger');
@@ -1053,6 +1058,8 @@ describe('Phase 4.1: Freeform combat path (adjudicated stat, riskOnFail)', () =>
             getAuxiliaryProvider: () => auxProvider,
             getStoryProvider: () => undefined,
             narrateCombatOutcome: async () => {},
+            items: [],
+            skills: [],
         });
 
         expect(mockLlmCall).toHaveBeenCalledTimes(1);
@@ -1315,6 +1322,8 @@ describe('Phase 4.1: Freeform combat path (adjudicated stat, riskOnFail)', () =>
             getAuxiliaryProvider: () => undefined,
             getStoryProvider: () => undefined,
             narrateCombatOutcome: async () => { narrateCallCount++; },
+            items: [],
+            skills: [],
         });
 
         expect(narrateCallCount).toBe(1);
@@ -1348,6 +1357,8 @@ describe('Phase 4.1: Freeform combat path (adjudicated stat, riskOnFail)', () =>
             getAuxiliaryProvider: () => undefined,
             getStoryProvider: () => undefined,
             narrateCombatOutcome: async () => {},
+            items: [],
+            skills: [],
         });
 
         // Phase A: the PC's base action plus one auto-generated enemy action.

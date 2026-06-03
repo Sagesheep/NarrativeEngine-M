@@ -3,6 +3,8 @@ import { rerankCandidates, type RerankCandidate } from '../payload';
 import type { LLMProvider } from '../../types';
 
 const mockEndpoint: LLMProvider = {
+    id: 'test-provider-id',
+    label: 'Test Provider',
     endpoint: 'http://localhost:11434/v1/chat/completions',
     apiKey: '',
     modelName: 'test-model',
@@ -73,7 +75,7 @@ describe('semanticReranker', () => {
 
     it('handles think block wrapping', () => {
         const raw = '<think>reasoning</think>["scene-5", "scene-3"]';
-        let clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
+        const clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
         const start = clean.indexOf('[');
         const end = clean.lastIndexOf(']');
         const arr = JSON.parse(clean.substring(start, end + 1));

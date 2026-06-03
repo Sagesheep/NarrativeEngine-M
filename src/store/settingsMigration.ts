@@ -1,4 +1,4 @@
-import type { AppSettings, AIPreset, LLMProvider, NPCEntry } from '../types';
+import type { AppSettings, AIPreset, LLMProvider, NPCEntry, ApiFormat } from '../types';
 import { uid } from '../utils/uid';
 
 export const defaultProvider: LLMProvider = {
@@ -141,7 +141,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
                 endpoint: (raw.endpoint as string) || defaultProvider.endpoint,
                 apiKey: (raw.apiKey as string) || '',
                 modelName: (raw.modelName as string) || defaultProvider.modelName,
-                apiFormat: (raw.apiFormat as string) || 'openai',
+                apiFormat: (raw.apiFormat as ApiFormat) || 'openai',
                 streamingEnabled: true,
             };
         }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { scanCombatIntent, applyRoutingRules } from '../turn/combatScanner';
 import { handleAdjudicateTool, handleInitiateCombatTool } from '../turn/toolHandlers';
 import { COMBAT_TIER_ARCHETYPE_RUBRIC } from '../npc/npcDetector';
+import type { LLMProvider } from '../../types';
 
 vi.mock('../../utils/llmCall', () => ({
     llmCall: vi.fn(),
@@ -11,8 +12,8 @@ import { llmCall } from '../../utils/llmCall';
 
 const mockLlmCall = vi.mocked(llmCall);
 
-function makeProvider() {
-    return { endpoint: 'http://test', modelName: 'test-model', apiKey: 'test' };
+function makeProvider(): LLMProvider {
+    return { id: 'test-provider-id', label: 'Test Provider', endpoint: 'http://test', modelName: 'test-model', apiKey: 'test' };
 }
 
 describe('combatScanner', () => {
