@@ -121,7 +121,7 @@ Each folder contains three files you'll copy into the app:
 
 | File | Where it goes in the app |
 |---|---|
-| `AI_GM_OS_v3_0_App_Optimized.md` | **Campaign Settings → System Prompt** |
+| `AI_GM_OS_v3_4_App_Optimized.md` | **Campaign Settings → System Prompt** |
 | `*_world_lore*.md` / `awakening_world.md` | **World Info (Lore)** tab |
 | `starter_prompt.md` / `campaign_start_seed.md` | Your **first message** in the chat |
 
