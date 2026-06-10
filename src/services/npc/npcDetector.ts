@@ -256,18 +256,22 @@ When in doubt, REJECT. If none are valid names, return [].`,
             const cleanStr = extractJson(raw);
             const parsed = JSON.parse(cleanStr);
             if (Array.isArray(parsed)) {
-                const validLower = new Set(parsed.map(s => String(s).toLowerCase()));
-                const filtered = candidates.filter(c => validLower.has(c.toLowerCase()));
+                const validLower = new Set(parsed.map(s => String(s).trim().toLowerCase()));
+                const filtered = candidates.filter(c => validLower.has(c.trim().toLowerCase()));
                 console.log(`[NPC Validator] Filtered ${candidates.length} down to ${filtered.length}:`, filtered);
                 return filtered;
             }
         }
+        // Empty response or non-array shape (common with weak utility models):
+        // a malformed validator output every turn would silently drop EVERY name.
+        // Per this function's contract, fall back to the unvalidated candidates
+        // rather than rejecting them — false positives are cheaper than total failure.
+        console.warn(`[NPC Validator] No usable JSON array from validator — falling back to ${candidates.length} unvalidated candidate(s).`);
+        return candidates;
     } catch (err) {
-        console.warn(`[NPC Validator] API failure — rejecting all candidates this pass:`, err);
-        return [];
+        console.warn(`[NPC Validator] API/parse failure — falling back to unvalidated candidates this pass:`, err);
+        return candidates;
     }
-
-    return [];
 }
 
 export const COMBAT_TIER_ARCHETYPE_RUBRIC = `For any NPC who could plausibly fight, also assign:

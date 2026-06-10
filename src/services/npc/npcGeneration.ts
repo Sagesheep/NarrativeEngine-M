@@ -350,7 +350,7 @@ Corrected: include ONLY the field that changed —
                 if (!update.name || !update.changes) continue;
 
                 const targetNpc = npcsToCheck.find(n =>
-                    n.name.toLowerCase() === update.name!.toLowerCase() ||
+                    n.name?.toLowerCase() === update.name!.toLowerCase() ||
                     (n.aliases && n.aliases.toLowerCase().includes(update.name!.toLowerCase()))
                 );
 

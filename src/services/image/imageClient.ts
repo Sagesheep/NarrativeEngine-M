@@ -74,36 +74,41 @@ async function generateOpenAI(
         await queue.acquireSlot(priority);
 
         if (isNative) {
+            // Release the slot exactly once per acquired slot. The request itself
+            // is the only thing that can fail before release; the post-release
+            // status checks must NOT trigger a second releaseSlot() (that would
+            // under-count inflight and corrupt this — potentially shared — queue).
+            let nativeRes;
             try {
-                const nativeRes = await CapacitorHttp.post({
+                nativeRes = await CapacitorHttp.post({
                     url,
                     headers,
                     data: body,
                     readTimeout: 120000,
                     connectTimeout: 15000,
                 });
-
-                queue.releaseSlot();
-
-                const nativeRetryable = nativeRes.status === 429 || nativeRes.status === 503 || nativeRes.status === 529;
-                if (nativeRetryable) {
-                    queue.onRateLimitHit();
-                    if (attempt === MAX_RETRIES) {
-                        throw new Error(`Image API error ${nativeRes.status} (retries exhausted)`);
-                    }
-                    await new Promise(resolve => setTimeout(resolve, DEFAULT_RETRY_DELAY_MS));
-                    continue;
-                }
-
-                if (nativeRes.status < 200 || nativeRes.status >= 300) {
-                    throw new Error(`Image API error ${nativeRes.status}: ${JSON.stringify(nativeRes.data)}`);
-                }
-
-                return extractOpenAIImage(nativeRes.data, includeResponseFormat);
             } catch (e) {
                 queue.releaseSlot();
                 throw e;
             }
+
+            queue.releaseSlot();
+
+            const nativeRetryable = nativeRes.status === 429 || nativeRes.status === 503 || nativeRes.status === 529;
+            if (nativeRetryable) {
+                queue.onRateLimitHit();
+                if (attempt === MAX_RETRIES) {
+                    throw new Error(`Image API error ${nativeRes.status} (retries exhausted)`);
+                }
+                await new Promise(resolve => setTimeout(resolve, DEFAULT_RETRY_DELAY_MS));
+                continue;
+            }
+
+            if (nativeRes.status < 200 || nativeRes.status >= 300) {
+                throw new Error(`Image API error ${nativeRes.status}: ${JSON.stringify(nativeRes.data)}`);
+            }
+
+            return extractOpenAIImage(nativeRes.data, includeResponseFormat);
         }
 
         let res: Response;
