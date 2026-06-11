@@ -19,7 +19,33 @@ import type {
     SkillDef,
     InventoryProposal,
     PinnedExcerpt,
+    ThinkingEffort,
 } from '../../types';
+import type { LLMCallPriority } from '../../utils/llmCall';
+
+// ── UtilityLLM port (Plan 4 — the single injection point for utility LLM access) ──
+// Wraps llmCall + utility-endpoint lookup so retrieval stages can be tested with
+// scripted responses instead of network mocking. `realUtilityLLM` (utilityLLM.ts)
+// is the production adapter; gatherContext defaults to it.
+
+export interface UtilityCallOpts {
+    signal?: AbortSignal;
+    maxTokens?: number;
+    temperature?: number;
+    priority?: LLMCallPriority;
+    thinkingEffort?: ThinkingEffort;
+    /** If set, registers the call with utilityCallTracker so the UI can show a countdown. */
+    trackingLabel?: string;
+    /** Soft deadline in ms; on expiry llmCall rejects with UtilityTimeoutError. */
+    timeoutMs?: number;
+}
+
+export interface UtilityLLM {
+    /** Delegates to llmCall(endpoint(), prompt, opts). Rejects if no endpoint is configured. */
+    call(prompt: string, opts?: UtilityCallOpts): Promise<string>;
+    /** The current utility endpoint, or undefined if none is configured. */
+    endpoint(): LLMProvider | undefined;
+}
 
 export type TurnCallbacks = {
     onCheckingNotes: (checking: boolean) => void;

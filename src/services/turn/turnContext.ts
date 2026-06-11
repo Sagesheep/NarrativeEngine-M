@@ -1,5 +1,6 @@
 import type { LoreChunk, ArchiveScene } from '../../types';
-import type { TurnCallbacks, TurnState } from './turnTypes';
+import type { TurnCallbacks, TurnState, UtilityLLM } from './turnTypes';
+import { realUtilityLLM } from './utilityLLM';
 import { tierAllows } from './aiTier';
 import { buildPayload } from '../chatEngine';
 import { retrieveRelevantLore, retrieveRelevantRules } from '../lore';
@@ -10,8 +11,6 @@ import { queryFacts, formatFactsForContext, formatResolvedForContext, getDiverge
 import { semanticSearch, semanticSearchScored, isEmbedderReady } from '../embedding';
 import type { SearchHit } from '../embedding/vectorSearch';
 import { rerankCandidates, type RerankCandidate } from '../payload';
-import type { LLMProvider } from '../../types';
-import { llmCall } from '../../utils/llmCall';
 import {
     countTokens,
     ANCHOR_BEFORE_INPUT,
@@ -50,7 +49,7 @@ export async function runPlannerCall(
     recentMessages: Array<{ role?: string; content?: string }>,
     npcLedger: import('../../types').NPCEntry[],
     chapterSummary: string | undefined,
-    utilityEndpoint: LLMProvider,
+    utilityLLM: UtilityLLM,
     timeoutSeconds?: number,
 ): Promise<PlannerResult | null> {
     try {
@@ -97,7 +96,7 @@ export async function runPlannerCall(
             `CHAPTER SUMMARY (if any):\n${chapterSummary || '(no chapter summary)'}`,
         );
 
-        const raw = await llmCall(utilityEndpoint, prompt, {
+        const raw = await utilityLLM.call(prompt, {
             temperature: 0.1,
             priority: 'high',
             maxTokens: 400,
@@ -120,7 +119,7 @@ export async function runPlannerCall(
     }
 }
 
-async function expandQuery(query: string, npcLedger: import('../../types').NPCEntry[], utilityEndpoint: LLMProvider, timeoutMs?: number): Promise<string[]> {
+async function expandQuery(query: string, npcLedger: import('../../types').NPCEntry[], utilityLLM: UtilityLLM, timeoutMs?: number): Promise<string[]> {
     try {
         const npcContext = npcLedger.slice(0, 10).map(n => n.name).join(', ');
         const prompt = joinPromptSections(
@@ -136,7 +135,7 @@ async function expandQuery(query: string, npcLedger: import('../../types').NPCEn
             `Known NPCs: ${npcContext}`,
         );
 
-        const raw = await llmCall(utilityEndpoint, prompt, {
+        const raw = await utilityLLM.call(prompt, {
             temperature: 0.2,
             priority: 'high',
             maxTokens: 200,
@@ -178,7 +177,8 @@ export async function gatherContext(
     state: TurnState,
     callbacks: TurnCallbacks,
     finalInput: string,
-    userMsgId: string
+    userMsgId: string,
+    utilityLLM: UtilityLLM = realUtilityLLM(() => state.getUtilityEndpoint?.()),
 ): Promise<GatheredContext> {
     const { settings, loreChunks, npcLedger, archiveIndex, activeCampaignId } = state;
     const utilityTimeoutMs = (settings.utilityTimeoutSeconds ?? 45) * 1000;
@@ -187,13 +187,13 @@ export async function gatherContext(
     let semanticLoreIds: string[] | undefined;
     let semanticRuleIds: string[] | undefined;
 
-    const plannerEndpoint = state.getUtilityEndpoint?.();
+    const plannerEndpoint = utilityLLM.endpoint();
     let plannerResult: PlannerResult | null = null;
     let plannerPromise: Promise<PlannerResult | null> = Promise.resolve(null);
     if (tierAllows(settings.aiTier, 'planner') && plannerEndpoint?.endpoint) {
         const recentForPlanner = state.getMessages().filter(m => m.id !== userMsgId).slice(-8);
         const chapterSummary = state.chapters.length > 0 ? state.chapters[state.chapters.length - 1].summary : undefined;
-        plannerPromise = runPlannerCall(finalInput, recentForPlanner, npcLedger, chapterSummary, plannerEndpoint, settings.utilityTimeoutSeconds);
+        plannerPromise = runPlannerCall(finalInput, recentForPlanner, npcLedger, chapterSummary, utilityLLM, settings.utilityTimeoutSeconds);
     }
 
     if (isEmbedderReady() && activeCampaignId) {
@@ -201,12 +201,12 @@ export async function gatherContext(
             let queries = [finalInput];
             const isCallback = CALLBACK_REGEX.test(finalInput);
             const isShort = finalInput.trim().split(/\s+/).length < 8;
-            const expansionEndpoint = state.getUtilityEndpoint?.();
+            const expansionEndpoint = utilityLLM.endpoint();
 
             const [resolvedPlanner, expandedQueries] = await Promise.all([
                 plannerPromise,
                 (isCallback || isShort) && expansionEndpoint?.endpoint && tierAllows(settings.aiTier, 'expandQuery')
-                    ? expandQuery(finalInput, npcLedger, expansionEndpoint, utilityTimeoutMs)
+                    ? expandQuery(finalInput, npcLedger, utilityLLM, utilityTimeoutMs)
                     : Promise.resolve([finalInput]),
             ]);
 
@@ -240,7 +240,7 @@ export async function gatherContext(
         }
     }
 
-    const rerankerEndpoint = state.getUtilityEndpoint?.();
+    const rerankerEndpoint = utilityLLM.endpoint();
     if (tierAllows(settings.aiTier, 'reranker') && rerankerEndpoint?.endpoint && (semanticArchiveIds?.length || semanticLoreIds?.length)) {
         try {
             if (semanticArchiveIds && semanticArchiveIds.length >= 5) {
@@ -354,7 +354,7 @@ export async function gatherContext(
     if (tierAllows(settings.aiTier, 'archiveFunnel') && chapters.length > 0 && activeCampaignId) {
         const funnelAbort = new AbortController();
         try {
-            const utilityEndpoint = state.getUtilityEndpoint?.();
+            const utilityEndpoint = utilityLLM.endpoint();
             if (!utilityEndpoint) throw new Error('No utility endpoint');
             const funnelPromise = recallWithChapterFunnel(
                 activeCampaignId, chapters, archiveIndex, finalInput, messages, npcLedger, semanticFacts, archiveRecallBudget, utilityEndpoint, undefined, semanticForRecall, funnelAbort.signal,
@@ -441,7 +441,7 @@ export async function gatherContext(
     // ── Deep Archive Scan (one-shot when GM long-presses Send) ──
     let deepContextSummary: string | undefined;
     if (state.deepContextSearch && tierAllows(settings.aiTier, 'deepScan') && activeCampaignId) {
-        const utilityForDeep = state.getUtilityEndpoint?.();
+        const utilityForDeep = utilityLLM.endpoint();
         if (utilityForDeep?.endpoint) {
             try {
                 const sealedChapters = (state.chapters ?? []).filter(c => c.sealedAt !== undefined);
@@ -486,7 +486,7 @@ export async function gatherContext(
     }
 
     let recommendedNPCNames: string[] | undefined;
-    const utilityEndpoint = state.getUtilityEndpoint?.();
+    const utilityEndpoint = utilityLLM.endpoint();
     const pinnedChaptersForRecommender = state.pinnedChapterIds.length > 0
         ? state.chapters.filter(c => state.pinnedChapterIds.includes(c.chapterId))
         : undefined;
