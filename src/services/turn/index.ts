@@ -4,9 +4,13 @@ export {
 
 export {
     gatherContext,
-    runPlannerCall,
     type GatheredContext,
 } from './turnContext';
+
+export {
+    runPlannerCall,
+    type PlannerResult,
+} from './stages/plannerStage';
 
 export {
     handlePostTurn,

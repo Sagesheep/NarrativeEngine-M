@@ -7,19 +7,15 @@ import { retrieveRelevantLore, retrieveRelevantRules } from '../lore';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes, deepArchiveScan, recallWithChapterFunnel } from '../archive';
 import { offlineStorage } from '../storage';
 import { recommendContext } from '../payload';
-import { queryFacts, formatFactsForContext, formatResolvedForContext, getDivergenceSceneIds, EMPTY_REGISTER } from '../campaign-state';
+import { getDivergenceSceneIds, EMPTY_REGISTER } from '../campaign-state';
 import { semanticSearch, semanticSearchScored, isEmbedderReady } from '../embedding';
 import type { SearchHit } from '../embedding/vectorSearch';
 import { rerankCandidates, type RerankCandidate } from '../payload';
-import {
-    countTokens,
-    ANCHOR_BEFORE_INPUT,
-    INPUT_DELIMITER,
-    JSON_ARRAY_ONLY_FOOTER,
-    JSON_ONLY_FOOTER,
-    TTRPG_PERSONA_RETRIEVAL_PLANNER,
-    joinPromptSections,
-} from '../infrastructure';
+import { countTokens } from '../infrastructure';
+import { runPlannerCall, type PlannerResult } from './stages/plannerStage';
+import { expandQuery } from './stages/expandQueryStage';
+import { gatherFactsAndTimeline } from './stages/factsTimelineStage';
+import { recallNpcsSemantically } from './stages/npcSemanticRecallStage';
 
 const SEMANTIC_FLOOR_SCENE = 0.30;
 const SEMANTIC_FLOOR_LORE = 0.30;
@@ -31,135 +27,6 @@ const SEMANTIC_FLOOR_LORE = 0.30;
 const FUNNEL_RACE_TIMEOUT_MS = 5000;
 
 const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(we|i) (did|met|fought|saw|found|got))\b/i;
-
-type PlannerResult = {
-    subQueries?: string[];
-    filters?: {
-        characters?: string[];
-        locations?: string[];
-        items?: string[];
-        concepts?: string[];
-        eventTypes?: string[];
-    };
-    sceneIdRange?: [string, string] | null;
-};
-
-export async function runPlannerCall(
-    userMessage: string,
-    recentMessages: Array<{ role?: string; content?: string }>,
-    npcLedger: import('../../types').NPCEntry[],
-    chapterSummary: string | undefined,
-    utilityLLM: UtilityLLM,
-    timeoutSeconds?: number,
-): Promise<PlannerResult | null> {
-    try {
-        const timeoutMs = (timeoutSeconds ?? 45) * 1000;
-
-        const recentContextText = recentMessages
-            .slice(-8)
-            .map(m => `${m.role === 'assistant' ? 'GM' : 'Player'}: ${(m.content ?? '').slice(0, 200)}`)
-            .join('\n');
-
-        const npcRosterText = npcLedger.slice(0, 30).map(n => `${n.id}: ${n.name}`).join('\n') || '(none)';
-
-        const prompt = joinPromptSections(
-            TTRPG_PERSONA_RETRIEVAL_PLANNER,
-
-            `OUTPUT — a single JSON object (example values shown for shape; emit your own based on the input):
-{
-  "subQueries": ["query rephrase 1", "query rephrase 2"],
-  "filters": {
-    "characters": ["Astarion"],
-    "locations": ["Baldur's Gate"],
-    "items": [],
-    "concepts": [],
-    "eventTypes": ["promise", "betrayal"]
-  },
-  "sceneIdRange": null
-}`,
-
-            `RULES:
-- subQueries: 0-3 alternative phrasings of what to search for. Optional — omit or use [] if the user message is already specific.
-- filters.characters: NPC names (from the roster below) that should heavily influence recall. Only include if the user message clearly references them.
-- filters.locations / items / concepts: domain entities mentioned or strongly implied.
-- filters.eventTypes: any of [combat, discovery, item_acquired, item_lost, relationship_shift, travel, promise, betrayal, death, revelation, quest_milestone, other]. Only include when the user message references that kind of event (e.g. "what did I promise" → ["promise"]).
-- sceneIdRange: only set if the user message clearly anchors to a time window (e.g. "back in Waterdeep" → range covering those scenes); otherwise null.
-- If nothing is clear, output {} — empty filters is valid. DO NOT hallucinate filters.`,
-
-            JSON_ONLY_FOOTER,
-            ANCHOR_BEFORE_INPUT,
-            INPUT_DELIMITER,
-
-            `USER MESSAGE: """${userMessage}"""`,
-            `RECENT CONTEXT (last few turns):\n${recentContextText}`,
-            `NPC ROSTER:\n${npcRosterText}`,
-            `CHAPTER SUMMARY (if any):\n${chapterSummary || '(no chapter summary)'}`,
-        );
-
-        const raw = await utilityLLM.call(prompt, {
-            temperature: 0.1,
-            priority: 'high',
-            maxTokens: 400,
-            timeoutMs,
-            trackingLabel: 'planner',
-        });
-
-        let clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
-        const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (mdMatch) clean = mdMatch[1];
-
-        const braceStart = clean.indexOf('{');
-        const braceEnd = clean.lastIndexOf('}');
-        if (braceStart === -1 || braceEnd === -1) return null;
-
-        const parsed: PlannerResult = JSON.parse(clean.substring(braceStart, braceEnd + 1));
-        return parsed;
-    } catch {
-        return null;
-    }
-}
-
-async function expandQuery(query: string, npcLedger: import('../../types').NPCEntry[], utilityLLM: UtilityLLM, timeoutMs?: number): Promise<string[]> {
-    try {
-        const npcContext = npcLedger.slice(0, 10).map(n => n.name).join(', ');
-        const prompt = joinPromptSections(
-            'You are a query expansion assistant for a TTRPG archive search.',
-
-            'Generate 2 alternative phrasings of the user query that expand pronouns, add likely entity names from context, and use synonyms. Output a JSON array of exactly 2 strings.',
-
-            JSON_ARRAY_ONLY_FOOTER,
-            ANCHOR_BEFORE_INPUT,
-            INPUT_DELIMITER,
-
-            `User query: "${query}"`,
-            `Known NPCs: ${npcContext}`,
-        );
-
-        const raw = await utilityLLM.call(prompt, {
-            temperature: 0.2,
-            priority: 'high',
-            maxTokens: 200,
-            ...(timeoutMs ? { timeoutMs, trackingLabel: 'expandQuery' } : {}),
-        });
-
-        let clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
-        const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (mdMatch) clean = mdMatch[1];
-
-        const bracketStart = clean.indexOf('[');
-        const bracketEnd = clean.lastIndexOf(']');
-        if (bracketStart === -1 || bracketEnd === -1) return [query];
-
-        const parsed = JSON.parse(clean.substring(bracketStart, bracketEnd + 1));
-        if (Array.isArray(parsed) && parsed.length >= 2 && parsed.every((x: unknown) => typeof x === 'string')) {
-            return [query, parsed[0], parsed[1]];
-        }
-        return [query];
-    } catch {
-        return [query];
-    }
-}
-
 
 export type GatheredContext = {
     relevantLore: LoreChunk[] | undefined;
@@ -467,23 +334,9 @@ export async function gatherContext(
 
     const finalArchiveRecall = archiveResult.scenes.length > 0 ? archiveResult.scenes : undefined;
 
-    let semanticFactText = '';
-    try {
-        semanticFactText = formatFactsForContext(queryFacts(semanticFacts, finalInput, messages, npcLedger, 500));
-    } catch (err) {
-        console.warn('[TurnContext] Failed to query semantic facts:', err);
-    }
-
-    try {
-        const timeline = state.timeline;
-        if (timeline && timeline.length > 0) {
-            const { resolveTimeline } = await import('../campaign-state');
-            const resolvedText = formatResolvedForContext(resolveTimeline(timeline));
-            if (resolvedText) semanticFactText += '\n' + resolvedText;
-        }
-    } catch (err) {
-        console.warn('[TurnContext] Failed to resolve timeline:', err);
-    }
+    const semanticFactText = await gatherFactsAndTimeline({
+        semanticFacts, finalInput, messages, npcLedger, timeline: state.timeline,
+    });
 
     let recommendedNPCNames: string[] | undefined;
     const utilityEndpoint = utilityLLM.endpoint();
@@ -524,22 +377,9 @@ export async function gatherContext(
     const freshMessages = state.getMessages().filter(m => m.id !== userMsgId);
     callbacks.setLoadingStatus?.('[5/5] Architecting AI Prompt...');
 
-    let semanticallyRecalledNpcIds: string[] = [];
-    if (isEmbedderReady() && npcLedger && npcLedger.length > 0 && activeCampaignId) {
-        try {
-            const recentContext = freshMessages.slice(-3).map(m => m.content || '').filter(Boolean);
-            const queryTexts = [...recentContext, finalInput].filter(t => t.length > 0).slice(-4);
-            if (queryTexts.length > 0) {
-                const hits = await semanticSearch(activeCampaignId, queryTexts, 'npc', 5, 0.4);
-                if (hits && hits.length > 0) {
-                    semanticallyRecalledNpcIds = hits;
-                    console.log(`[NPC] semantic recall hits=[${hits.join(',')}] query="${finalInput.slice(0, 60)}..."`);
-                }
-            }
-        } catch (e) {
-            console.warn('[TurnContext] NPC semantic recall failed:', e);
-        }
-    }
+    const semanticallyRecalledNpcIds = await recallNpcsSemantically({
+        activeCampaignId, npcLedger, freshMessages, finalInput,
+    });
 
     const { condenser } = state;
 
