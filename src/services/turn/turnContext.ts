@@ -3,30 +3,25 @@ import type { TurnCallbacks, TurnState, UtilityLLM } from './turnTypes';
 import { realUtilityLLM } from './utilityLLM';
 import { tierAllows } from './aiTier';
 import { buildPayload } from '../chatEngine';
-import { retrieveRelevantLore, retrieveRelevantRules } from '../lore';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes, deepArchiveScan, recallWithChapterFunnel } from '../archive';
 import { offlineStorage } from '../storage';
 import { recommendContext } from '../payload';
 import { getDivergenceSceneIds, EMPTY_REGISTER } from '../campaign-state';
-import { semanticSearch, semanticSearchScored, isEmbedderReady } from '../embedding';
 import type { SearchHit } from '../embedding/vectorSearch';
-import { rerankCandidates, type RerankCandidate } from '../payload';
 import { countTokens } from '../infrastructure';
 import { runPlannerCall, type PlannerResult } from './stages/plannerStage';
-import { expandQuery } from './stages/expandQueryStage';
 import { gatherFactsAndTimeline } from './stages/factsTimelineStage';
 import { recallNpcsSemantically } from './stages/npcSemanticRecallStage';
-
-const SEMANTIC_FLOOR_SCENE = 0.30;
-const SEMANTIC_FLOOR_LORE = 0.30;
+import { semanticCandidatesStage } from './stages/semanticCandidatesStage';
+import { rerankStage } from './stages/rerankStage';
+import { loreStage } from './stages/loreStage';
+import { rulesStage } from './stages/rulesStage';
 
 // How long gatherContext waits for the chapter funnel before falling back to
 // flat recall. On timeout the funnel is aborted (so its remaining validation
 // calls stop spending) and flat recall runs instead — never a turn with zero
 // archive memory (AUDIT F1).
 const FUNNEL_RACE_TIMEOUT_MS = 5000;
-
-const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(we|i) (did|met|fought|saw|found|got))\b/i;
 
 export type GatheredContext = {
     relevantLore: LoreChunk[] | undefined;
@@ -49,13 +44,8 @@ export async function gatherContext(
 ): Promise<GatheredContext> {
     const { settings, loreChunks, npcLedger, archiveIndex, activeCampaignId } = state;
     const utilityTimeoutMs = (settings.utilityTimeoutSeconds ?? 45) * 1000;
-    let semanticArchiveIds: string[] | undefined;
-    let semanticArchiveHits: SearchHit[] = [];
-    let semanticLoreIds: string[] | undefined;
-    let semanticRuleIds: string[] | undefined;
 
     const plannerEndpoint = utilityLLM.endpoint();
-    let plannerResult: PlannerResult | null = null;
     let plannerPromise: Promise<PlannerResult | null> = Promise.resolve(null);
     if (tierAllows(settings.aiTier, 'planner') && plannerEndpoint?.endpoint) {
         const recentForPlanner = state.getMessages().filter(m => m.id !== userMsgId).slice(-8);
@@ -63,119 +53,27 @@ export async function gatherContext(
         plannerPromise = runPlannerCall(finalInput, recentForPlanner, npcLedger, chapterSummary, utilityLLM, settings.utilityTimeoutSeconds);
     }
 
-    if (isEmbedderReady() && activeCampaignId) {
-        try {
-            let queries = [finalInput];
-            const isCallback = CALLBACK_REGEX.test(finalInput);
-            const isShort = finalInput.trim().split(/\s+/).length < 8;
-            const expansionEndpoint = utilityLLM.endpoint();
+    // Stage 1 — vector candidates. Also resolves the planner when the embedder
+    // runs (planner ∥ query-expansion); otherwise plannerResult comes back null
+    // and is resolved before archive recall below.
+    const sem = await semanticCandidatesStage({
+        activeCampaignId, finalInput, npcLedger, settings, plannerPromise, utilityLLM, utilityTimeoutMs,
+    });
+    let plannerResult = sem.plannerResult;
 
-            const [resolvedPlanner, expandedQueries] = await Promise.all([
-                plannerPromise,
-                (isCallback || isShort) && expansionEndpoint?.endpoint && tierAllows(settings.aiTier, 'expandQuery')
-                    ? expandQuery(finalInput, npcLedger, utilityLLM, utilityTimeoutMs)
-                    : Promise.resolve([finalInput]),
-            ]);
-
-            plannerResult = resolvedPlanner;
-            queries = expandedQueries;
-            if (expandedQueries.length > 1) {
-                console.log(`[QueryExpansion] "${finalInput}" → ${expandedQueries.length} variants`);
-            }
-
-            if (plannerResult?.subQueries?.length) {
-                const newSubs = plannerResult.subQueries.filter(q => !queries.includes(q));
-                queries = [...queries, ...newSubs];
-                console.log(`[Planner] Added ${newSubs.length} sub-queries`);
-            }
-
-            const [sceneHits, loreIds, ruleIds] = await Promise.all([
-                semanticSearchScored(activeCampaignId, queries, 'scene', 40, SEMANTIC_FLOOR_SCENE),
-                semanticSearch(activeCampaignId, queries, 'lore', 25, SEMANTIC_FLOOR_LORE),
-                semanticSearch(activeCampaignId, queries, 'rule', 25, SEMANTIC_FLOOR_LORE),
-            ]);
-            semanticArchiveIds = sceneHits?.map(h => h.id);
-            semanticArchiveHits = sceneHits ?? [];
-            semanticLoreIds = loreIds;
-            semanticRuleIds = ruleIds;
-
-            if (semanticArchiveIds?.length) console.log(`[Semantic] Found ${semanticArchiveIds.length} scene candidates`);
-            if (semanticLoreIds?.length) console.log(`[Semantic] Found ${semanticLoreIds.length} lore candidates`);
-            if (semanticRuleIds?.length) console.log(`[Semantic] Found ${semanticRuleIds.length} rule candidates`);
-        } catch (e) {
-            console.warn('[Semantic] Candidate search failed, using keyword fallback:', e);
-        }
-    }
-
-    const rerankerEndpoint = utilityLLM.endpoint();
-    if (tierAllows(settings.aiTier, 'reranker') && rerankerEndpoint?.endpoint && (semanticArchiveIds?.length || semanticLoreIds?.length)) {
-        try {
-            if (semanticArchiveIds && semanticArchiveIds.length >= 5) {
-                const sceneCandidates: RerankCandidate[] = semanticArchiveIds.map(id => {
-                    const idxEntry = archiveIndex.find(e => e.sceneId === id);
-                    return {
-                        id,
-                        summary: idxEntry ? `${idxEntry.userSnippet} — ${idxEntry.keywords.slice(0, 5).join(', ')}` : id,
-                        type: 'scene' as const,
-                    };
-                });
-                const rerankedIds = await rerankCandidates(finalInput, sceneCandidates, rerankerEndpoint, { maxCandidates: 30, topN: 12, timeoutMs: utilityTimeoutMs, trackingLabel: 'rerank-scene' });
-                const scoreLookup = new Map(semanticArchiveHits.map(h => [h.id, h.score]));
-                semanticArchiveHits = rerankedIds.map((id, i) => ({ id, score: scoreLookup.get(id) ?? (1 - i * 0.05) }));
-                semanticArchiveIds = rerankedIds;
-                console.log(`[Reranker] Scene candidates: ${rerankedIds.length} after rerank`);
-            }
-
-            if (semanticLoreIds && semanticLoreIds.length >= 5) {
-                const loreCandidates: RerankCandidate[] = semanticLoreIds.map(id => {
-                    const chunk = loreChunks.find(c => c.id === id);
-                    return {
-                        id,
-                        summary: chunk ? `${chunk.header} — ${chunk.summary || chunk.content.slice(0, 80)}` : id,
-                        type: 'lore' as const,
-                    };
-                });
-                const rerankedLoreIds = await rerankCandidates(finalInput, loreCandidates, rerankerEndpoint, { maxCandidates: 25, topN: 10, timeoutMs: utilityTimeoutMs, trackingLabel: 'rerank-lore' });
-                semanticLoreIds = rerankedLoreIds;
-                console.log(`[Reranker] Lore candidates: ${rerankedLoreIds.length} after rerank`);
-            }
-        } catch (err) {
-            console.warn('[Reranker] Failed, using semantic order:', err);
-        }
-    }
+    // Stage 2 — LLM rerank of the scene/lore candidate sets.
+    const { semanticArchiveIds, semanticArchiveHits, semanticLoreIds, semanticRuleIds } = await rerankStage({
+        candidates: sem.candidates,
+        finalInput, archiveIndex, loreChunks,
+        rerankerEndpoint: utilityLLM.endpoint(),
+        settings, utilityTimeoutMs,
+    });
 
     const messages = state.getMessages().filter(m => m.id !== userMsgId);
-    const relevantLore = loreChunks.length > 0
-        ? retrieveRelevantLore(loreChunks, finalInput, 1200, messages, semanticLoreIds)
-        : undefined;
 
-    let relevantRules: LoreChunk[] | undefined;
-    if (state.context.rulesRaw) {
-        const rulesBudgetPct = settings.rulesBudgetPct ?? 0.10;
-        const rulesBudget = Math.floor((settings.contextLimit || 8192) * rulesBudgetPct);
-        const threshold = Math.floor(rulesBudget * 1.2);
-        const rulesTokenCount = countTokens(state.context.rulesRaw);
-
-        if (rulesTokenCount > threshold) {
-            try {
-                const { chunkLoreFile } = await import('../lore');
-                const ruleChunks = chunkLoreFile(state.context.rulesRaw, 'rule');
-                relevantRules = retrieveRelevantRules(
-                    ruleChunks,
-                    state.context.rulesChunkMeta,
-                    finalInput,
-                    rulesBudget,
-                    messages,
-                    semanticRuleIds
-                );
-                if (relevantRules.length > 0) {
-                    console.log(`[RulesRAG] Retrieved ${relevantRules.length}/${ruleChunks.length} rule chunks`);
-                }
-            } catch (e) {
-                console.warn('[RulesRAG] Retrieval failed, falling back to verbatim:', e);
-            }
-        }
-    }
+    // Stage 3 / 4 — world-lore RAG and (conditional) rules RAG.
+    const relevantLore = loreStage({ loreChunks, finalInput, messages, semanticLoreIds });
+    const relevantRules = await rulesStage({ context: state.context, settings, finalInput, messages, semanticRuleIds });
 
     let sceneNumber: string | undefined;
     if (activeCampaignId) {
