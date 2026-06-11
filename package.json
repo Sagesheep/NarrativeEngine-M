@@ -12,7 +12,9 @@
     "generate-icons": "node scripts/generate-icons.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "eval": "vitest run --config vitest.eval.config.ts",
+    "eval:build": "node scripts/build-eval-fixtures.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.1.0",

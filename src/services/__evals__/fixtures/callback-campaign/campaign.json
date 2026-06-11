@@ -1,0 +1,42 @@
+{
+  "id": "callback-campaign",
+  "description": "Episodic recall. A frontier quest: the player promises a smith star-metal, is betrayed by a guide in the mountains, and finds the ore. Distractors include keyword-traps (share words, not meaning) and vector-traps (share meaning, not words).",
+  "scenes": [
+    { "sceneId": "s001", "content": "You arrived in the frontier town of Ironhollow as the snow began to fall, your father's shattered greatsword wrapped in oilcloth across your back.", "keywords": ["ironhollow", "snow", "greatsword"], "npcsWitnessed": [] },
+    { "sceneId": "s002", "content": "Doran the blacksmith examined the broken blade by candlelight. 'Star-metal,' he muttered. 'Only star-metal could mend a sword like this.'", "keywords": ["doran", "blacksmith", "star-metal", "blade"], "npcsWitnessed": ["doran"] },
+    { "sceneId": "s003", "content": "You looked Doran in the eye and gave your word: you would bring him the star-metal before the first thaw, no matter the cost.", "keywords": ["doran", "promise", "word", "star-metal", "thaw"], "npcsWitnessed": ["doran"] },
+    { "sceneId": "s004", "content": "The tavern that night was loud with miners' songs. You traded rumors of the high passes over watered ale.", "keywords": ["tavern", "miners", "passes", "ale"], "npcsWitnessed": [] },
+    { "sceneId": "s005", "content": "On the climb you betrayed your own fear, forcing your legs up the icy ridge when every instinct screamed to turn back.", "keywords": ["climb", "betrayed", "fear", "ridge"], "npcsWitnessed": [] },
+    { "sceneId": "s006", "content": "A grizzled guide named Kael offered to lead you through the Frostpeak range for a fistful of silver.", "keywords": ["kael", "guide", "frostpeak", "silver"], "npcsWitnessed": ["kael"] },
+    { "sceneId": "s007", "content": "Doran's young apprentice promised to keep your room at the forge warm until you returned.", "keywords": ["apprentice", "promised", "forge"], "npcsWitnessed": ["apprentice"] },
+    { "sceneId": "s008", "content": "Halfway through the high pass, Kael turned on you — he had sold your route to the bandits who waited in the rocks.", "keywords": ["kael", "pass", "bandits", "route"], "npcsWitnessed": ["kael"] },
+    { "sceneId": "s009", "content": "You fought the bandits in the snow, breath ragged, until the last of them fled into the white.", "keywords": ["bandits", "snow", "fought"], "npcsWitnessed": [] },
+    { "sceneId": "s010", "content": "Honoring the oath you had sworn at the forge, you pressed deeper into the peaks, refusing to return empty-handed.", "keywords": ["oath", "forge", "peaks"], "npcsWitnessed": [] },
+    { "sceneId": "s011", "content": "Kael had led you astray and slipped away in the storm, taking half your supplies with him.", "keywords": ["kael", "astray", "storm", "supplies"], "npcsWitnessed": [] },
+    { "sceneId": "s012", "content": "Deep in the abandoned Frostpeak mines you found it at last: a vein of star-metal glinting silver-blue in the dark.", "keywords": ["frostpeak", "mines", "star-metal", "vein"], "npcsWitnessed": [] },
+    { "sceneId": "s013", "content": "You carried the star-metal back down the mountain, your debt to Doran finally within reach.", "keywords": ["star-metal", "mountain", "doran", "debt"], "npcsWitnessed": [] }
+  ],
+  "queries": [
+    {
+      "query": "what did I promise the smith",
+      "relevantSceneIds": ["s003", "s010"],
+      "relevantLoreIds": [],
+      "mustNotRecall": [],
+      "notes": "s003 = the explicit promise; s010 = honoring the oath (vector-trap, no 'promise'/'smith'). s007 (apprentice promised) is a keyword-trap distractor."
+    },
+    {
+      "query": "who betrayed us in the mountains",
+      "relevantSceneIds": ["s008", "s011"],
+      "relevantLoreIds": [],
+      "mustNotRecall": [],
+      "notes": "s008 = Kael's betrayal; s011 = restatement (vector-trap, no 'betray'). s005 ('betrayed your own fear') is a keyword-trap distractor."
+    },
+    {
+      "query": "where did we find the star-metal ore",
+      "relevantSceneIds": ["s012"],
+      "relevantLoreIds": [],
+      "mustNotRecall": [],
+      "notes": "s012 = the find in the Frostpeak mines."
+    }
+  ]
+}

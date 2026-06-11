@@ -1,0 +1,29 @@
+{
+  "callback-campaign": {
+    "k": 5,
+    "floor": 0.3,
+    "candidates": 40,
+    "meanRecallAtK": 0.333,
+    "meanPrecisionAtK": 0.083,
+    "perQuery": {
+      "what did I promise the smith": {
+        "recallAtK": 0,
+        "precisionAtK": 0,
+        "relevantFound": 0,
+        "relevantTotal": 2
+      },
+      "who betrayed us in the mountains": {
+        "recallAtK": 0,
+        "precisionAtK": 0,
+        "relevantFound": 0,
+        "relevantTotal": 2
+      },
+      "where did we find the star-metal ore": {
+        "recallAtK": 1,
+        "precisionAtK": 0.25,
+        "relevantFound": 1,
+        "relevantTotal": 1
+      }
+    }
+  }
+}
