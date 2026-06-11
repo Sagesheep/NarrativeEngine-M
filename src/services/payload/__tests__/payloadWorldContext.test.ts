@@ -76,7 +76,7 @@ describe('assembleWorldBlocks — witness tag in scene headers', () => {
             addTrace: noTrace,
         });
 
-        const content = blocks[0].content;
+        const content = blocks.find(b => b.source === 'Archive Recall')!.content;
         expect(content).toContain('[SCENE #014 | Witnessed by: Aldric, Brenna');
         expect(content).toContain('NPCs not listed were NOT present');
     });
@@ -140,9 +140,47 @@ describe('assembleWorldBlocks — witness tag in scene headers', () => {
             addTrace: noTrace,
         });
 
-        const content = blocks[0].content;
+        const content = blocks.find(b => b.source === 'Archive Recall')!.content;
         expect(content).toContain('Witnessed by: Aldric');
         expect(content).not.toContain('npc_ghost');
+    });
+});
+
+describe('assembleWorldBlocks — reserved names block', () => {
+    it('lists every ledger name (including archived) as the first block', () => {
+        const ledger = [
+            baseNpc({ id: 'npc_1', name: 'Voss' }),
+            baseNpc({ id: 'npc_2', name: 'Maren Blackwood' }),
+            baseNpc({ id: 'npc_3', name: 'Old Garruk', archived: true }),
+        ];
+
+        const blocks = assembleWorldBlocks({
+            context: stubContext,
+            history: [] as ChatMessage[],
+            userMessage: 'test',
+            npcLedger: ledger,
+            addTrace: noTrace,
+        });
+
+        expect(blocks[0].source).toBe('Reserved Names');
+        const content = blocks[0].content;
+        expect(content).toContain('[RESERVED CHARACTER NAMES]');
+        expect(content).toContain('Voss');
+        expect(content).toContain('Maren Blackwood');
+        expect(content).toContain('Old Garruk');
+        expect(content).toContain('do NOT reuse');
+    });
+
+    it('omits the block when the ledger is empty', () => {
+        const blocks = assembleWorldBlocks({
+            context: stubContext,
+            history: [] as ChatMessage[],
+            userMessage: 'test',
+            npcLedger: [],
+            addTrace: noTrace,
+        });
+
+        expect(blocks.find(b => b.source === 'Reserved Names')).toBeUndefined();
     });
 });
 

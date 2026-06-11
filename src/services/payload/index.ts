@@ -9,7 +9,7 @@ export {
 
 export { computeBudgets } from './payloadBudgeter';
 export { buildStablePreamble, buildDivergenceBlock } from './payloadStableContent';
-export { assembleWorldBlocks, trimWorldBlocks } from './payloadWorldContext';
+export { assembleWorldBlocks, trimWorldBlocks, buildReservedNamesBlock } from './payloadWorldContext';
 export { fitHistory, buildPinnedMemoriesBlock } from './payloadHistoryFitting';
 
 export { extractJson } from '../infrastructure';
