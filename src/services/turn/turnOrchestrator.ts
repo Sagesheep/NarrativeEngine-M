@@ -446,24 +446,29 @@ export async function runTurn(
                 const allMsgs = state.getMessages();
                 const lastAssistant = allMsgs[allMsgs.length - 1];
 
-                if (lastAssistant?.role === 'assistant' && lastAssistant.content && activeCampaignId) {
-                    await handlePostTurn(
-                        state,
-                        callbacks,
-                        displayInput,
-                        activeCampaignId,
-                        npcLedger,
-                        lastAssistant.content
-                    );
-                }
+                try {
+                    if (lastAssistant?.role === 'assistant' && lastAssistant.content && activeCampaignId) {
+                        await handlePostTurn(
+                            state,
+                            callbacks,
+                            displayInput,
+                            activeCampaignId,
+                            npcLedger,
+                            lastAssistant.content
+                        );
+                    }
 
-                if (settings.autoCondenseEnabled && shouldCondense(allMsgs, settings.contextLimit, condenser.condensedUpToIndex, getCondenseBudgetRatio(settings.condenseAggressiveness))) {
-                    triggerAutoTrim();
+                    if (settings.autoCondenseEnabled && shouldCondense(allMsgs, settings.contextLimit, condenser.condensedUpToIndex, getCondenseBudgetRatio(settings.condenseAggressiveness))) {
+                        triggerAutoTrim();
+                    }
+                } catch (postTurnErr) {
+                    console.error('[TurnOrchestrator] handlePostTurn failed:', postTurnErr);
+                    toast.error('Post-turn processing failed — your turn was saved but archive/scene updates may be missing.');
+                } finally {
+                    callbacks.setPipelinePhase?.('idle');
+                    callbacks.setStreamingStats?.(null);
+                    callbacks.setStreaming(false);
                 }
-
-                callbacks.setPipelinePhase?.('idle');
-                callbacks.setStreamingStats?.(null);
-                callbacks.setStreaming(false);
             },
             (err) => {
                 if (err === '__ABORT__' || err === 'AbortError' || err === 'The user aborted a request.') {

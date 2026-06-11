@@ -34,7 +34,12 @@ export function fitHistory(
 ): { fitted: OpenAIMessage[]; historyUsed: number; userTokens: number; historyBudget: number } {
     const userTokens = countTokens(userMessage);
     const reservedTotal = reservedTokens + userTokens;
-    const historyBudget = limit - reservedTotal - 200;
+    // Proportional safety margin (was a flat 200): cl100k undercounts local
+    // model tokenizers ~10-20%, so the margin scales with the limit (AUDIT F10).
+    // Clamp at 0 so a heavy preamble can't produce a negative budget that the
+    // loop would misread (AUDIT F6).
+    const margin = Math.max(200, Math.floor(limit * 0.05));
+    const historyBudget = Math.max(0, limit - reservedTotal - margin);
 
     const candidateMessages = (condensedUpToIndex !== undefined && condensedUpToIndex >= 0)
         ? history.slice(condensedUpToIndex + 1)

@@ -10,6 +10,7 @@ import { createNPCSlice, type NPCSlice } from './slices/npcSlice';
 import { createCombatSlice, type CombatSlice } from './slices/combatSlice';
 import { createItemSlice, type ItemSlice } from './slices/itemSlice';
 import { createSkillSlice, type SkillSlice } from './slices/skillSlice';
+import { registerStore } from '../services/embedding/embeddingScheduler';
 
 // Re-export DEFAULT_* constants for backward compatibility
 export {
@@ -55,3 +56,9 @@ export const useAppStore = create<AppState>()((set, get, store) => {
         ...skillSlice,
     };
 });
+
+// Wire the live store into the progressive-embedding scheduler. This replaces
+// the scheduler's old runtime `require()` (which silently failed in the Vite
+// browser bundle). The dependency is one-way (store → scheduler), so there is
+// no circular import.
+registerStore(useAppStore);

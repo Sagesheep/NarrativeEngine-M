@@ -24,9 +24,10 @@ import {
     INPUT_DELIMITER,
     JSON_ONLY_FOOTER,
     joinPromptSections,
+    countTokens,
 } from '../infrastructure';
 
-const EST_TOKENS = (text: string) => Math.ceil(text.length / 4);
+const EST_TOKENS = (text: string) => countTokens(text);
 
 // ── Compact formatters ──
 

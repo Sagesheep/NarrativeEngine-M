@@ -36,6 +36,7 @@ import {
     enqueueProgressive,
     abortForCampaignSwitch,
     getQueueStats,
+    registerStore,
     _resetForTesting,
     _setStoreRefForTesting,
 } from '../embedding/embeddingScheduler';
@@ -260,6 +261,118 @@ describe('embeddingScheduler', () => {
 
             const finalCall = mockSetReindexing.mock.calls[mockSetReindexing.mock.calls.length - 1];
             expect(finalCall[0].active).toBe(false);
+        });
+    });
+
+    describe('resume after pause (BUG-1)', () => {
+        it('resumes draining when isStreaming returns to false', async () => {
+            let capturedListener: ((s: any) => void) | null = null;
+            mockStore.subscribe.mockImplementation(((l: any) => {
+                capturedListener = l;
+                return vi.fn();
+            }) as any);
+
+            // Start while the AI is streaming → drain pauses immediately.
+            mockIsStreaming = true;
+            mockStore.getState.mockImplementation(() => ({
+                isStreaming: mockIsStreaming,
+                embeddingsReindexing: { active: false, total: 0, done: 0, reason: null as 'switch' | 'lazy' | 'progressive' | null },
+                setEmbeddingsReindexing: mockSetReindexing,
+            }));
+
+            const chunks: ProgressiveChunk[] = [
+                { id: 'r1', content: 'resume content', modes: ['vector'], priority: 5 },
+            ];
+            enqueueProgressive({ campaignId: 'c1', type: 'lore', chunks });
+
+            await new Promise((r) => setTimeout(r, 50));
+            expect(mockPoolEmbed).not.toHaveBeenCalled();
+            expect(typeof capturedListener).toBe('function');
+
+            // Streaming ends → fire the store subscriber; drain must resume.
+            mockIsStreaming = false;
+            capturedListener!({ isStreaming: false });
+
+            await new Promise((r) => setTimeout(r, 100));
+
+            const embedContents = mockPoolEmbed.mock.calls.map((c: any[]) => c[0]);
+            expect(embedContents).toContain('resume content');
+        });
+
+        it('resumes draining when document.hidden returns to false', async () => {
+            Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+            mockIsStreaming = false;
+            mockStore.getState.mockImplementation(() => ({
+                isStreaming: false,
+                embeddingsReindexing: { active: false, total: 0, done: 0, reason: null as 'switch' | 'lazy' | 'progressive' | null },
+                setEmbeddingsReindexing: mockSetReindexing,
+            }));
+
+            const chunks: ProgressiveChunk[] = [
+                { id: 'v1', content: 'visible content', modes: ['vector'], priority: 5 },
+            ];
+            enqueueProgressive({ campaignId: 'c1', type: 'lore', chunks });
+
+            await new Promise((r) => setTimeout(r, 50));
+            expect(mockPoolEmbed).not.toHaveBeenCalled();
+
+            // Tab returns to foreground → fire visibilitychange; drain must resume.
+            Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+            document.dispatchEvent(new Event('visibilitychange'));
+
+            await new Promise((r) => setTimeout(r, 100));
+
+            const embedContents = mockPoolEmbed.mock.calls.map((c: any[]) => c[0]);
+            expect(embedContents).toContain('visible content');
+        });
+    });
+
+    describe('counter reset (ISSUE-3)', () => {
+        it('zeroes totals after a completed drain so the next upload starts at 0', async () => {
+            enqueueProgressive({
+                campaignId: 'c1',
+                type: 'lore',
+                chunks: [{ id: 'a1', content: 'a', modes: ['vector'], priority: 5 }],
+            });
+            await new Promise((r) => setTimeout(r, 150));
+
+            let stats = getQueueStats();
+            expect(stats.total).toBe(0);
+            expect(stats.done).toBe(0);
+
+            enqueueProgressive({
+                campaignId: 'c1',
+                type: 'lore',
+                chunks: [{ id: 'b1', content: 'b', modes: ['vector'], priority: 5 }],
+            });
+
+            stats = getQueueStats();
+            expect(stats.total).toBe(1);
+
+            await new Promise((r) => setTimeout(r, 100));
+        });
+    });
+
+    describe('store wiring (BUG-2)', () => {
+        it('registerStore connects the store without the test-only setter', async () => {
+            // Simulate the production wiring path: no _setStoreRefForTesting,
+            // only registerStore (as useAppStore.ts calls it at startup).
+            _resetForTesting();
+            registerStore(mockStore);
+            mockIsStreaming = false;
+
+            enqueueProgressive({
+                campaignId: 'c1',
+                type: 'lore',
+                chunks: [{ id: 'w1', content: 'w1 content', modes: ['vector'], priority: 5 }],
+            });
+
+            await new Promise((r) => setTimeout(r, 100));
+
+            const progressiveCalls = mockSetReindexing.mock.calls.filter(
+                (c: any[]) => c[0]?.reason === 'progressive'
+            );
+            expect(progressiveCalls.length).toBeGreaterThanOrEqual(1);
         });
     });
 

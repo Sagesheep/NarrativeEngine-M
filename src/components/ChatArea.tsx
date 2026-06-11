@@ -241,7 +241,8 @@ export function ChatArea() {
         if (arcSeed) setPendingArcSeed(null);
         const llmInput = arcSeed ? `${textToUse}\n\n[SYS: Introduce this arc naturally going forward — ${arcSeed}]` : textToUse;
 
-        await runTurn({
+        try {
+            await runTurn({
             input: llmInput,
             displayInput: textToUse,
             settings,
@@ -287,6 +288,7 @@ export function ChatArea() {
             onStageNpcIds: useAppStore.getState().onStageNpcIds,
             items: useAppStore.getState().items,
             skills: useAppStore.getState().skills,
+            pinnedExcerpts: useAppStore.getState().pinnedExcerpts,
         }, {
             onCheckingNotes: setIsCheckingNotes,
             addMessage,
@@ -320,9 +322,10 @@ export function ChatArea() {
                 useAppStore.getState().setPendingInventoryProposal(proposal);
             },
         }, abortControllerRef.current!);
-
-        setForcedAIs([]);
-        setLoadingStatus(null);
+        } finally {
+            setForcedAIs([]);
+            setLoadingStatus(null);
+        }
     };
 
     const {

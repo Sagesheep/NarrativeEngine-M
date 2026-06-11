@@ -25,6 +25,12 @@ import {
 const SEMANTIC_FLOOR_SCENE = 0.30;
 const SEMANTIC_FLOOR_LORE = 0.30;
 
+// How long gatherContext waits for the chapter funnel before falling back to
+// flat recall. On timeout the funnel is aborted (so its remaining validation
+// calls stop spending) and flat recall runs instead — never a turn with zero
+// archive memory (AUDIT F1).
+const FUNNEL_RACE_TIMEOUT_MS = 5000;
+
 const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(we|i) (did|met|fought|saw|found|got))\b/i;
 
 type PlannerResult = {
@@ -310,7 +316,9 @@ export async function gatherContext(
         try {
             const nextScene = await offlineStorage.archive.getNextSceneNumber(activeCampaignId);
             sceneNumber = String(nextScene).padStart(3, '0');
-        } catch { /* ignored */ }
+        } catch (err) {
+            console.warn('[TurnContext] Failed to get next scene number:', err);
+        }
     }
 
     // If the embedder path didn't run, still resolve the planner before archive recall.
@@ -324,16 +332,37 @@ export async function gatherContext(
     let archiveResult = { scenes: [] as ArchiveScene[], usedTokens: 0 };
     const { chapters, semanticFacts } = state;
 
+    // Size the recall fetch to the world budget it has to live in, so a full
+    // recall can't overflow and get dropped whole by trimWorldBlocks (AUDIT F5).
+    // Use the non-deep world factor (0.40) — deepContextSummary isn't known yet,
+    // and a conservative estimate is the safe side here.
+    const contextLimit = settings.contextLimit || 8192;
+    const rulesReserve = Math.max(50, Math.floor(contextLimit * (settings.rulesBudgetPct ?? 0.10)));
+    const worldBudgetEstimate = Math.floor((contextLimit - rulesReserve) * 0.40);
+    const archiveRecallBudget = Math.max(600, Math.min(3000, worldBudgetEstimate));
+
+    // Single source of truth for flat recall — used as the funnel's fallback
+    // (on both timeout and error) and as the no-funnel path. Divergence-scene
+    // forcing and planner filters are applied here.
+    const semanticForRecall = semanticArchiveHits.length > 0 ? semanticArchiveHits : semanticArchiveIds;
+    const flatRecallFallback = (): Promise<ArchiveScene[]> =>
+        recallArchiveScenes(
+            activeCampaignId!, archiveIndex, finalInput, messages, archiveRecallBudget, npcLedger, semanticFacts,
+            semanticForRecall, getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), undefined, plannerFilters
+        ).then(scenes => scenes || []);
+
     if (tierAllows(settings.aiTier, 'archiveFunnel') && chapters.length > 0 && activeCampaignId) {
+        const funnelAbort = new AbortController();
         try {
             const utilityEndpoint = state.getUtilityEndpoint?.();
             if (!utilityEndpoint) throw new Error('No utility endpoint');
             const funnelPromise = recallWithChapterFunnel(
-                activeCampaignId, chapters, archiveIndex, finalInput, messages, npcLedger, semanticFacts, 3000, utilityEndpoint, undefined, semanticArchiveHits.length > 0 ? semanticArchiveHits : semanticArchiveIds
+                activeCampaignId, chapters, archiveIndex, finalInput, messages, npcLedger, semanticFacts, archiveRecallBudget, utilityEndpoint, undefined, semanticForRecall, funnelAbort.signal,
+                getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), plannerFilters
             );
             let fallbackTimeoutId: ReturnType<typeof setTimeout>;
             const fallbackPromise = new Promise<{ scenes: string; usedTokens: number } | null>(resolve => {
-                fallbackTimeoutId = setTimeout(resolve, 5000) as unknown as ReturnType<typeof setTimeout>;
+                fallbackTimeoutId = setTimeout(resolve, FUNNEL_RACE_TIMEOUT_MS) as unknown as ReturnType<typeof setTimeout>;
             }).then(() => null);
 
             const result = await Promise.race([
@@ -350,19 +379,24 @@ export async function gatherContext(
                         return { sceneId: idMatch ? idMatch[1] : '', content, tokens: countTokens(content) };
                     });
                 }
+            } else {
+                // Funnel lost the race (slow utility endpoint). Abort it so its
+                // remaining validation calls stop spending, then fall back to flat
+                // recall so the turn still has archive memory (AUDIT F1).
+                funnelAbort.abort();
+                console.warn(`[Funnel] lost ${FUNNEL_RACE_TIMEOUT_MS}ms race — falling back to flat recall`);
+                archiveResult = { scenes: await flatRecallFallback(), usedTokens: 0 };
             }
-        } catch {
+        } catch (err) {
+            funnelAbort.abort();
+            console.warn('[Funnel] failed — falling back to flat recall:', err);
             if (activeCampaignId) {
-                const flatRecall = await recallArchiveScenes(activeCampaignId, archiveIndex, finalInput, messages, 3000, npcLedger, semanticFacts, semanticArchiveHits.length > 0 ? semanticArchiveHits : semanticArchiveIds, getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), undefined, plannerFilters);
-                archiveResult = { scenes: flatRecall || [], usedTokens: 0 };
+                archiveResult = { scenes: await flatRecallFallback(), usedTokens: 0 };
             }
         }
     } else if (archiveIndex.length > 0 && activeCampaignId) {
         // Covers: (a) no chapters yet, (b) archiveFunnel tier-gated — fall through to engine flat-recall
-        const flatRecall = await recallArchiveScenes(
-            activeCampaignId, archiveIndex, finalInput, messages, 3000, npcLedger, semanticFacts, semanticArchiveHits.length > 0 ? semanticArchiveHits : semanticArchiveIds, getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), undefined, plannerFilters
-        );
-        archiveResult = { scenes: flatRecall || [], usedTokens: 0 };
+        archiveResult = { scenes: await flatRecallFallback(), usedTokens: 0 };
     }
 
     const archiveRecall = archiveResult.scenes.length > 0 ? archiveResult.scenes : undefined;
@@ -381,12 +415,19 @@ export async function gatherContext(
                 const scoredIds = retrieveArchiveMemory(
                     archiveIndex, finalInput, messages, npcLedger,
                     undefined, semanticFacts, pinnedRanges, semanticArchiveHits.length > 0 ? semanticArchiveHits : semanticArchiveIds,
-                    undefined, plannerFilters
+                    getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), plannerFilters
                 ).filter(id => !alreadyCoveredIds.has(id));
 
                 if (scoredIds.length > 0) {
-                    const pinnedBudget = Math.floor((settings.contextLimit || 8192) * 0.35);
-                    const pinnedScenes = await fetchArchiveScenes(activeCampaignId, scoredIds, pinnedBudget);
+                    // Pinned scenes share the world budget with the recall above —
+                    // give them what recall left, not an independent 35% of the whole
+                    // context (which used to push the combined block past the world
+                    // budget and get it dropped, AUDIT F5).
+                    const recallUsed = archiveResult.scenes.reduce((sum, s) => sum + (s.tokens ?? 0), 0);
+                    const pinnedBudget = Math.max(0, worldBudgetEstimate - recallUsed);
+                    const pinnedScenes = pinnedBudget > 150
+                        ? await fetchArchiveScenes(activeCampaignId, scoredIds, pinnedBudget)
+                        : [];
                     archiveResult.scenes = [...(archiveResult.scenes ?? []), ...pinnedScenes];
                     console.log(`[Pin] Injected ${pinnedScenes.length} scored scenes from ${pinnedRanges.length} pinned chapter(s)`);
                 }
@@ -429,8 +470,8 @@ export async function gatherContext(
     let semanticFactText = '';
     try {
         semanticFactText = formatFactsForContext(queryFacts(semanticFacts, finalInput, messages, npcLedger, 500));
-    } catch (_e) {
-        // Ignored
+    } catch (err) {
+        console.warn('[TurnContext] Failed to query semantic facts:', err);
     }
 
     try {
@@ -440,8 +481,8 @@ export async function gatherContext(
             const resolvedText = formatResolvedForContext(resolveTimeline(timeline));
             if (resolvedText) semanticFactText += '\n' + resolvedText;
         }
-    } catch (_e) {
-        // Ignored
+    } catch (err) {
+        console.warn('[TurnContext] Failed to resolve timeline:', err);
     }
 
     let recommendedNPCNames: string[] | undefined;
@@ -522,6 +563,7 @@ export async function gatherContext(
         archiveIndex: state.archiveIndex,
         semanticallyRecalledNpcIds,
         combatState: state.combatState,
+        pinnedExcerpts: state.pinnedExcerpts,
     });
 
     return { relevantLore, relevantRules, sceneNumber, archiveRecall: finalArchiveRecall, semanticArchiveHits, semanticFactText, recommendedNPCNames, deepContextSummary, payloadResult };

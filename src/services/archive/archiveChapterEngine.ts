@@ -157,7 +157,8 @@ async function validateChapterRelevance(
     chapter: ArchiveChapter,
     userMessage: string,
     recentContext: string,
-    provider: LLMProvider
+    provider: LLMProvider,
+    signal?: AbortSignal
 ): Promise<boolean> {
     const prompt = [
         'You are a TTRPG story continuity checker. Given the current situation and a chapter summary, is this chapter relevant?',
@@ -178,9 +179,15 @@ async function validateChapterRelevance(
         `Key events: ${chapter.majorEvents.slice(0, 3).join('; ')}`,
     ].join('\n');
 
-    // 3s timeout per validation call — matches the outer FUNNEL_TIMEOUT_MS in turnOrchestrator
+    // 3s timeout per validation call. Also abort if the caller's signal fires
+    // (the funnel lost gatherContext's race and is being cancelled — AUDIT F1).
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const onExternalAbort = () => controller.abort();
+    if (signal) {
+        if (signal.aborted) controller.abort();
+        else signal.addEventListener('abort', onExternalAbort, { once: true });
+    }
 
     try {
         const answer = await llmCall(provider, prompt, {
@@ -188,9 +195,11 @@ async function validateChapterRelevance(
             maxTokens: 10,
         });
         clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onExternalAbort);
         return answer.trim().toUpperCase().startsWith('YES');
     } catch {
         clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onExternalAbort);
         return true; // on timeout/error, assume relevant (fail-open)
     }
 }
@@ -204,7 +213,8 @@ export async function iterativeChapterFilter(
     rankedChapters: ArchiveChapter[],
     userMessage: string,
     recentMessages: ChatMessage[],
-    utilityProvider?: LLMProvider
+    utilityProvider?: LLMProvider,
+    signal?: AbortSignal
 ): Promise<ArchiveChapter[]> {
     // If no utility AI configured, accept top 3 by 3D score (graceful degradation)
     if (!utilityProvider) {
@@ -216,11 +226,12 @@ export async function iterativeChapterFilter(
     let iterations = 0;
 
     for (const chapter of rankedChapters) {
+        if (signal?.aborted) break; // race lost — stop spending (AUDIT F1)
         if (confirmed.length >= MAX_CONFIRMED_CHAPTERS) break;
         if (iterations >= MAX_LLM_ITERATIONS) break;
 
         const isRelevant = await validateChapterRelevance(
-            chapter, userMessage, recentContext, utilityProvider
+            chapter, userMessage, recentContext, utilityProvider, signal
         );
         iterations++;
 
@@ -255,7 +266,10 @@ export async function recallWithChapterFunnel(
     tokenBudget: number,
     utilityProvider: LLMProvider,
     _countTokens?: (text: string) => number,
-    semanticCandidateIds?: string[] | SearchHit[]
+    semanticCandidateIds?: string[] | SearchHit[],
+    signal?: AbortSignal,
+    divergenceSceneIds?: Set<string>,
+    filters?: { characters?: string[]; locations?: string[]; items?: string[]; concepts?: string[]; eventTypes?: string[] }
 ): Promise<{ scenes: string; usedTokens: number }> {
     // ─── Phase 1: Chapter-level 3D scoring ───
     const ranked = rankChapters(chapters, userMessage, recentMessages, npcLedger, semanticFacts);
@@ -263,7 +277,7 @@ export async function recallWithChapterFunnel(
     if (ranked.length === 0) {
         // No sealed chapters with summaries — fall back to flat retrieval
         const scenes = await fetchArchiveScenes(campaignId, 
-            retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds),
+            retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds, divergenceSceneIds, filters),
             tokenBudget
         );
         const sceneText = scenes.map(s => `\n--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n');
@@ -273,7 +287,7 @@ export async function recallWithChapterFunnel(
 
     // ─── Phase 2: Iterative LLM validation ───
     const confirmed = await iterativeChapterFilter(
-        ranked, userMessage, recentMessages, utilityProvider
+        ranked, userMessage, recentMessages, utilityProvider, signal
     );
 
     // ─── Phase 3: Build scene ranges ───
@@ -288,11 +302,11 @@ export async function recallWithChapterFunnel(
     // ─── Phase 4: Scene-level 3D scoring within ranges ───
     const matchedIds = retrieveArchiveMemory(
         index, userMessage, recentMessages, npcLedger,
-        undefined, semanticFacts, sceneRanges, semanticCandidateIds
+        undefined, semanticFacts, sceneRanges, semanticCandidateIds, divergenceSceneIds, filters
     );
 
     if (matchedIds.length === 0) {
-        const flatIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds);
+        const flatIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, semanticCandidateIds, divergenceSceneIds, filters);
         const scenes = await fetchArchiveScenes(campaignId, flatIds, tokenBudget);
         const sceneText = scenes.map(s => `\n--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n');
         const usedTokens = scenes.reduce((sum, s) => sum + s.tokens, 0);

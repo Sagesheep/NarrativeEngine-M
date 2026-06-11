@@ -6,6 +6,12 @@ export interface BudgetMap {
     volatile: number;
 }
 
+/**
+ * NOTE: only `world` (trimWorldBlocks) and `rules` (RAG threshold in
+ * buildStablePreamble) are *enforced*. `stable`, `summary` and `volatile` are
+ * advisory — kept for trace/observability and proportioning, not hard caps.
+ * Overflow of the advisory sections is surfaced by buildPayload's warn (AUDIT F9).
+ */
 export function computeBudgets(limit: number, hasDeepContext: boolean, rulesBudgetPct: number): BudgetMap {
     const rules = Math.max(50, Math.floor(limit * (rulesBudgetPct || 0)));
     const adjusted = limit - rules;

@@ -117,6 +117,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         chapters,
         onStageNpcIds,
         npcLedger,
+        cap: Math.floor(limit * 0.20),
         addTrace,
     });
 
@@ -166,11 +167,22 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     const volatileTokens = countTokens(volatileContent);
     addTrace({ source: 'Profile/Inventory/SceneNote', classification: 'volatile_state', tokens: volatileTokens, reason: 'Player state + scene note', included: true, position: 'system_dynamic' });
 
+    const nonHistoryTokens = stableTokens + divergenceTokens + pinnedMemoriesTokens + currentWorldTokens + volatileTokens;
+
+    // Observability: stable/summary/volatile budget buckets are advisory (only
+    // `world` and `rules` are enforced). If the enforced + unenforced sections
+    // already exceed the limit, history is fully starved and the provider will
+    // truncate — surface it instead of failing silently (AUDIT F6/F9).
+    const nonHistoryPlusUser = nonHistoryTokens + countTokens(userMessage);
+    if (nonHistoryPlusUser > limit) {
+        console.warn(`[Payload] non-history content ${nonHistoryPlusUser}t exceeds context limit ${limit}t (stable=${stableTokens} divergence=${divergenceTokens} world=${currentWorldTokens} volatile=${volatileTokens} pinned=${pinnedMemoriesTokens}) — history dropped, provider may truncate`);
+    }
+
     const { fitted, historyUsed, historyBudget } = fitHistory(
         history,
         condensedUpToIndex,
         userMessage,
-        stableTokens + divergenceTokens + pinnedMemoriesTokens + currentWorldTokens + volatileTokens,
+        nonHistoryTokens,
         limit,
     );
 

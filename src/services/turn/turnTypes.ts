@@ -18,6 +18,7 @@ import type {
     ItemDef,
     SkillDef,
     InventoryProposal,
+    PinnedExcerpt,
 } from '../../types';
 
 export type TurnCallbacks = {
@@ -82,4 +83,5 @@ export type TurnState = {
     skills: SkillDef[];
     /** Live combat snapshot (Phase C) — surfaced in the volatile block while a fight is active. */
     combatState?: CombatState | null;
+    pinnedExcerpts?: PinnedExcerpt[];
 };

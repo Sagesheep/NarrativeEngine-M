@@ -32,6 +32,13 @@ export interface WorldBlock {
     content: string;
     tokens: number;
     reason: string;
+    /**
+     * Optional per-item segments + a re-wrap fn. When a block carries these and
+     * doesn't fit the world budget whole, trimWorldBlocks keeps the largest
+     * prefix of segments that fits instead of dropping the whole block (AUDIT F5).
+     */
+    segments?: string[];
+    rewrap?: (kept: string[]) => string;
 }
 
 function renderSceneEvents(events: SceneEvent[]): string {
@@ -74,6 +81,7 @@ function filterRecallByPerception(
                     const idxEntry = indexMap.get(scene.sceneId);
                     if (!idxEntry) return true;
                     if (idxEntry.npcsWitnessed === undefined) return true;
+                    if (idxEntry.npcsWitnessed.length === 0) return true;
                     for (const wId of idxEntry.npcsWitnessed) {
                         if (onStageSet.has(wId)) return true;
                     }
@@ -237,7 +245,7 @@ export function assembleWorldBlocks(opts: {
             const indexMap = archiveIndex ? new Map(archiveIndex.map(e => [e.sceneId, e])) : new Map();
             const npcNameById = new Map((npcLedger ?? []).map(n => [n.id, n.name]));
 
-            const sceneLines = filteredRecall.map(s => {
+            const sceneSegments = filteredRecall.map(s => {
                 const idxEntry = indexMap.get(s.sceneId);
                 let header: string;
                 if (idxEntry?.npcsWitnessed && idxEntry.npcsWitnessed.length > 0) {
@@ -261,10 +269,18 @@ export function assembleWorldBlocks(opts: {
                 }
                 lines.push(s.content);
                 return lines.join('\n');
-            }).join('\n\n');
+            });
 
-            const text = `[ARCHIVE RECALL — VERBATIM PAST SCENES]\n${sceneLines}\n[END ARCHIVE RECALL]`;
-            worldBlocks.push({ source: 'Archive Recall', content: text, tokens: countTokens(text), reason: `Verbatim history (${filteredRecall.length} scenes${archiveIndex?.some(e => e.npcsWitnessed !== undefined) ? ', perception-bounded' : ''})` });
+            const rewrapRecall = (kept: string[]) => `[ARCHIVE RECALL — VERBATIM PAST SCENES]\n${kept.join('\n\n')}\n[END ARCHIVE RECALL]`;
+            const text = rewrapRecall(sceneSegments);
+            worldBlocks.push({
+                source: 'Archive Recall',
+                content: text,
+                tokens: countTokens(text),
+                reason: `Verbatim history (${filteredRecall.length} scenes${archiveIndex?.some(e => e.npcsWitnessed !== undefined) ? ', perception-bounded' : ''})`,
+                segments: sceneSegments,
+                rewrap: rewrapRecall,
+            });
         }
     }
 
@@ -386,9 +402,33 @@ export function trimWorldBlocks(
             worldContent += (worldContent ? '\n\n' : '') + block.content;
             currentWorldTokens += block.tokens;
             addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: block.reason, included: true, position: 'system_dynamic' });
-        } else {
-            addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: `Dropped: Exceeds World budget (${budget} t)`, included: false, position: 'system_dynamic' });
+            continue;
         }
+
+        // Block doesn't fit whole. If it's segmentable (Archive Recall), keep the
+        // largest prefix of scenes that fits rather than dropping everything (AUDIT F5).
+        const remaining = budget - currentWorldTokens;
+        if (block.segments && block.rewrap && block.segments.length > 0 && remaining > 0) {
+            const kept: string[] = [];
+            for (const seg of block.segments) {
+                const candidate = block.rewrap([...kept, seg]);
+                if (countTokens(candidate) > remaining) break;
+                kept.push(seg);
+            }
+            if (kept.length > 0) {
+                const content = block.rewrap(kept);
+                const tokens = countTokens(content);
+                worldContent += (worldContent ? '\n\n' : '') + content;
+                currentWorldTokens += tokens;
+                const dropped = block.segments.length - kept.length;
+                console.warn(`[Payload] ${block.source} truncated to fit world budget: kept ${kept.length}/${block.segments.length} scenes, dropped ${dropped}`);
+                addTrace({ source: block.source, classification: 'world_context', tokens, reason: `${block.reason} (truncated: kept ${kept.length}/${block.segments.length})`, included: true, position: 'system_dynamic' });
+                continue;
+            }
+        }
+
+        console.warn(`[Payload] ${block.source} dropped — ${block.tokens}t exceeds remaining world budget (${remaining}t of ${budget}t)`);
+        addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: `Dropped: Exceeds World budget (${budget} t)`, included: false, position: 'system_dynamic' });
     }
     return { worldContent, currentWorldTokens };
 }

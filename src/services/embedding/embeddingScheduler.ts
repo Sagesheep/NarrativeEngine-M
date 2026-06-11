@@ -37,15 +37,22 @@ type StoreLike = {
 
 let storeRef: StoreLike | null = null;
 
+/**
+ * Wire the live zustand store into the scheduler. Called once from
+ * `useAppStore.ts` right after the store is created. This replaces the old
+ * `require('../../store/useAppStore')` hack — which threw in Vite browser
+ * bundles (no runtime `require`), silently disabling the progress chip,
+ * the AI-streaming pause, and the stream-end resume listener.
+ *
+ * Keeping the wiring as a setter also means the dependency is one-way
+ * (store → scheduler), so there is no longer a circular import to dodge.
+ */
+export function registerStore(store: StoreLike): void {
+    storeRef = store;
+}
+
 function getStore(): StoreLike | null {
-    if (storeRef) return storeRef;
-    try {
-        const { useAppStore } = require('../../store/useAppStore') as { useAppStore: StoreLike };
-        storeRef = useAppStore;
-        return storeRef;
-    } catch {
-        return null;
-    }
+    return storeRef;
 }
 
 function setReindexProgress(state: ReindexState): void {
@@ -71,7 +78,7 @@ function installListeners(): void {
     const store = getStore();
     if (store && store.subscribe) {
         streamUnsubscribe = store.subscribe((state: any) => {
-            if (state && state.isStreaming === false && draining && queue.length > 0) {
+            if (state && state.isStreaming === false && !draining && queue.length > 0) {
                 drainQueue();
             }
         });
@@ -79,7 +86,7 @@ function installListeners(): void {
 
     if (typeof document !== 'undefined') {
         visibilityHandler = () => {
-            if (!document.hidden && draining && queue.length > 0) {
+            if (!document.hidden && !draining && queue.length > 0) {
                 drainQueue();
             }
         };
@@ -140,7 +147,14 @@ async function drainQueue(): Promise<void> {
                             entry.type,
                             undefined
                         );
-                    } catch {
+                    } catch (err) {
+                        // Survivable: the chunk is retried on next app start via
+                        // enqueueProgressiveWithExistingCheck's storage diff. But
+                        // warn so a persistent stall is diagnosable (ISSUE-5).
+                        console.warn(
+                            `[embeddingScheduler] failed to store embedding for ${entry.type}:${entry.id}`,
+                            err
+                        );
                     }
                 }
                 doneCount++;
@@ -162,6 +176,10 @@ async function drainQueue(): Promise<void> {
         removeListeners();
         abortController = null;
         draining = false;
+        // Reset counters so the next upload starts from 0 rather than
+        // accumulating onto this drain's totals (ISSUE-3).
+        totalQueued = 0;
+        doneCount = 0;
     } else {
         draining = false;
     }
@@ -247,7 +265,6 @@ export function abortForCampaignSwitch(): void {
     totalQueued = 0;
     doneCount = 0;
     draining = false;
-    storeRef = null;
     terminatePool();
     removeListeners();
     setReindexProgress({ active: false, total: 0, done: 0, reason: null });

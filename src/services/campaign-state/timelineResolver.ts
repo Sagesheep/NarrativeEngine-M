@@ -15,7 +15,7 @@ export function resolveTimeline(events: TimelineEvent[]): ResolvedTruth[] {
 
     const resolved: TimelineEvent[] = [];
     for (const groupEvents of groups.values()) {
-        groupEvents.sort((a, b) => b.sceneId.localeCompare(a.sceneId));
+        groupEvents.sort((a, b) => parseInt(b.sceneId, 10) - parseInt(a.sceneId, 10));
         resolved.push(groupEvents[0]);
     }
 

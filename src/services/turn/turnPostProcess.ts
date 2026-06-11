@@ -98,7 +98,18 @@ export async function runCombinedSeal(
         return { summary: null, divergences: [] };
     }
 
-    const scenesContent = chapterScenes.map(s => ({ sceneId: s.sceneId, content: s.userSnippet || '' }));
+    // Seal from full verbatim scene content (user + GM), not the 120-char index
+    // snippet — the chapter summary, divergence facts, witness corrections and
+    // scene events all derive from GM narration, which lives only in the scene
+    // record, never the index entry (AUDIT F3). Falls back to the snippet only
+    // for any scene the store can't return.
+    const chapterSceneIds = chapterScenes.map(s => s.sceneId);
+    const fullScenes = await api.archive.getScenes(activeCampaignId, chapterSceneIds);
+    const contentById = new Map(fullScenes.map(s => [s.sceneId, s.content]));
+    const scenesContent = chapterScenes.map(s => ({
+        sceneId: s.sceneId,
+        content: contentById.get(s.sceneId) ?? s.userSnippet ?? '',
+    }));
     const sceneIds = chapter.sceneIds?.length
         ? chapter.sceneIds
         : Array.from({ length: endNum - startNum + 1 }, (_, i) => String(startNum + i).padStart(3, '0'));
@@ -171,7 +182,9 @@ export async function handlePostTurn(
             try {
                 const freshFacts = await fetchFacts(cid);
                 cb.setSemanticFacts!(freshFacts);
-            } catch {}
+            } catch (err) {
+                console.warn('[TurnPostProcess] Refresh-Facts failed:', err);
+            }
         }).catch((e) => console.warn('[TurnPostProcess] Refresh-Facts queue push failed:', e));
     }
 
@@ -547,6 +560,7 @@ async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, act
             if (callbacks.setChapters) callbacks.setChapters(updatedChapters);
             toast.success('Chapter sealed');
         } catch (err) {
+            console.error('[SealChapter] Failed to seal chapter:', err);
             toast.error('Failed to seal chapter');
         }
     }
