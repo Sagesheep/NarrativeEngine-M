@@ -513,13 +513,13 @@ export function ChatArea() {
             </div>
 
             <div className="px-2 md:px-4 pb-1 flex gap-2 overflow-x-auto no-scrollbar">
-                <button onClick={() => { if (window.confirm('Trim conversation history? This condenses older messages.')) triggerTrim(); }} disabled={messages.length < 6} className="shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all disabled:opacity-40 whitespace-nowrap overflow-hidden">
+                <button onClick={() => { if (window.confirm('Trim conversation history? This condenses older messages.')) triggerTrim(); }} disabled={messages.length < 6} className="shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all disabled:opacity-40 whitespace-nowrap">
                     <Zap size={13} /> TRIM
                 </button>
                 <CreateTroubleButton />
                 <button
                     onClick={() => setPinnedPanelOpen(true)}
-                    className="relative shrink-0 flex items-center gap-1.5 bg-void border border-terminal/20 text-text-dim hover:text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-terminal/5 hover:border-terminal/40 whitespace-nowrap overflow-hidden"
+                    className="relative shrink-0 flex items-center gap-1.5 bg-void border border-terminal/20 text-text-dim hover:text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-terminal/5 hover:border-terminal/40 whitespace-nowrap"
                     title="View pinned memories"
                 >
                     <Pin size={13} /> PINS
@@ -529,7 +529,7 @@ export function ChatArea() {
                         </span>
                     )}
                 </button>
-                <button onClick={handleClearArchive} disabled={!activeCampaignId} className="shrink-0 flex items-center gap-1.5 bg-void border border-red-500/20 text-red-500/60 hover:text-red-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-red-500/5 hover:border-red-500/40 disabled:opacity-40 whitespace-nowrap overflow-hidden"><Trash2 size={13} /> CLEAR</button>
+                <button onClick={handleClearArchive} disabled={!activeCampaignId} className="shrink-0 flex items-center gap-1.5 bg-void border border-red-500/20 text-red-500/60 hover:text-red-500 text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-red-500/5 hover:border-red-500/40 disabled:opacity-40 whitespace-nowrap"><Trash2 size={13} /> CLEAR</button>
             </div>
 
             <PinnedMemoriesPanel open={pinnedPanelOpen} onClose={() => setPinnedPanelOpen(false)} />
