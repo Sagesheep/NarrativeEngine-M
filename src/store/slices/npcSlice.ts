@@ -90,6 +90,7 @@ export type NPCSlice = {
     updateNPC: (id: string, patch: Partial<NPCEntry>) => void;
     removeNPC: (id: string) => void;
     archiveNPC: (id: string, turn: number, reason: string) => void;
+    mergeOrRenameNpc: (from: string, to: string, turn: number) => 'merged' | 'renamed' | 'none';
     restoreNPC: (id: string) => void;
 
     // On-stage NPC tracking (perception bounding)
@@ -105,7 +106,7 @@ type NPCDeps = NPCSlice & {
 
 // ── Slice creator ──────────────────────────────────────────────────────
 
-export const createNPCSlice: StateCreator<NPCDeps, [], [], NPCSlice> = (set) => ({
+export const createNPCSlice: StateCreator<NPCDeps, [], [], NPCSlice> = (set, get) => ({
     npcLedger: [],
     setNPCLedger: (npcs) => set((s) => {
         debouncedSaveNPCLedger(s.activeCampaignId, npcs);
@@ -154,6 +155,30 @@ export const createNPCSlice: StateCreator<NPCDeps, [], [], NPCSlice> = (set) => 
         debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
         return { npcLedger: newLedger };
     }),
+    // Manual rename/merge backstop for the user-driven highlight→rename tool.
+    // Find the ledger entry that owns `from`. If `to` is already owned by a
+    // DIFFERENT active entry, this was a duplicate/phantom → archive the `from`
+    // entry (merge into the real one). Otherwise rename the `from` entry to `to`.
+    // Renaming via updateNPC re-embeds with the correct model id (invariant).
+    mergeOrRenameNpc: (from, to, turn) => {
+        const fromKey = from.trim().toLowerCase();
+        const toKey = to.trim().toLowerCase();
+        if (!fromKey || !toKey || fromKey === toKey) return 'none';
+        const s = get();
+        const matches = (n: NPCEntry, key: string) => {
+            const names = [n.name, ...(n.aliases || '').split(',')].map(x => x.trim().toLowerCase());
+            return names.includes(key) || n.name?.trim().toLowerCase().startsWith(key + ' ');
+        };
+        const fromNpc = s.npcLedger.find(n => !n.archived && matches(n, fromKey));
+        if (!fromNpc) return 'none';
+        const toNpc = s.npcLedger.find(n => !n.archived && n.id !== fromNpc.id && matches(n, toKey));
+        if (toNpc) {
+            get().archiveNPC(fromNpc.id, turn, `merged into ${toNpc.name}`);
+            return 'merged';
+        }
+        get().updateNPC(fromNpc.id, { name: to.trim() });
+        return 'renamed';
+    },
     restoreNPC: (id) => set((s) => {
         const newLedger = s.npcLedger.map(n =>
             n.id === id ? { ...n, archived: false, archivedAtTurn: undefined, archivedReason: undefined } : n

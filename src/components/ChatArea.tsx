@@ -20,6 +20,8 @@ import { CreateTroubleModal } from './chat/CreateTroubleModal';
 
 import { NPCPressureInspector } from './NPCPressureInspector';
 import { ChatInput } from './chat/ChatInput';
+import { SelectionToolbar } from './chat/SelectionToolbar';
+import { RenameNpcModal } from './chat/RenameNpcModal';
 import { CombatHUD } from './combat/CombatHUD';
 import { UtilityCallStrip } from './UtilityCallStrip';
 import { scanCombatIntent, combatKeywordPrefilter, routeCombatIntent } from '../services/turn/combatScanner';
@@ -135,6 +137,9 @@ export function ChatArea() {
     const streamStartRef = useRef<number>(0);
     const bottomRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [selectionEl, setSelectionEl] = useState<HTMLElement | null>(null);
+    const [renameFrom, setRenameFrom] = useState<string | null>(null);
+    useEffect(() => { setSelectionEl(scrollContainerRef.current); }, []);
     const inputRef = useRef<HTMLTextAreaElement | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -673,6 +678,9 @@ export function ChatArea() {
             )}
 
             <CreateTroubleModal onSelect={(opt) => { setPendingArcSeed(opt); }} />
+
+            <SelectionToolbar container={selectionEl} onTrigger={(sel) => setRenameFrom(sel.text)} />
+            <RenameNpcModal open={renameFrom !== null} fromText={renameFrom ?? ''} onClose={() => setRenameFrom(null)} />
 
             {showPCCreator && (
                 <PCCreationWizard

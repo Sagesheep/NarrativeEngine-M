@@ -31,6 +31,7 @@ export type ChatSlice = {
     updateLastMessage: (patch: Partial<ChatMessage>) => void;
     updateMessageContent: (id: string, content: string) => void;
     replaceMessageText: (id: string, oldText: string, newText: string) => void;
+    renameAcrossMessages: (from: string, to: string) => number;
     deleteMessage: (id: string) => void;
     deleteMessagesFrom: (id: string) => void;
     setStreaming: (v: boolean) => void;
@@ -281,6 +282,35 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: msgs, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
             return { messages: msgs };
         }),
+    renameAcrossMessages: (from, to) => {
+        const fromTrim = from.trim();
+        if (!fromTrim || !to.trim()) return 0;
+        // Whole-word, case-insensitive. \b sits before a trailing possessive so
+        // "Elara's" → "<to>'s". Replacement keeps the user-typed casing verbatim.
+        // Fresh regex per call; replace-and-compare avoids global-regex lastIndex bugs.
+        const pat = `\\b${fromTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`;
+        let changed = 0;
+        set((s) => {
+            const msgs = s.messages.map(m => {
+                const next = { ...m };
+                let touched = false;
+                if (typeof m.content === 'string') {
+                    const rep = m.content.replace(new RegExp(pat, 'gi'), to);
+                    if (rep !== m.content) { next.content = rep; touched = true; }
+                }
+                if (typeof m.displayContent === 'string') {
+                    const rep = m.displayContent.replace(new RegExp(pat, 'gi'), to);
+                    if (rep !== m.displayContent) { next.displayContent = rep; touched = true; }
+                }
+                if (touched) changed++;
+                return next;
+            });
+            if (changed === 0) return {};
+            debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: msgs, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            return { messages: msgs };
+        });
+        return changed;
+    },
     deleteMessage: (id) =>
         set((s) => {
             const msgs = s.messages.filter(m => m.id !== id);

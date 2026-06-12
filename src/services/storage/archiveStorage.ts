@@ -110,4 +110,42 @@ export const archiveStorage = {
     async updateIndex(cid: string, index: import('../../types').ArchiveIndexEntry[]): Promise<void> {
         await setList(k(cid, 'archive_index'), index);
     },
+
+    // Whole-word, case-insensitive rename of a name across the sealed archive:
+    // scene prose (user + GM) plus the index snippet/keyword/mention text. Used by
+    // the manual highlight→rename tool. Returns the number of scenes touched.
+    async renameText(cid: string, from: string, to: string): Promise<number> {
+        const fromTrim = from.trim();
+        if (!fromTrim || !to.trim()) return 0;
+        const pat = `\\b${fromTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`;
+        const sub = (txt: string) => txt.replace(new RegExp(pat, 'gi'), to);
+
+        const scenes: SceneRecord[] = await getList(k(cid, 'scenes'));
+        let changed = 0;
+        const newScenes = scenes.map(s => {
+            const uc = sub(s.userContent);
+            const ac = sub(s.assistantContent);
+            if (uc !== s.userContent || ac !== s.assistantContent) changed++;
+            return { ...s, userContent: uc, assistantContent: ac };
+        });
+        if (changed > 0) await setList(k(cid, 'scenes'), newScenes);
+
+        const index = await getList<import('../../types').ArchiveIndexEntry>(k(cid, 'archive_index'));
+        let idxChanged = false;
+        const newIndex = index.map(e => {
+            const userSnippet = e.userSnippet ? sub(e.userSnippet) : e.userSnippet;
+            const keywords = e.keywords?.map(sub);
+            const npcsMentioned = e.npcsMentioned?.map(sub);
+            if (userSnippet !== e.userSnippet
+                || JSON.stringify(keywords) !== JSON.stringify(e.keywords)
+                || JSON.stringify(npcsMentioned) !== JSON.stringify(e.npcsMentioned)) {
+                idxChanged = true;
+                return { ...e, userSnippet, keywords, npcsMentioned };
+            }
+            return e;
+        });
+        if (idxChanged) await setList(k(cid, 'archive_index'), newIndex);
+
+        return changed;
+    },
 };

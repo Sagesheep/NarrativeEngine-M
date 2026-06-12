@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Search } from 'lucide-react';
+import { Replace } from 'lucide-react';
 
 type Props = {
     container: HTMLElement | null;
@@ -143,10 +143,10 @@ export function SelectionToolbar({ container, onTrigger }: Props) {
                 zIndex: 50,
             }}
             className="bg-void-darker border border-terminal text-terminal text-[10px] uppercase tracking-widest px-2 py-1 rounded shadow-lg flex items-center gap-1 hover:bg-terminal/10 active:bg-terminal/20"
-            title="Lore Check"
+            title="Rename this name everywhere"
         >
-            <Search size={10} />
-            Lore Check
+            <Replace size={10} />
+            Rename
         </button>
     );
 }
