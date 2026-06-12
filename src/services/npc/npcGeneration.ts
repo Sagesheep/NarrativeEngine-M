@@ -3,6 +3,7 @@ import { llmCall } from '../../utils/llmCall';
 import { uid } from '../../utils/uid';
 import { embedText, getCurrentModelId } from '../embedding';
 import { embeddingStorage } from '../storage/embeddingStorage';
+import { drawUnusedName, lookupCultures, genderOf } from './nameBank';
 import {
     extractJson,
     ANCHOR_BEFORE_INPUT,
@@ -182,8 +183,20 @@ export async function generateNPCProfile(
                     finalParsed = retryParsed;
                     console.log(`[NPC Generator] Name disambiguated to: "${(retryParsed.name as string) || resolvedName}"`);
                 } else {
-                    const disambiguated = resolvedName + ' the Younger';
-                    console.warn(`[NPC Generator] Re-prompt also collided. Appending disambiguator: "${disambiguated}"`);
+                    // Re-prompt also collided. Instead of the old "X the Younger" hack,
+                    // draw a real, distinct name from the engine name bank (Plan 05),
+                    // culture- and gender-matched to what the model originally minted.
+                    const firstTok = resolvedName.trim().split(/\s+/)[0] ?? resolvedName;
+                    const exclude = new Set<string>();
+                    for (const n of existingLedger) {
+                        for (const raw of [n.name, ...(n.aliases || '').split(',')]) {
+                            const fn = raw.trim().split(/\s+/)[0]?.toLowerCase();
+                            if (fn) exclude.add(fn);
+                        }
+                    }
+                    const drawn = drawUnusedName({ cultures: lookupCultures(firstTok), gender: genderOf(firstTok), exclude });
+                    const disambiguated = drawn ?? `${resolvedName} the Younger`; // pool-exhausted last resort
+                    console.warn(`[NPC Generator] Re-prompt also collided. ${drawn ? `Drew pool name: "${disambiguated}"` : `Pool exhausted, fell back to: "${disambiguated}"`}`);
                     finalParsed = { ...parsed, name: disambiguated };
                 }
             }

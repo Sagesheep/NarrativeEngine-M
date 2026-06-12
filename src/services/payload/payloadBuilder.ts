@@ -71,7 +71,7 @@ export function buildCombatStateBlock(combatState: CombatState, statLabelMap?: R
     return `[COMBAT STATE: VOLATILE]\nRound ${combatState.round}\n${lines.join('\n')}${rangeSummary}`;
 }
 
-export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessage[]; trace?: PayloadTrace[] } {
+export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessage[]; trace?: PayloadTrace[]; activeNpcIds: string[] } {
     const {
         settings,
         context,
@@ -115,8 +115,6 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     const { divergenceContent, divergenceTokens } = buildDivergenceBlock({
         divergenceRegister,
         chapters,
-        onStageNpcIds,
-        npcLedger,
         cap: Math.floor(limit * 0.20),
         addTrace,
     });
@@ -145,6 +143,11 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         chapters,
         addTrace,
     });
+
+    // Active-NPC ids selected for this turn's payload (Plan 05 swap signal).
+    // Read pre-trim: if the block is later budget-trimmed we still report these as
+    // "in payload", which only biases the swap toward 'flag' (never a blind swap).
+    const activeNpcIds = worldBlocks.find(b => b.source === 'Active NPCs')?.npcIds ?? [];
 
     const { worldContent, currentWorldTokens } = trimWorldBlocks(worldBlocks, budgetMap.world, addTrace);
 
@@ -203,6 +206,14 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
 
     messages.push(...fitted);
 
+    if (fitted.length > 0) {
+        const last = messages.length - 1;
+        const lastMsg = messages[last];
+        if (lastMsg.role === 'user' || lastMsg.role === 'assistant') {
+            messages[last] = { ...lastMsg, cache_control: { type: 'ephemeral' } };
+        }
+    }
+
     const volatileBlock = [worldContent, volatileContent].filter(Boolean).join('\n\n');
     const finalUserContent = volatileBlock
         ? `${volatileBlock}\n\n---\n\n${userMessage}`
@@ -210,5 +221,5 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     addTrace({ source: 'User Message (with world context)', classification: 'volatile_state', tokens: countTokens(finalUserContent), reason: 'Current turn + folded world/volatile context', included: true, position: 'user' });
     messages.push({ role: 'user', content: finalUserContent });
 
-    return { messages, trace: isDebug ? trace : undefined };
+    return { messages, trace: isDebug ? trace : undefined, activeNpcIds };
 }

@@ -22,6 +22,7 @@ import { toast } from '../../components/Toast';
 import { sanitizePayloadForApi } from '../llm/payloadSanitizer';
 import { gatherContext } from './turnContext';
 import { handlePostTurn } from './turnPostProcess';
+import { swapDuplicateNames } from '../npc';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool, handleAdjudicateTool, handleInitiateCombatTool, handleProposeInventoryTool } from './toolHandlers';
 
 import type { OpenAIMessage } from '../llm/llmService';
@@ -438,7 +439,32 @@ export async function runTurn(
 
                 callbacks.onCheckingNotes(false);
                 callbacks.setPipelinePhase?.('post-processing');
-                callbacks.updateLastAssistant(finalText);
+
+                // ── Plan 05: deterministic NPC name-swap (the single canonical rewrite point) ──
+                // Runs synchronously on the final prose BEFORE display commit, archive append,
+                // and NPC detection, so display / archive / detection all read post-swap text
+                // (no Voss-says-Maddox ghost). Swaps only fire when the engine can prove the
+                // model couldn't have meant an existing NPC; ambiguous collisions are flagged,
+                // not touched. Post-stream correction (Decision 1a): a rare one-frame update.
+                let committedText = finalText;
+                try {
+                    const swapRes = swapDuplicateNames(finalText, {
+                        ledger: npcLedger,
+                        onStageNpcIds: state.onStageNpcIds,
+                        activeNpcIds: gathered.payloadResult.activeNpcIds,
+                    });
+                    committedText = swapRes.text;
+                    if (swapRes.swaps.length > 0) {
+                        console.log('[NameSwap] swapped:', swapRes.swaps.map(s => `${s.from}→${s.to}`).join(', '));
+                    }
+                    if (swapRes.flags.length > 0) {
+                        console.log('[NameSwap] flagged (ambiguous — left as-is):', swapRes.flags.map(f => f.name).join(', '));
+                    }
+                } catch (e) {
+                    console.warn('[NameSwap] swap pass failed, using original text:', e);
+                }
+
+                callbacks.updateLastAssistant(committedText);
                 if (reasoningContent) {
                     callbacks.updateLastMessage({ reasoning_content: reasoningContent });
                 }

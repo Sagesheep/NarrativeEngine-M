@@ -8,6 +8,7 @@ import {
     joinPromptSections,
 } from '../infrastructure';
 import TITLES from '../../data/titles.json';
+import NAME_BLOCKLIST_DATA from '../../data/nameBlocklist.json';
 
 const TITLES_SET = new Set(TITLES.map(t => t.toLowerCase()));
 const NAME_CONNECTIVES = new Set(['of', 'the', 'von', 'de', 'di', 'al', 'el', 'ibn', 'bin']);
@@ -48,6 +49,12 @@ const NPC_NAME_BLOCKLIST = new Set([
     "headquarters", "bank", "shop", "store", "school", "college",
     "university", "hospital", "library", "prison", "barracks",
 ]);
+
+// Merge the engine-shipped generated blocklist (Plan 05, Component B): titles,
+// ranks, kinship/address words, places, organisations, abstract/time/common
+// capitalized nouns. Its #ambiguous section (words that could be real given
+// names) is excluded at build time, so unioning here can't shadow legit names.
+for (const w of NAME_BLOCKLIST_DATA as string[]) NPC_NAME_BLOCKLIST.add(w);
 
 // Contraction suffix pattern — straight and curly apostrophes
 const CONTRACTION_SUFFIX_RE = /['’](s|re|t|ve|ll|d|m)$/i;

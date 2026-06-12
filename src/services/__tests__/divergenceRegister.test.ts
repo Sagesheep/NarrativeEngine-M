@@ -14,7 +14,7 @@ import {
     stripReasoning,
     countRegisterTokens,
 } from '../campaign-state';
-import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter } from '../../types';
+import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, NPCEntry } from '../../types';
 
 const makeEntry = (overrides: Partial<DivergenceEntry> & { id: string; chapterId: string; category: DivergenceCategory; text: string; sceneRef: string }): DivergenceEntry => ({
     npcIds: [],
@@ -295,6 +295,48 @@ describe('divergenceRegister', () => {
             expect(tokens).toBeLessThan(4000);
 
             console.log(`[TokenBudget] 50 entries across 5 chapters: ${tokens} tokens (budget: 2000-4000)`);
+        });
+    });
+
+    describe('cast-independent rendering (cache regression)', () => {
+        it('renders identically with and without onStageNpcIds', () => {
+            const entries: DivergenceEntry[] = [
+                makeEntry({ id: 'e1', chapterId: 'ch1', category: 'locations', text: 'Gate destroyed', sceneRef: '001' }),
+                makeEntry({ id: 'e2', chapterId: 'ch1', category: 'npc_events', text: 'Grak allied', sceneRef: '002', npcIds: ['npc_grak'] }),
+                makeEntry({ id: 'e3', chapterId: 'ch1', category: 'npc_events', text: 'Shadow Blade acquired', sceneRef: '003', npcIds: ['npc_grak', 'npc_smith'] }),
+            ];
+            const reg: DivergenceRegister = { ...EMPTY_REGISTER, entries };
+            const chapters: ArchiveChapter[] = [
+                { chapterId: 'ch1', title: 'The Siege', sceneRange: ['001', '003'] as [string, string], sceneIds: ['001', '002', '003'], sealedAt: Date.now(), sceneCount: 3, summary: '', keywords: [], npcs: [], majorEvents: [], unresolvedThreads: [], tone: '', themes: [] },
+            ];
+
+            const withoutCast = renderRegisterForPayload(reg, chapters);
+            const withUndefined = renderRegisterForPayload(reg, chapters, undefined, undefined);
+
+            expect(withoutCast).toBe(withUndefined);
+            expect(withoutCast).toContain('[ESTABLISHED FACTS]');
+            expect(withoutCast).toContain('[END ESTABLISHED FACTS]');
+            expect(withoutCast).not.toContain('[ESTABLISHED FACTS — ON-STAGE]');
+        });
+
+        it('partitioned rendering activates only when onStageNpcIds and off-stage NPCs are present', () => {
+            const entries: DivergenceEntry[] = [
+                makeEntry({ id: 'e1', chapterId: 'ch1', category: 'npc_events', text: 'Grak allied', sceneRef: '002', npcIds: ['npc_grak'], knownBy: ['npc_grak'] }),
+                makeEntry({ id: 'e2', chapterId: 'ch1', category: 'locations', text: 'Village burned', sceneRef: '003', npcIds: [] }),
+            ];
+            const reg: DivergenceRegister = { ...EMPTY_REGISTER, entries };
+
+            const noCastResult = renderRegisterForPayload(reg);
+            expect(noCastResult).toContain('[ESTABLISHED FACTS]');
+            expect(noCastResult).not.toContain('[ESTABLISHED FACTS — ON-STAGE]');
+
+            const onStageResult = renderRegisterForPayload(reg, undefined, ['npc_grak'], [
+                { id: 'npc_grak', name: 'Grak', aliases: '', appearance: '', faction: '', storyRelevance: '', disposition: '', status: '', goals: '', voice: '', personality: '', exampleOutput: '', affinity: 10, archived: false },
+                { id: 'npc_smith', name: 'Smith', aliases: '', appearance: '', faction: '', storyRelevance: '', disposition: '', status: '', goals: '', voice: '', personality: '', exampleOutput: '', affinity: 10, archived: false },
+            ] as unknown as NPCEntry[]);
+
+            expect(onStageResult).toContain('[ESTABLISHED FACTS — ON-STAGE]');
+            expect(onStageResult).toContain('[ESTABLISHED FACTS — OFF-STAGE]');
         });
     });
 });

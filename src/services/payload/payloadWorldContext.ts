@@ -39,6 +39,10 @@ export interface WorldBlock {
      */
     segments?: string[];
     rewrap?: (kept: string[]) => string;
+    /** For the 'Active NPCs' block: ids of NPCs whose profile was included this
+     *  turn. Consumed by the deterministic name swap (Plan 05) as the "was the
+     *  profile in the payload" signal. */
+    npcIds?: string[];
 }
 
 function renderSceneEvents(events: SceneEvent[]): string {
@@ -416,7 +420,7 @@ export function assembleWorldBlocks(opts: {
                 }
                 return line;
             }).join('\n')}\n[END NPC CONTEXT]`;
-            worldBlocks.push({ source: 'Active NPCs', content: npcText, tokens: countTokens(npcText), reason: `NPCs detected in context (${activeNPCs.length}, minified)` });
+            worldBlocks.push({ source: 'Active NPCs', content: npcText, tokens: countTokens(npcText), reason: `NPCs detected in context (${activeNPCs.length}, minified)`, npcIds: activeNPCs.map(n => n.id) });
         }
     }
 
