@@ -41,6 +41,12 @@ const NPC_NAME_BLOCKLIST = new Set([
     "forest", "mountain", "valley", "river", "lake", "sea", "ocean",
     "north", "south", "east", "west", "northern", "southern", "eastern", "western",
     "upper", "lower", "old", "new", "great", "grand",
+    // organizations & institutions (common nouns capitalized in titles)
+    "office", "business", "bureau", "department", "agency", "company",
+    "corporation", "ministry", "council", "committee", "guild", "union",
+    "league", "alliance", "federation", "syndicate", "consortium",
+    "headquarters", "bank", "shop", "store", "school", "college",
+    "university", "hospital", "library", "prison", "barracks",
 ]);
 
 // Contraction suffix pattern — straight and curly apostrophes
@@ -55,6 +61,11 @@ const STRUCTURAL_WORDS = new Set([
     "forest", "mountain", "valley", "river", "lake", "sea", "ocean",
     "north", "south", "east", "west", "northern", "southern", "eastern", "western",
     "upper", "lower", "old", "new", "great", "grand",
+    "office", "business", "bureau", "department", "agency", "company",
+    "corporation", "ministry", "council", "committee", "guild", "union",
+    "league", "alliance", "federation", "syndicate", "consortium",
+    "headquarters", "bank", "shop", "store", "school", "college",
+    "university", "hospital", "library", "prison", "barracks",
 ]);
 
 // Bounded speech attribution verbs
@@ -194,7 +205,11 @@ export function classifyNPCNames(
             const search = potentialName.toLowerCase();
             return allNames.some(n => {
                 const lower = n.toLowerCase();
-                return lower === search || lower.startsWith(search + ' ') || lower.endsWith(' ' + search);
+                // Symmetric prefix/suffix match: catches "Aldric" vs ledger "Aldric Stone"
+                // AND "Aldric the Younger" vs ledger "Aldric".
+                return lower === search
+                    || lower.startsWith(search + ' ') || lower.endsWith(' ' + search)
+                    || search.startsWith(lower + ' ') || search.endsWith(' ' + lower);
             });
         });
 
@@ -234,6 +249,7 @@ REJECT everything that is not unambiguously a character's personal name, includi
 - Dice / mechanics terms: Catastrophe, Failure, Success, Triumph, Critical, Advantage, Disadvantage, Normal, Natural, Encounter, Surprise, Skill Check, Save
 - Generic roles or titles WITHOUT a name: Guard, Captain, Soldier, Academy, Equipment, Inventory
 - Locations, factions, organizations, items, spells, abilities
+- Organizations, offices, and institutions like "Convergence Business Office", "Merchant Guild", "City Council" — these are NEVER valid even if capitalized in prose
 - Compound location names like "Main Gate", "Iron Mouth", "North Bridge" — these are NEVER valid even if capitalized in prose
 - Sentence-initial common words capitalized by accident: "Two", "Not", "Every", "Equipment", "Academy", "Adventure"
 - Combined dice/mechanic phrases: "Disadvantage Catastrophe", "Normal Failure"

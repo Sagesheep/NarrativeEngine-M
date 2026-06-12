@@ -160,6 +160,16 @@ describe('npcDetector', () => {
             expect(names).not.toContain('Academy');
         });
 
+        // ── Regression: organization / institution names ───────────────────
+        it('drops organization names like Convergence Business Office', () => {
+            const content = 'They entered the Convergence Business Office. The Merchant Guild was closed.';
+            const names = extractNPCNames(content);
+            expect(names).not.toContain('Convergence Business Office');
+            expect(names).not.toContain('Convergence Business');
+            expect(names).not.toContain('Business Office');
+            expect(names).not.toContain('Merchant Guild');
+        });
+
         it('filters common blocklisted words', () => {
             const content = 'The man and The woman talk. "Well met," said Orin.';
             const names = extractNPCNames(content);
@@ -183,6 +193,30 @@ describe('npcDetector', () => {
             const { newNames, existingNpcs } = classifyNPCNames(names, ledger);
             expect(newNames).toEqual([]);
             expect(existingNpcs).toHaveLength(1);
+        });
+
+        it('matches epithet variants against existing ledger names', () => {
+            const names = ['Aldric the Younger'];
+            const ledger: any[] = [{ name: 'Aldric', aliases: '' }];
+            const { newNames, existingNpcs } = classifyNPCNames(names, ledger);
+            expect(newNames).toEqual([]);
+            expect(existingNpcs).toHaveLength(1);
+            expect(existingNpcs[0].name).toBe('Aldric');
+        });
+
+        it('matches full-name variants against a first-name-only ledger entry', () => {
+            const names = ['Maren Blackwood'];
+            const ledger: any[] = [{ name: 'Maren', aliases: '' }];
+            const { newNames, existingNpcs } = classifyNPCNames(names, ledger);
+            expect(newNames).toEqual([]);
+            expect(existingNpcs).toHaveLength(1);
+        });
+
+        it('still treats genuinely new names as new', () => {
+            const names = ['Thorne'];
+            const ledger: any[] = [{ name: 'Aldric', aliases: '' }];
+            const { newNames } = classifyNPCNames(names, ledger);
+            expect(newNames).toEqual(['Thorne']);
         });
 
         it('respects exclude list', () => {

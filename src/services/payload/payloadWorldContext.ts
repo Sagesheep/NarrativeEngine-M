@@ -189,6 +189,25 @@ export interface NpcStrategy {
     semanticallyRecalledNpcIds?: string[];
 }
 
+/**
+ * Compact name-uniqueness guard: every ledger name (including archived NPCs —
+ * they still exist in canon), names only, no profiles. Prevents the story AI
+ * from minting a new character with a name that's already taken.
+ */
+export function buildReservedNamesBlock(npcLedger: NPCEntry[]): string | null {
+    const names = Array.from(new Set(
+        npcLedger.map(n => n.name?.trim()).filter((n): n is string => !!n)
+    ));
+    if (names.length === 0) return null;
+    return '[RESERVED CHARACTER NAMES]\n' +
+        'Every name below already belongs to ONE established character. When you introduce a NEW character, ' +
+        'do NOT reuse any of these names — give each new character a clearly distinct name. ' +
+        'A shared family/clan/house surname is allowed ONLY when the relation is explicit in the story ' +
+        '(e.g. siblings, a parent, a shared dojo name). NEVER reuse a first name.\n' +
+        `Names: ${names.join(', ')}\n` +
+        '[END RESERVED CHARACTER NAMES]';
+}
+
 export function assembleWorldBlocks(opts: {
     context: GameContext;
     history: ChatMessage[];
@@ -227,6 +246,20 @@ export function assembleWorldBlocks(opts: {
     const sealedChapters = sealedChaptersOverride ?? (chapters ? chapters.filter(c => c.sealedAt !== undefined) : undefined);
 
     const worldBlocks: WorldBlock[] = [];
+
+    // First block = highest survival priority in trimWorldBlocks: name
+    // uniqueness is a hard canon constraint, not droppable flavor.
+    if (npcLedger && npcLedger.length > 0) {
+        const reservedNames = buildReservedNamesBlock(npcLedger);
+        if (reservedNames) {
+            worldBlocks.push({
+                source: 'Reserved Names',
+                content: reservedNames,
+                tokens: countTokens(reservedNames),
+                reason: `Name-uniqueness guard (${npcLedger.length} ledger entries)`,
+            });
+        }
+    }
 
     if (archiveRecall && archiveRecall.length > 0) {
         const activeAssistantContents = history

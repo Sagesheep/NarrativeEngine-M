@@ -148,9 +148,15 @@ export async function generateNPCProfile(
             INPUT_DELIMITER,
         );
 
+        const reservedNames = (existingLedger ?? []).map(n => n.name?.trim()).filter(Boolean);
+        const reservedNamesSection = reservedNames.length > 0
+            ? `RESERVED NAMES — already used by existing characters. The profile's "name" and "aliases" must NOT collide with any of these (a shared family surname is acceptable only with an explicit in-story relation; never a first name): ${reservedNames.join(', ')}`
+            : '';
+
         const fullPrompt = joinPromptSections(
             systemPrompt,
             `NPC NAME: "${npcName}"`,
+            reservedNamesSection,
             `RECENT CHAT HISTORY:\n${recentHistory}`,
         );
 
@@ -166,6 +172,7 @@ export async function generateNPCProfile(
                 const retryPrompt = joinPromptSections(
                     systemPrompt,
                     `NPC NAME: "${npcName}"`,
+                    reservedNamesSection,
                     `RECENT CHAT HISTORY:\n${recentHistory}`,
                     `Name "${resolvedName}" is already used by an existing NPC. Pick a different name (consider regional/family disambiguators) and re-emit the JSON.`,
                 );
