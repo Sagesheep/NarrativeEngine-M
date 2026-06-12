@@ -90,7 +90,6 @@ export type NPCSlice = {
     updateNPC: (id: string, patch: Partial<NPCEntry>) => void;
     removeNPC: (id: string) => void;
     archiveNPC: (id: string, turn: number, reason: string) => void;
-    clearActiveNPCs: (currentTurn: number) => number;
     restoreNPC: (id: string) => void;
 
     // On-stage NPC tracking (perception bounding)
@@ -155,26 +154,6 @@ export const createNPCSlice: StateCreator<NPCDeps, [], [], NPCSlice> = (set) => 
         debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
         return { npcLedger: newLedger };
     }),
-    // One-shot manual clear: archive EVERY active NPC regardless of staleness,
-    // except those currently on-stage (so the live scene isn't gutted). Archived
-    // NPCs auto-restore the moment their name reappears, so this is non-destructive
-    // — it just drops the accumulated clutter out of the per-turn roster. Used to
-    // unclog a ledger that grew huge before auto-archive started working.
-    clearActiveNPCs: (currentTurn) => {
-        let count = 0;
-        set((s) => {
-            const onStage = new Set(s.onStageNpcIds ?? []);
-            const newLedger = s.npcLedger.map(n => {
-                if (n.archived || onStage.has(n.id)) return n;
-                count++;
-                return { ...n, archived: true, archivedAtTurn: currentTurn, archivedReason: 'manual clear' };
-            });
-            if (count === 0) return {};
-            debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
-            return { npcLedger: newLedger };
-        });
-        return count;
-    },
     restoreNPC: (id) => set((s) => {
         const newLedger = s.npcLedger.map(n =>
             n.id === id ? { ...n, archived: false, archivedAtTurn: undefined, archivedReason: undefined } : n

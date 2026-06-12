@@ -1,6 +1,5 @@
 import type { NPCEntry, NPCPressureHistory } from '../types';
 import { useAppStore } from '../store/useAppStore';
-import { toast } from './Toast';
 
 function miniSparkline(history: NPCPressureHistory[] | undefined, type: 'ignored' | 'engaged'): string {
     if (!history || history.length === 0) return '—';
@@ -90,28 +89,12 @@ function NPCCard({ npc, archived }: { npc: NPCEntry; archived?: boolean }) {
 export function NPCPressureInspector() {
     const npcLedger = useAppStore(s => s.npcLedger);
     const debugMode = useAppStore(s => s.settings.debugMode);
-    const archiveIndex = useAppStore(s => s.archiveIndex);
-    const onStageNpcIds = useAppStore(s => s.onStageNpcIds);
 
     if (!debugMode) return null;
 
     const activeNPCs = npcLedger.filter(n => !n.archived);
     const archivedNPCs = npcLedger.filter(n => n.archived);
 
-    const currentTurn = archiveIndex.length > 0
-        ? parseInt(archiveIndex[archiveIndex.length - 1].sceneId, 10) || 0
-        : 0;
-
-    const handleClear = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const offStageCount = activeNPCs.filter(n => !onStageNpcIds.includes(n.id)).length;
-        if (offStageCount === 0) { toast.info('No off-stage NPCs to clear'); return; }
-        if (!window.confirm(`Archive ${offStageCount} active NPC${offStageCount === 1 ? '' : 's'}? On-stage NPCs are kept, and any archived NPC auto-restores when mentioned again.`)) return;
-        const n = useAppStore.getState().clearActiveNPCs(currentTurn);
-        if (n > 0) toast.success(`Archived ${n} NPC${n === 1 ? '' : 's'}`);
-        else toast.info('Nothing to clear');
-    };
     const npcsWithPressure = activeNPCs.filter(n => n.drives || n.pressure);
     const npcsWithoutPressure = activeNPCs.filter(n => !n.drives && !n.pressure);
     const archivedWithPressure = archivedNPCs.filter(n => n.drives || n.pressure);
@@ -121,15 +104,6 @@ export function NPCPressureInspector() {
             <summary className="cursor-pointer text-[10px] text-terminal/60 hover:text-terminal transition-colors select-none px-2 py-1 flex items-center gap-2">
                 <span className="font-bold uppercase tracking-wider">NPC Pressure Inspector</span>
                 <span className="text-[9px] text-text-dim/40">({npcsWithPressure.length} tracked / {activeNPCs.length} active{archivedNPCs.length > 0 ? `, ${archivedNPCs.length} archived` : ''})</span>
-                {activeNPCs.length > 10 && (
-                    <button
-                        onClick={handleClear}
-                        title="Archive all active NPCs except those currently on-stage. They auto-restore when mentioned again."
-                        className="ml-auto text-[9px] text-amber-400 hover:text-amber-300 px-1.5 py-0.5 rounded bg-amber-500/10"
-                    >
-                        Clear list
-                    </button>
-                )}
             </summary>
             <div className="p-2 space-y-2 max-h-96 overflow-y-auto">
                 {npcsWithPressure.length === 0 && (

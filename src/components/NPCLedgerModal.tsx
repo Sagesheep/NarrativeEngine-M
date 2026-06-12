@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react';
-import { X, Plus, LayoutGrid, List, ArrowLeft } from 'lucide-react';
+import { X, Plus, LayoutGrid, List, ArrowLeft, Sparkles } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { updateExistingNPCs } from '../services/chatEngine';
 import { parseNPCsFromLore } from '../services/lore';
 import { dedupeNPCLedger } from '../store/slices/npcSlice';
 import { api } from '../services/apiClient';
+import { runNPCReview, type NPCReviewCandidate, type NPCReviewCancelled } from '../services/npc';
 
 import type { NPCEntry } from '../types';
 import { toast } from './Toast';
@@ -12,6 +13,7 @@ import { toast } from './Toast';
 import { NPCListView } from './npc-ledger/NPCListView';
 import { NPCGalleryView } from './npc-ledger/NPCGalleryView';
 import { NPCEditForm } from './npc-ledger/NPCEditForm';
+import { NPCReviewModal, type NPCReviewAction } from './NPCReviewModal';
 import { uid } from '../utils/uid';
 import { getEntriesForNpc } from '../services/campaign-state';
 import { imageStorage } from '../services/storage/imageStorage';
@@ -24,6 +26,7 @@ export function NPCLedgerModal() {
   const updateNPC = useAppStore(s => s.updateNPC);
   const removeNPC = useAppStore(s => s.removeNPC);
   const restoreNPC = useAppStore(s => s.restoreNPC);
+  const archiveNPC = useAppStore(s => s.archiveNPC);
   const setNPCLedger = useAppStore(s => s.setNPCLedger);
   const setMobileView = useAppStore(s => s.setMobileView);
   const activeCampaignId = useAppStore(s => s.activeCampaignId);
@@ -34,6 +37,16 @@ export function NPCLedgerModal() {
   const [isAIUpdating, setIsAIUpdating] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+
+  // ── AI NPC review (flags likely non-characters; user decides per entry) ──
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewRunning, setReviewRunning] = useState(false);
+  const [reviewProgress, setReviewProgress] = useState<{ msg: string; done: number; total: number } | null>(null);
+  const [reviewCandidates, setReviewCandidates] = useState<NPCReviewCandidate[] | null>(null);
+  const [reviewFailedBatches, setReviewFailedBatches] = useState(0);
+  const [reviewActions, setReviewActions] = useState<Record<string, NPCReviewAction>>({});
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const reviewCancelRef = useRef<NPCReviewCancelled>({ cancelled: false });
 
   const importRef = useRef<HTMLInputElement>(null);
 
@@ -181,6 +194,94 @@ export function NPCLedgerModal() {
     toast.success(`Deleted ${checkedIds.size} NPCs`);
   };
 
+  const handleStartReview = () => {
+    const state = useAppStore.getState();
+    const provider = state.getActiveUtilityEndpoint() ?? state.getActiveStoryEndpoint();
+    if (!provider) {
+      setReviewError('No AI endpoint configured.');
+      setReviewOpen(true);
+      return;
+    }
+    setReviewOpen(true);
+    setReviewRunning(true);
+    setReviewProgress(null);
+    setReviewCandidates(null);
+    setReviewFailedBatches(0);
+    setReviewActions({});
+    setReviewError(null);
+    reviewCancelRef.current = { cancelled: false };
+
+    runNPCReview(npcLedger, provider, reviewCancelRef.current, (msg, done, total) => {
+      setReviewProgress({ msg, done, total });
+    }).then(result => {
+      setReviewCandidates(result.candidates);
+      setReviewFailedBatches(result.failedBatches);
+      // Default every flagged entry to "archive" — the safe, reversible action.
+      const defaults: Record<string, NPCReviewAction> = {};
+      for (const c of result.candidates) defaults[c.id] = 'archive';
+      setReviewActions(defaults);
+      setReviewRunning(false);
+      setReviewProgress(null);
+    }).catch(err => {
+      if (err?.message === 'NPC review cancelled.') {
+        setReviewOpen(false);
+        setReviewRunning(false);
+        setReviewProgress(null);
+      } else {
+        setReviewError(err?.message || String(err));
+        setReviewRunning(false);
+        setReviewProgress(null);
+      }
+    });
+  };
+
+  const handleStopReview = () => {
+    reviewCancelRef.current.cancelled = true;
+    setReviewOpen(false);
+    setReviewRunning(false);
+    setReviewProgress(null);
+  };
+
+  const handleCloseReview = () => {
+    if (reviewRunning) return;
+    setReviewOpen(false);
+    setReviewCandidates(null);
+    setReviewActions({});
+    setReviewError(null);
+  };
+
+  const handleApplyReview = async () => {
+    const cands = reviewCandidates ?? [];
+    const archiveIds = cands.filter(c => reviewActions[c.id] === 'archive').map(c => c.id);
+    const deleteIds = cands.filter(c => reviewActions[c.id] === 'delete').map(c => c.id);
+
+    if (deleteIds.length > 0 && activeCampaignId) {
+      await api.backup.create(activeCampaignId, { trigger: 'pre-npc-review-delete', isAuto: true }).catch(() => {});
+    }
+
+    const turn = useAppStore.getState().archiveIndex.length > 0
+      ? parseInt(useAppStore.getState().archiveIndex.slice(-1)[0].sceneId, 10) || 0
+      : 0;
+
+    for (const id of archiveIds) archiveNPC(id, turn, 'review: flagged not an NPC');
+    for (const id of deleteIds) removeNPC(id);
+
+    if (selectedId && (archiveIds.includes(selectedId) || deleteIds.includes(selectedId))) {
+      setSelectedId(null);
+      setIsEditing(false);
+    }
+
+    const parts: string[] = [];
+    if (archiveIds.length) parts.push(`archived ${archiveIds.length}`);
+    if (deleteIds.length) parts.push(`deleted ${deleteIds.length}`);
+    if (parts.length) toast.success(`NPC review: ${parts.join(', ')}`);
+
+    setReviewOpen(false);
+    setReviewCandidates(null);
+    setReviewActions({});
+    setReviewError(null);
+  };
+
   const activeNPCList = npcLedger.filter(n => !n.archived);
   const archivedNPCList = npcLedger.filter(n => n.archived);
 
@@ -235,6 +336,14 @@ export function NPCLedgerModal() {
                 {selectMode ? 'Cancel' : 'Select'}
               </button>
             </div>
+            <button
+              onClick={handleStartReview}
+              disabled={reviewRunning || activeNPCList.length === 0}
+              className="flex items-center justify-center gap-1.5 w-full h-9 border border-amber-500/30 rounded text-[10px] uppercase tracking-wider text-amber-400 hover:bg-amber-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Sparkles size={12} />
+              AI Review ({activeNPCList.length})
+            </button>
             {selectMode && (
               <div className="flex gap-1.5 h-10">
                 <button onClick={() => setCheckedIds(new Set(activeNPCList.map(n => n.id)))} className="flex-1 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim">
@@ -308,6 +417,20 @@ export function NPCLedgerModal() {
           />
         </div>
       </div>
+
+      <NPCReviewModal
+        open={reviewOpen}
+        running={reviewRunning}
+        progress={reviewProgress}
+        candidates={reviewCandidates}
+        failedBatches={reviewFailedBatches}
+        actions={reviewActions}
+        error={reviewError}
+        onCancel={handleCloseReview}
+        onStop={handleStopReview}
+        onSetAction={(id, action) => setReviewActions(prev => ({ ...prev, [id]: action }))}
+        onApply={handleApplyReview}
+      />
     </div>
   );
 }
