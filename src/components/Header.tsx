@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Settings, Trash2, LogOut, Users, Save, Archive, ScanSearch, BookCheck, Pin } from 'lucide-react';
+import { Settings, Trash2, LogOut, Users, Save, Archive, ScanSearch, BookCheck, Pin, Replace } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import type { AiTier } from '../types';
 
@@ -34,9 +34,11 @@ export function Header() {
     const updateSettings = useAppStore(s => s.updateSettings);
     const openLoreCheck = useAppStore(s => s.openLoreCheck);
     const addPinnedExcerpt = useAppStore(s => s.addPinnedExcerpt);
+    const openRenameModal = useAppStore(s => s.openRenameModal);
 
     const [loreSel, setLoreSel] = useState<SelectionSnapshot | null>(null);
     const [pinSel, setPinSel] = useState<SelectionSnapshot | null>(null);
+    const [renameSel, setRenameSel] = useState<SelectionSnapshot | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [clearConfirmText, setClearConfirmText] = useState('');
 
@@ -63,6 +65,7 @@ export function Header() {
             setLoreSel(lore);
             const pin = captureFromBubble('[data-message-id]');
             setPinSel(pin);
+            setRenameSel(pin);
         };
         document.addEventListener('selectionchange', handle);
         return () => document.removeEventListener('selectionchange', handle);
@@ -98,6 +101,17 @@ export function Header() {
         } else {
             toast.warning(result.reason);
         }
+    };
+
+    const handleRenameSelection = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        const snap = captureFromBubble('[data-message-id]') ?? renameSel;
+        if (!snap) return;
+        openRenameModal(snap.text);
+        window.getSelection()?.removeAllRanges();
+        setRenameSel(null);
+        setPinSel(null);
+        setLoreSel(null);
     };
 
     const handleClearChat = async () => {
@@ -216,6 +230,20 @@ export function Header() {
                 aria-label="Lore Check selection"
             >
                 <BookCheck size={16} />
+            </button>
+
+            <button
+                onMouseDown={handleRenameSelection}
+                onTouchStart={handleRenameSelection}
+                className={`transition-colors p-1 touch-btn md:p-1 md:min-h-0 md:min-w-0 ml-1 ${
+                    renameSel
+                        ? 'text-terminal animate-pulse'
+                        : 'text-text-dim hover:text-terminal'
+                }`}
+                title="Rename selected name everywhere (highlight a name first)"
+                aria-label="Rename selection"
+            >
+                <Replace size={16} />
             </button>
 
             <button

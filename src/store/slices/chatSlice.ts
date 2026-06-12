@@ -78,6 +78,10 @@ export type ChatSlice = {
     setLoreCheckResult: (result: LoreCheckResult) => void;
     setLoreCheckError: (err: string) => void;
     closeLoreCheck: () => void;
+    renameModalOpen: boolean;
+    renameModalText: string;
+    openRenameModal: (text: string) => void;
+    closeRenameModal: () => void;
     setMessageImage: (messageId: string, image: ChatMessage['image']) => void;
 };
 
@@ -407,6 +411,10 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             loreCheckStatus: '',
             loreCheckError: null,
         }),
+    renameModalOpen: false,
+    renameModalText: '',
+    openRenameModal: (text) => set({ renameModalOpen: true, renameModalText: text }),
+    closeRenameModal: () => set({ renameModalOpen: false, renameModalText: '' }),
     setMessageImage: (messageId, image) =>
         set((s) => {
             const msgs = s.messages.map(m =>

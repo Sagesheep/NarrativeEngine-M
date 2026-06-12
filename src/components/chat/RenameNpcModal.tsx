@@ -4,20 +4,21 @@ import { useAppStore } from '../../store/useAppStore';
 import { archiveStorage } from '../../services/storage/archiveStorage';
 import { toast } from '../Toast';
 
-type Props = {
-    open: boolean;
-    fromText: string;
-    onClose: () => void;
-};
-
 /**
  * Manual, user-driven name fix. Replaces a highlighted name with a new one across
  * the loaded chat, the sealed archive (scene prose + index), and reconciles the
  * ledger (merge into an existing same-name NPC, else rename the matching entry).
  * Replaces the removed automatic name-swap — the user is always in control here.
+ *
+ * Triggered from the header Rename icon (which captures the current text
+ * selection), NOT a long-press toolbar — long-press collides with Android's
+ * native selection handles, same reason pin/Lore-Check are header icons.
  */
-export function RenameNpcModal({ open, fromText, onClose }: Props) {
+export function RenameNpcModal() {
     const npcLedger = useAppStore(s => s.npcLedger);
+    const open = useAppStore(s => s.renameModalOpen);
+    const fromText = useAppStore(s => s.renameModalText);
+    const onClose = useAppStore(s => s.closeRenameModal);
     const [to, setTo] = useState('');
     const [busy, setBusy] = useState(false);
 
