@@ -194,6 +194,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             context: { ...defaultContext, ...(campaignState?.context ?? {}) },
             messages: campaignState?.messages ?? [],
             condenser: campaignState?.condenser ?? { condensedUpToIndex: -1 },
+            pinnedExcerpts: campaignState?.pinnedExcerpts ?? [],
             loreChunks,
             npcLedger,
             archiveIndex,
