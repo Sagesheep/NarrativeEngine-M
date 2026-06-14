@@ -54,7 +54,7 @@ describe('getForegroundPoolSize', () => {
 
     it('returns 2 for 4 cores', () => {
         mockHardware(4);
-        expect(getForegroundPoolSize()).toBe(Math.max(1, Math.min(6, Math.floor(4 * 0.75))));
+        expect(getForegroundPoolSize()).toBe(2);
     });
 
     it('returns 2 for 4 cores with 4GB memory', () => {
@@ -62,19 +62,19 @@ describe('getForegroundPoolSize', () => {
         expect(getForegroundPoolSize()).toBe(Math.min(Math.floor(4 * 0.75), 2));
     });
 
-    it('returns 6 for 16 cores (clamped)', () => {
+    it('returns 2 for 16 cores (capped)', () => {
         mockHardware(16);
-        expect(getForegroundPoolSize()).toBe(6);
+        expect(getForegroundPoolSize()).toBe(2);
     });
 
-    it('returns 6 for 32 cores (clamped)', () => {
+    it('returns 2 for 32 cores (capped)', () => {
         mockHardware(32);
-        expect(getForegroundPoolSize()).toBe(6);
+        expect(getForegroundPoolSize()).toBe(2);
     });
 
-    it('defaults to 3 when hardwareConcurrency undefined (4 default * 0.75)', () => {
+    it('defaults to 2 when hardwareConcurrency undefined (capped)', () => {
         mockHardware(undefined);
-        expect(getForegroundPoolSize()).toBe(Math.max(1, Math.min(6, Math.floor(4 * 0.75))));
+        expect(getForegroundPoolSize()).toBe(2);
     });
 });
 

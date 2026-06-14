@@ -309,15 +309,16 @@ describe('embeddingScheduler', () => {
             expect(mockPoolEmbed).not.toHaveBeenCalled();
             expect(typeof capturedListener).toBe('function');
 
-            // Streaming ends → fire the store subscriber; drain must resume.
+            // Streaming ends → fire the store subscriber; drain resumes after the
+            // 5s settle debounce, so wait past it.
             mockIsStreaming = false;
             capturedListener!({ isStreaming: false });
 
-            await new Promise((r) => setTimeout(r, 100));
+            await new Promise((r) => setTimeout(r, 5200));
 
             const embedContents = mockPoolEmbed.mock.calls.map((c: any[]) => c[0]);
             expect(embedContents).toContain('resume content');
-        });
+        }, 8000);
 
         it('resumes draining when document.hidden returns to false', async () => {
             Object.defineProperty(document, 'hidden', { value: true, configurable: true });
@@ -336,15 +337,16 @@ describe('embeddingScheduler', () => {
             await new Promise((r) => setTimeout(r, 50));
             expect(mockPoolEmbed).not.toHaveBeenCalled();
 
-            // Tab returns to foreground → fire visibilitychange; drain must resume.
+            // Tab returns to foreground → fire visibilitychange; drain resumes
+            // after the 5s settle debounce, so wait past it.
             Object.defineProperty(document, 'hidden', { value: false, configurable: true });
             document.dispatchEvent(new Event('visibilitychange'));
 
-            await new Promise((r) => setTimeout(r, 100));
+            await new Promise((r) => setTimeout(r, 5200));
 
             const embedContents = mockPoolEmbed.mock.calls.map((c: any[]) => c[0]);
             expect(embedContents).toContain('visible content');
-        });
+        }, 8000);
     });
 
     describe('counter reset (ISSUE-3)', () => {

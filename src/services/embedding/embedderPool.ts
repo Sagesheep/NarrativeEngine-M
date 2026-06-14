@@ -25,12 +25,11 @@ let pool: PoolWorker[] = [];
 function getForegroundPoolSize(): number {
     const hc = navigator.hardwareConcurrency || 4;
     const mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory;
-    let n: number;
-    if (typeof mem === 'number' && mem <= 4) {
-        n = 2;
-    } else {
-        n = Math.floor(hc * 0.75);
-    }
+    // Each worker holds its own model copy (a 768-dim model is the dominant
+    // memory cost on mobile), so the pool is capped at 2. Very low-memory
+    // devices (<=2GB) run a single worker.
+    if (typeof mem === 'number' && mem <= 2) return 1;
+    const n = Math.floor(hc * 0.75);
     return Math.max(1, Math.min(2, n));
 }
 
