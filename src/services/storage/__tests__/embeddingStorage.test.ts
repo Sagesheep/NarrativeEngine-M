@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { set as idbSet, keys as idbKeys, delMany as idbDelMany, getMany as idbGetMany } from 'idb-keyval';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { set as idbSet, keys as idbKeys, delMany as idbDelMany } from 'idb-keyval';
 import { embeddingStorage } from '../embeddingStorage';
 
 let getManyCallCount = 0;
