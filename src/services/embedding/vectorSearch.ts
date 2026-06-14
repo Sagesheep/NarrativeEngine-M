@@ -7,7 +7,7 @@ export type SearchHit = {
 };
 
 /** Internal hit that carries the vector for MMR computation. Discarded before return. */
-type ScoredVector = SearchHit & { vector: number[] };
+type ScoredVector = SearchHit & { vector: ArrayLike<number> };
 
 /**
  * Balance between query-relevance (1.0) and diversity (0.0).
@@ -21,7 +21,7 @@ const MMR_LAMBDA = 0.7;
  */
 const MMR_MIN_POOL = 4;
 
-export function cosineSimilarity(a: number[], b: number[]): number {
+export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): number {
     let dot = 0, normA = 0, normB = 0;
     for (let i = 0; i < a.length; i++) {
         dot += a[i] * b[i];

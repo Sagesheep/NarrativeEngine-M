@@ -144,6 +144,15 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
     setActiveCampaign: async (id) => {
         abortForCampaignSwitch();
 
+        // Release the outgoing campaign's in-memory vector cache so only the
+        // active campaign's vectors stay resident (covers switch and close).
+        const previousCampaignId = get().activeCampaignId;
+        if (previousCampaignId && previousCampaignId !== id) {
+            import('../../services/storage').then(({ offlineStorage }) => {
+                offlineStorage.embeddings.releaseCache(previousCampaignId);
+            }).catch(() => {});
+        }
+
         import('../../services/infrastructure').then(({ backgroundQueue }) => {
             backgroundQueue.clear('Campaign switched');
         }).catch(() => {});
