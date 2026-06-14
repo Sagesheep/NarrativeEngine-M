@@ -1,221 +1,55 @@
-import { getCurrentModelId, embedText as primaryEmbedText } from './embedder';
+import { embedText as primaryEmbedText } from './embedder';
+
+// The embedder "pool" has been collapsed to a single shared model: every embed
+// runs through the primary embedder worker (one model copy in memory). Holding
+// parallel pool workers each loaded a full extra 768-dim model — the dominant
+// avoidable RAM cost on mobile and a key OOM/lmkd trigger during play. With
+// progressive background indexing (see embeddingScheduler), the throughput the
+// pool bought isn't worth the memory. The pool's public API is preserved so
+// callers (the scheduler) and tests don't need to change.
 
 const CALL_TIMEOUT_MS = 60_000;
 
-type WorkerResponse =
-    | { type: 'ready'; id: string }
-    | { type: 'result'; id: string; vector: number[] | null }
-    | { type: 'error'; id: string; message: string };
-
-type PendingEntry = {
-    resolve: (v: Float32Array | null) => void;
-    reject: (e: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-};
-
-interface PoolWorker {
-    worker: Worker;
-    pending: Map<string, PendingEntry>;
-    initialized: boolean;
-    dead: boolean;
-}
-
-let pool: PoolWorker[] = [];
-
+/**
+ * Background drain concurrency for the scheduler. Pinned to 1 so chunks embed
+ * one at a time through the single primary worker — never overlapping work that
+ * would queue extra tensors and spike memory.
+ */
 function getForegroundPoolSize(): number {
-    const hc = navigator.hardwareConcurrency || 4;
-    const mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory;
-    // Each worker holds its own model copy (a 768-dim model is the dominant
-    // memory cost on mobile), so the pool is capped at 2. Very low-memory
-    // devices (<=2GB) run a single worker.
-    if (typeof mem === 'number' && mem <= 2) return 1;
-    const n = Math.floor(hc * 0.75);
-    return Math.max(1, Math.min(2, n));
+    return 1;
 }
 
-function leastBusyWorker(): PoolWorker | null {
-    let best: PoolWorker | null = null;
-    let bestCount = Infinity;
-    for (const pw of pool) {
-        if (pw.dead || !pw.initialized) continue;
-        if (pw.pending.size < bestCount) {
-            bestCount = pw.pending.size;
-            best = pw;
-        }
-    }
-    return best;
-}
-
-function initPoolWorker(pw: PoolWorker): Promise<boolean> {
-    const modelId = getCurrentModelId();
-    const allowRemote = modelId !== 'Xenova/all-MiniLM-L6-v2';
-    return new Promise<boolean>((resolve) => {
-        const id = `pool-init-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const timer = setTimeout(() => {
-            pw.pending.delete(id);
-            pw.dead = true;
-            resolve(false);
-        }, CALL_TIMEOUT_MS);
-
-        pw.pending.set(id, {
-            resolve: () => {
-                pw.pending.delete(id);
-                clearTimeout(timer);
-                pw.initialized = true;
-                resolve(true);
-            },
-            reject: () => {
-                pw.pending.delete(id);
-                clearTimeout(timer);
-                pw.dead = true;
-                resolve(false);
-            },
-            timer,
-        });
-
-        pw.worker.postMessage({
-            type: 'init',
-            id,
-            modelId,
-            allowRemote,
-        });
-    });
-}
-
-function createPoolWorker(): PoolWorker | null {
-    try {
-        const worker = new Worker(
-            new URL('./embedder.worker.ts', import.meta.url),
-            { type: 'module' }
-        );
-        const pw: PoolWorker = { worker, pending: new Map(), initialized: false, dead: false };
-
-        worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-            const { id, type } = e.data;
-            const entry = pw.pending.get(id);
-            if (!entry) return;
-            pw.pending.delete(id);
-            clearTimeout(entry.timer);
-
-            if (type === 'error') {
-                entry.reject(new Error(e.data.message));
-            } else if (type === 'result') {
-                entry.resolve(e.data.vector ? new Float32Array(e.data.vector) : null);
-            } else if (type === 'ready') {
-                entry.resolve(null);
-            }
-        };
-
-        worker.onerror = () => {
-            pw.dead = true;
-            const err = new Error('[PoolWorker] Worker error');
-            for (const [, entry] of pw.pending) {
-                clearTimeout(entry.timer);
-                entry.reject(err);
-            }
-            pw.pending.clear();
-        };
-
-        return pw;
-    } catch {
-        return null;
-    }
-}
-
-async function ensurePool(): Promise<void> {
-    if (pool.length > 0) return;
-    const targetSize = getForegroundPoolSize();
-    for (let i = 0; i < targetSize; i++) {
-        const pw = createPoolWorker();
-        if (!pw) break;
-        pool.push(pw);
-        const ok = await initPoolWorker(pw);
-        if (!ok) {
-            pool = pool.filter(p => p !== pw);
-        }
-    }
-}
-
-function resizePool(n: number): void {
-    n = Math.max(1, Math.min(6, n));
-    while (pool.length < n) {
-        const pw = createPoolWorker();
-        if (pw) pool.push(pw);
-        else break;
-    }
-}
-
+/**
+ * Embed a single text. Routes through the primary embedder so there is only
+ * ever one model copy resident. `signal` lets the scheduler abort in-flight
+ * work on campaign/model switch.
+ */
 async function poolEmbed(
     text: string,
     signal?: AbortSignal
 ): Promise<Float32Array | null> {
-    await ensurePool();
-
     if (signal?.aborted) return null;
+    return primaryEmbedText(text);
+}
 
-    const pw = leastBusyWorker();
-    if (!pw || pw.dead) {
-        return primaryEmbedText(text);
-    }
+// --- No-op lifecycle hooks retained for API compatibility -------------------
+// There is no separate pool to spin up, resize, or tear down anymore; the
+// primary embedder owns the single model worker's lifecycle.
 
-    const id = `pool-embed-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+async function ensurePool(): Promise<void> {
+    return;
+}
 
-    return new Promise<Float32Array | null>((resolve) => {
-        const timer = setTimeout(() => {
-            pw.pending.delete(id);
-            resolve(null);
-        }, CALL_TIMEOUT_MS);
-
-        if (signal?.aborted) {
-            clearTimeout(timer);
-            resolve(null);
-            return;
-        }
-
-        const onAbort = () => {
-            clearTimeout(timer);
-            pw.pending.delete(id);
-            resolve(null);
-        };
-        signal?.addEventListener('abort', onAbort, { once: true });
-
-        pw.pending.set(id, {
-            resolve: (v) => {
-                clearTimeout(timer);
-                signal?.removeEventListener('abort', onAbort);
-                pw.pending.delete(id);
-                resolve(v);
-            },
-            reject: () => {
-                clearTimeout(timer);
-                signal?.removeEventListener('abort', onAbort);
-                pw.pending.delete(id);
-                resolve(null);
-            },
-            timer,
-        });
-
-        pw.worker.postMessage({ type: 'embed', id, text });
-    }).catch(() => {
-        return primaryEmbedText(text);
-    });
+function resizePool(_n: number): void {
+    /* no separate pool to resize */
 }
 
 function terminatePool(): void {
-    for (const pw of pool) {
-        pw.dead = true;
-        for (const [, entry] of pw.pending) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error('[PoolWorker] Pool terminated'));
-        }
-        pw.pending.clear();
-        pw.worker.terminate();
-    }
-    pool = [];
+    /* no separate pool to terminate */
 }
 
 function getActivePoolSize(): number {
-    return pool.filter(pw => !pw.dead && pw.initialized).length;
+    return 0;
 }
 
 export {

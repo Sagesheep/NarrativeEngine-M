@@ -42,39 +42,28 @@ function restoreHardware() {
 describe('getForegroundPoolSize', () => {
     beforeEach(restoreHardware);
 
-    it('returns 1 for 2 cores', () => {
+    // The pool is collapsed to the single primary embedder, so background drain
+    // concurrency is a constant 1 regardless of hardware — we never want a
+    // second model copy in memory.
+    it('is pinned to 1 regardless of core count', () => {
         mockHardware(2);
         expect(getForegroundPoolSize()).toBe(1);
-    });
-
-    it('returns 1 for 2 cores with low memory', () => {
-        mockHardware(4, 2);
+        mockHardware(16);
+        expect(getForegroundPoolSize()).toBe(1);
+        mockHardware(32);
         expect(getForegroundPoolSize()).toBe(1);
     });
 
-    it('returns 2 for 4 cores', () => {
-        mockHardware(4);
-        expect(getForegroundPoolSize()).toBe(2);
+    it('is pinned to 1 regardless of reported device memory', () => {
+        mockHardware(4, 2);
+        expect(getForegroundPoolSize()).toBe(1);
+        mockHardware(4, 8);
+        expect(getForegroundPoolSize()).toBe(1);
     });
 
-    it('returns 2 for 4 cores with 4GB memory', () => {
-        mockHardware(4, 4);
-        expect(getForegroundPoolSize()).toBe(Math.min(Math.floor(4 * 0.75), 2));
-    });
-
-    it('returns 2 for 16 cores (capped)', () => {
-        mockHardware(16);
-        expect(getForegroundPoolSize()).toBe(2);
-    });
-
-    it('returns 2 for 32 cores (capped)', () => {
-        mockHardware(32);
-        expect(getForegroundPoolSize()).toBe(2);
-    });
-
-    it('defaults to 2 when hardwareConcurrency undefined (capped)', () => {
+    it('is 1 when hardwareConcurrency is undefined', () => {
         mockHardware(undefined);
-        expect(getForegroundPoolSize()).toBe(2);
+        expect(getForegroundPoolSize()).toBe(1);
     });
 });
 
