@@ -26,6 +26,8 @@ let doneCount = 0;
 let draining = false;
 
 let abortController: AbortController | null = null;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+const POOL_IDLE_MS = 30_000;
 
 let streamUnsubscribe: (() => void) | null = null;
 let visibilityHandler: (() => void) | null = null;
@@ -80,7 +82,9 @@ function installListeners(): void {
     if (store && store.subscribe) {
         streamUnsubscribe = store.subscribe((state: any) => {
             if (state && state.isStreaming === false && !draining && queue.length > 0) {
-                drainQueue();
+                setTimeout(() => {
+                    if (!draining && queue.length > 0) drainQueue();
+                }, 5000);
             }
         });
     }
@@ -88,7 +92,9 @@ function installListeners(): void {
     if (typeof document !== 'undefined') {
         visibilityHandler = () => {
             if (!document.hidden && !draining && queue.length > 0) {
-                drainQueue();
+                setTimeout(() => {
+                    if (!draining && queue.length > 0) drainQueue();
+                }, 5000);
             }
         };
         document.addEventListener('visibilitychange', visibilityHandler);
@@ -111,14 +117,18 @@ async function drainQueue(): Promise<void> {
     if (draining) return;
     draining = true;
 
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+
     try {
         while (queue.length > 0) {
             if (checkIsStreaming()) {
                 draining = false;
+                scheduleIdleTimeout();
                 return;
             }
             if (typeof document !== 'undefined' && document.hidden) {
                 draining = false;
+                scheduleIdleTimeout();
                 return;
             }
 
@@ -149,9 +159,6 @@ async function drainQueue(): Promise<void> {
                             getCurrentModelId()
                         );
                     } catch (err) {
-                        // Survivable: the chunk is retried on next app start via
-                        // enqueueProgressiveWithExistingCheck's storage diff. But
-                        // warn so a persistent stall is diagnosable (ISSUE-5).
                         console.warn(
                             `[embeddingScheduler] failed to store embedding for ${entry.type}:${entry.id}`,
                             err
@@ -177,13 +184,22 @@ async function drainQueue(): Promise<void> {
         removeListeners();
         abortController = null;
         draining = false;
-        // Reset counters so the next upload starts from 0 rather than
-        // accumulating onto this drain's totals (ISSUE-3).
         totalQueued = 0;
         doneCount = 0;
     } else {
         draining = false;
+        scheduleIdleTimeout();
     }
+}
+
+function scheduleIdleTimeout(): void {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+        if (!draining && queue.length === 0) {
+            terminatePool();
+        }
+        idleTimer = null;
+    }, POOL_IDLE_MS);
 }
 
 export function enqueueProgressive(params: {
@@ -258,6 +274,7 @@ export async function enqueueProgressiveWithExistingCheck(params: {
 }
 
 export function abortForCampaignSwitch(): void {
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
     if (abortController) {
         abortController.abort();
         abortController = null;
@@ -280,6 +297,7 @@ export function getQueueStats(): { total: number; done: number; queueLength: num
 }
 
 export function _resetForTesting(): void {
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
     queue = [];
     totalQueued = 0;
     doneCount = 0;

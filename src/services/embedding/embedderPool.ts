@@ -24,13 +24,14 @@ let pool: PoolWorker[] = [];
 
 function getForegroundPoolSize(): number {
     const hc = navigator.hardwareConcurrency || 4;
-    let n = Math.floor(hc * 0.75);
     const mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory;
-    if (typeof mem === 'number') {
-        if (mem <= 2) n = Math.min(n, 1);
-        else if (mem <= 4) n = Math.min(n, 2);
+    let n: number;
+    if (typeof mem === 'number' && mem <= 4) {
+        n = 2;
+    } else {
+        n = Math.floor(hc * 0.75);
     }
-    return Math.max(1, Math.min(6, n));
+    return Math.max(1, Math.min(2, n));
 }
 
 function leastBusyWorker(): PoolWorker | null {
