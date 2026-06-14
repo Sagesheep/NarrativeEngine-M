@@ -208,7 +208,8 @@ export function CampaignHub() {
         e.stopPropagation();
         setIsExporting(campaignId);
         try {
-            await downloadBundle(campaignId);
+            const includeDebug = useAppStore.getState().settings.debugMode === true;
+            await downloadBundle(campaignId, includeDebug);
             toast.success('Campaign saved to Downloads folder');
         } catch (err) {
             if (err instanceof Error && err.message === 'Cancelled') return;

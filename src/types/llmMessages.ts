@@ -40,12 +40,28 @@ export type LLMChatMessage =
     | AssistantMessage
     | ToolResultMessage;
 
+/**
+ * Token usage as returned by OpenAI-compatible providers. DeepSeek additionally
+ * reports prompt-cache split (`prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`)
+ * — capture them so cache performance is observable instead of having to be
+ * reverse-engineered from payload diffs.
+ */
+export interface LLMUsage {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    /** DeepSeek: input tokens served from the context cache. */
+    prompt_cache_hit_tokens?: number;
+    /** DeepSeek: input tokens that were NOT cached (full price). */
+    prompt_cache_miss_tokens?: number;
+}
+
 export interface OpenAICompletionResponse {
     choices: Array<{
         message: AssistantMessage;
         finish_reason: string;
     }>;
-    usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    usage?: LLMUsage;
 }
 
 export function isAssistantMessage(m: LLMChatMessage): m is AssistantMessage {

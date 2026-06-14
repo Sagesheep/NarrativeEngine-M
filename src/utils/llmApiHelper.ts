@@ -314,6 +314,13 @@ export function buildChatBody(
         stream,
     };
 
+    // Ask OpenAI-compatible providers to emit a final usage chunk while streaming
+    // (DeepSeek reports prompt-cache hit/miss here). Harmless for servers that
+    // ignore it; skipped for Ollama which has its own usage fields.
+    if (stream && !isOllama) {
+        body.stream_options = { include_usage: true };
+    }
+
     const resolvedMaxTokens = options?.sampling?.max_tokens ?? options?.max_tokens;
     if (resolvedMaxTokens !== undefined) body.max_tokens = resolvedMaxTokens;
 

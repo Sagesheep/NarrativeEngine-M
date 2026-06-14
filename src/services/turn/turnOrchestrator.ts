@@ -87,7 +87,11 @@ export async function runTurn(
         callbacks.setLastPayloadTrace(payloadResult.trace);
     }
 
-    callbacks.updateLastMessage({ debugPayload: payload });
+    // Only persist the full payload when debugging — otherwise it bloats every
+    // saved message (hundreds of KB each) and the campaign export.
+    if (settings.debugMode) {
+        callbacks.updateLastMessage({ debugPayload: payload });
+    }
 
     const triggerAutoTrim = () => {
         if (!activeCampaignId) return;

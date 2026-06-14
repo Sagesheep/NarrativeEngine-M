@@ -3,8 +3,12 @@ import type { LLMChatMessage, OpenAICompletionResponse } from '../../types/llmMe
 import { uid } from '../../utils/uid';
 import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent, extractStreamDelta, extractStreamToolCall } from '../../utils/llmApiHelper';
 import { isAbortError } from '../../types/llmMessages';
+import type { LLMUsage } from '../../types/llmMessages';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { startUtilityCall } from './utilityCallTracker';
+import { recordCacheUsage } from './cacheTelemetry';
+
+const STORY_LABEL = 'story-generation';
 
 const STORY_INITIAL_TIMEOUT_MS = 120000;
 const STORY_CHUNK_EXTEND_MS = 30000;
@@ -71,6 +75,7 @@ export async function sendMessage(
                 return;
             }
             const nativeText = extractContent(nativeRes.data, provider);
+            recordCacheUsage(STORY_LABEL, (nativeRes.data as { usage?: LLMUsage })?.usage);
             const nativeReasoning = (nativeRes.data as OpenAICompletionResponse)?.choices?.[0]?.message?.reasoning_content as string | undefined;
             if (!trackerSettled) { trackerSettled = true; nativeCall.settleSuccess({ chars: nativeText.length, durationMs: Date.now() - nativeStartedAt, streaming: false, native: true }); }
             console.info(`[story-gen] done (native non-stream) chars=${nativeText.length} durationMs=${Date.now() - nativeStartedAt}`);
@@ -134,6 +139,7 @@ export async function sendMessage(
         if (!useStreaming) {
             const data = await res.json();
             const text = extractContent(data, provider);
+            recordCacheUsage(STORY_LABEL, (data as { usage?: LLMUsage })?.usage);
             const reasoning = (data as OpenAICompletionResponse)?.choices?.[0]?.message?.reasoning_content as string | undefined;
             settleSuccess({ chars: text.length, durationMs: Date.now() - startedAt, streaming: false });
             console.info(`[story-gen] done (non-stream) chars=${text.length} durationMs=${Date.now() - startedAt}`);
@@ -172,6 +178,7 @@ export async function sendMessage(
         let tcName = '';
         let tcArgs = '';
         let reasoningContent = '';
+        let streamUsage: LLMUsage | undefined;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -230,6 +237,9 @@ export async function sendMessage(
 
                 try {
                     const parsed = JSON.parse(data);
+                    // DeepSeek/OpenAI emit a trailing chunk (choices:[]) carrying usage
+                    // when stream_options.include_usage is set.
+                    if (parsed.usage) streamUsage = parsed.usage as LLMUsage;
                     const delta = parsed.choices?.[0]?.delta;
 
                     const reasoningDelta: string = delta?.reasoning_content ?? delta?.reasoning ?? '';
@@ -286,12 +296,14 @@ export async function sendMessage(
             }
         }
 
+        recordCacheUsage(STORY_LABEL, streamUsage);
         settleSuccess({
             chars: fullText.length,
             durationMs: Date.now() - startedAt,
             chunks: chunkCount,
             toolCall: tcName || null,
             reasoningChars: reasoningContent.length,
+            usage: streamUsage,
         });
         console.info(`[story-gen] done model=${provider.modelName || provider.endpoint} chars=${fullText.length} chunks=${chunkCount} durationMs=${Date.now() - startedAt} toolCall=${tcName || 'none'}`);
 

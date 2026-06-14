@@ -3,6 +3,60 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useUtilityCalls, clearHistory } from '../../services/llm/utilityCallTracker';
 import type { UtilityCallStatus } from '../../services/llm/utilityCallTracker';
+import { useCacheTelemetry, hitRatio, totalsForDay, clearCacheTelemetry } from '../../services/llm/cacheTelemetry';
+
+function CacheTelemetrySection() {
+    const rollup = useCacheTelemetry();
+    const days = Object.keys(rollup).sort().reverse().slice(0, 5);
+    const fmtK = (n: number) => `${(n / 1000).toFixed(1)}k`;
+
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center justify-between">
+                <label className="text-[10px] text-text-dim uppercase tracking-widest">Prompt-Cache Performance</label>
+                {days.length > 0 && (
+                    <button
+                        onClick={() => clearCacheTelemetry()}
+                        className="text-[9px] text-text-dim hover:text-danger transition-colors uppercase tracking-wider"
+                    >
+                        Clear
+                    </button>
+                )}
+            </div>
+            {days.length === 0 ? (
+                <p className="text-[9px] text-text-dim italic">No cache data yet. Captured automatically from providers that report cache hits (e.g. DeepSeek).</p>
+            ) : (
+                <div className="space-y-2 max-h-72 overflow-y-auto">
+                    {days.map(day => {
+                        const total = totalsForDay(day)!;
+                        const dayRatio = hitRatio(total);
+                        const labels = Object.entries(rollup[day]).sort((a, b) => (b[1].hitTokens + b[1].missTokens) - (a[1].hitTokens + a[1].missTokens));
+                        return (
+                            <div key={day} className="bg-surface px-3 py-2 rounded border border-border/50">
+                                <div className="flex items-center justify-between text-[10px] font-mono">
+                                    <span className="text-text-primary font-bold">{day}</span>
+                                    <span className={dayRatio >= 0.5 ? 'text-terminal font-bold' : 'text-amber-400 font-bold'}>
+                                        {(dayRatio * 100).toFixed(0)}% hit
+                                    </span>
+                                </div>
+                                <div className="text-[8px] text-text-dim font-mono mb-1">
+                                    {fmtK(total.hitTokens)} hit · {fmtK(total.missTokens)} miss · {total.calls} calls
+                                </div>
+                                {labels.map(([label, s]) => (
+                                    <div key={label} className="flex items-center justify-between text-[9px] font-mono pl-2">
+                                        <span className="text-text-dim truncate flex-1">{label}</span>
+                                        <span className="text-text-dim shrink-0 w-12 text-right">{(hitRatio(s) * 100).toFixed(0)}%</span>
+                                        <span className="text-text-dim/70 shrink-0 w-20 text-right">{fmtK(s.hitTokens + s.missTokens)} in</span>
+                                    </div>
+                                ))}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export function DebugPanel() {
     const settings = useAppStore(s => s.settings);
@@ -59,6 +113,8 @@ export function DebugPanel() {
                             <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.verboseUtilityLogging ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
                         </button>
                     </div>
+
+                    <CacheTelemetrySection />
 
                     <div className="flex items-center justify-between">
                         <label className="text-[10px] text-text-dim uppercase tracking-widest">Utility AI Log ({utilityHistory.length})</label>

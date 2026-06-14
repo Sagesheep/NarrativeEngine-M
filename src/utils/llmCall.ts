@@ -3,6 +3,8 @@ import { getQueueForEndpoint, type LLMCallPriority } from '../services/llm/llmRe
 import { getApiFormat, getChatUrl, buildChatHeaders, buildChatBody, extractContent } from './llmApiHelper';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { startUtilityCall } from '../services/llm/utilityCallTracker';
+import { recordCacheUsage } from '../services/llm/cacheTelemetry';
+import type { LLMUsage } from '../types/llmMessages';
 
 const MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 300;
@@ -35,7 +37,7 @@ export async function llmCall(
         timeoutMs?: number;
     }
 ): Promise<string> {
-    const inner = runInner(provider, prompt, opts);
+    const inner = runInner(provider, prompt, opts, opts?.trackingLabel ?? 'utility');
 
     if (!opts?.trackingLabel || !opts?.timeoutMs) {
         return inner;
@@ -78,6 +80,7 @@ async function runInner(
         priority?: LLMCallPriority;
         thinkingEffort?: ThinkingEffort;
     },
+    telemetryLabel = 'utility',
 ): Promise<string> {
     const url = getChatUrl(provider);
     const headers = buildChatHeaders(provider);
@@ -135,6 +138,7 @@ async function runInner(
                     throw new Error(`LLM API error ${nativeRes.status}: ${JSON.stringify(nativeRes.data)} (max_tokens=${opts?.maxTokens ?? 'default'}, thinkingEffort=${resolvedEffort ?? 'default'})`);
                 }
 
+                recordCacheUsage(telemetryLabel, (nativeRes.data as { usage?: LLMUsage })?.usage);
                 return extractContent(nativeRes.data, provider);
             } catch (e) {
                 queue.releaseSlot();
@@ -169,6 +173,7 @@ async function runInner(
                 throw new Error(`LLM API error ${res.status}: ${errBody} (max_tokens=${opts?.maxTokens ?? 'default'}, thinkingEffort=${resolvedEffort ?? 'default'})`);
             }
             const data = await res.json();
+            recordCacheUsage(telemetryLabel, (data as { usage?: LLMUsage })?.usage);
             return extractContent(data, provider);
         }
 

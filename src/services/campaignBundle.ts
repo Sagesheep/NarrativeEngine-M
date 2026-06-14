@@ -37,7 +37,28 @@ export async function readFileChunked(file: File): Promise<string> {
     return chunks.join('');
 }
 
-export async function exportBundle(campaignId: string): Promise<CampaignBundle> {
+/**
+ * Drop the heavy per-message `debugPayload` blobs unless the caller is in debug
+ * mode. These are captured for the inline payload viewer and can be hundreds of
+ * KB each — they dominate export size and aren't needed for a normal save.
+ */
+function stripDebugPayloads(state: CampaignState | null | undefined): CampaignState | null {
+    if (!state) return state ?? null;
+    const messages = state.messages;
+    if (!Array.isArray(messages) || !messages.some(m => (m as { debugPayload?: unknown }).debugPayload !== undefined)) {
+        return state;
+    }
+    return {
+        ...state,
+        messages: messages.map(m => {
+            if ((m as { debugPayload?: unknown }).debugPayload === undefined) return m;
+            const { debugPayload: _drop, ...rest } = m as Record<string, unknown>;
+            return rest as typeof m;
+        }),
+    };
+}
+
+export async function exportBundle(campaignId: string, includeDebug = false): Promise<CampaignBundle> {
     const cid = campaignId;
     const [
         allCampaigns,
@@ -71,7 +92,7 @@ export async function exportBundle(campaignId: string): Promise<CampaignBundle> 
         exportedAt: Date.now(),
         sourcePlatform: 'mobile',
         campaign,
-        state: state || null,
+        state: includeDebug ? (state || null) : stripDebugPayloads(state),
         lore: lore || [],
         npcs: npcs || [],
         scenes,
@@ -83,10 +104,10 @@ export async function exportBundle(campaignId: string): Promise<CampaignBundle> 
     };
 }
 
-export async function downloadBundle(campaignId: string): Promise<void> {
+export async function downloadBundle(campaignId: string, includeDebug = false): Promise<void> {
     let step: string = 'build-bundle';
     try {
-        const bundle = await exportBundle(campaignId);
+        const bundle = await exportBundle(campaignId, includeDebug);
         const safeName = bundle.campaign.name.replace(/[^a-z0-9]+/gi, '_').toLowerCase();
         const filename = `${safeName}_${new Date().toISOString().slice(0, 10)}.campaign`;
 
