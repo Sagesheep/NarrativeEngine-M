@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { BookOpen, Plus, Loader2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import { useShallow } from 'zustand/react/shallow';
 import { api } from '../../services/apiClient';
 import { ChapterCard } from './ChapterCard';
 import { toast } from '../Toast';
@@ -10,15 +11,28 @@ import { mergeSealEntries } from '../../services/campaign-state';
 import type { ArchiveChapter } from '../../types';
 
 export function ChapterTab() {
-    const chapters = useAppStore(s => s.chapters);
-    const setChapters = useAppStore(s => s.setChapters);
-    const activeCampaignId = useAppStore(s => s.activeCampaignId);
+    const {
+        chapters,
+        setChapters,
+        activeCampaignId,
+        pinnedChapterIds,
+        pinChapter,
+    } = useAppStore(useShallow(s => ({
+        chapters: s.chapters,
+        setChapters: s.setChapters,
+        activeCampaignId: s.activeCampaignId,
+        pinnedChapterIds: s.pinnedChapterIds,
+        pinChapter: s.pinChapter,
+    })));
+
     const context = useAppStore(s => s.context);
-    const messages = useAppStore(s => s.messages);
     const settings = useAppStore(s => s.settings);
-    const condenser = useAppStore(s => s.condenser);
-    const pinnedChapterIds = useAppStore(s => s.pinnedChapterIds);
-    const pinChapter = useAppStore(s => s.pinChapter);
+    const messageContents = useAppStore(useShallow(s => {
+        const activeMessages = (s.condenser.condensedUpToIndex !== undefined && s.condenser.condensedUpToIndex >= 0)
+            ? s.messages.slice(s.condenser.condensedUpToIndex + 1)
+            : s.messages;
+        return activeMessages.map(m => m.content || '');
+    }));
 
     const ctxPct = useMemo(() => {
         const sysText = [
@@ -29,13 +43,10 @@ export function ChapterTab() {
             context.characterProfileActive ? context.characterProfile : '',
             context.inventoryActive ? context.inventory : '',
         ].filter(Boolean).join('\n\n');
-        const activeMessages = (condenser.condensedUpToIndex !== undefined && condenser.condensedUpToIndex >= 0)
-            ? messages.slice(condenser.condensedUpToIndex + 1)
-            : messages;
-        const histText = activeMessages.map(m => m.content || '').join('');
+        const histText = messageContents.join('');
         const used = countTokens(sysText) + countTokens(histText);
         return Math.round((used / settings.contextLimit) * 100);
-    }, [context, messages, settings.contextLimit, condenser]);
+    }, [context, messageContents, settings.contextLimit]);
 
     const ctxColor = ctxPct >= 90 ? 'text-danger' : ctxPct >= 75 ? 'text-ember' : 'text-terminal';
 

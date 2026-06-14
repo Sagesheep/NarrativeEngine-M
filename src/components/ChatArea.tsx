@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
     Loader2,
     ChevronDown, X, Sword, Package
@@ -110,12 +110,11 @@ export function ChatArea() {
         pendingInventoryProposal: s.pendingInventoryProposal,
         setPendingInventoryProposal: s.setPendingInventoryProposal,
         pinnedExcerpts: s.pinnedExcerpts,
+        initiateCombatWithRecovery: s.initiateCombatWithRecovery,
+        combatState: s.combatState,
+        items: s.items,
+        skills: s.skills,
     })));
-
-    const initiateCombatWithRecovery = useAppStore(s => s.initiateCombatWithRecovery);
-    const combatState = useAppStore(s => s.combatState);
-    const items = useAppStore(s => s.items);
-    const skills = useAppStore(s => s.skills);
 
     const [input, setInput] = useState('');
     const [isStreaming, setStreaming] = useState(false);
@@ -409,6 +408,8 @@ export function ChatArea() {
         }
     };
 
+    const stableDeleteMessage = useCallback((id: string) => deleteMessage(id), [deleteMessage]);
+
     const visibleMessages = useMemo(() => messages.filter(msg => msg.role !== 'tool').slice(-visibleCount), [messages, visibleCount]);
 
     return (
@@ -483,7 +484,7 @@ export function ChatArea() {
                         onCancelEdit={cancelEditing}
                         onSubmitEdit={handleEditSubmit}
                         onRegenerate={handleRegenerate}
-                        onDelete={deleteMessage}
+                        onDelete={stableDeleteMessage}
                         showReasoning={settings.showReasoning ?? false}
                         debugMode={settings.debugMode ?? false}
                     />

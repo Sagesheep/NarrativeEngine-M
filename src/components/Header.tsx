@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { LogOut, ScanSearch, BookCheck, Pin, Replace, MoreVertical, Save, Archive } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { useShallow } from 'zustand/react/shallow';
 import type { AiTier } from '../types';
 
 const TIER_CYCLE: Record<AiTier, AiTier> = { lite: 'pro', pro: 'max', max: 'lite' };
@@ -20,19 +21,29 @@ type SelectionSnapshot = {
 
 export function Header() {
 
-    const toggleBackupModal = useAppStore(s => s.toggleBackupModal);
-    const activeCampaignId = useAppStore(s => s.activeCampaignId);
-    const setActiveCampaign = useAppStore(s => s.setActiveCampaign);
-    const context = useAppStore(s => s.context);
-    const messages = useAppStore(s => s.messages);
-    const condenser = useAppStore(s => s.condenser);
-    const deepArmed = useAppStore(s => s.deepArmed);
-    const toggleDeepArmed = useAppStore(s => s.toggleDeepArmed);
-    const settings = useAppStore(s => s.settings);
-    const updateSettings = useAppStore(s => s.updateSettings);
-    const openLoreCheck = useAppStore(s => s.openLoreCheck);
-    const addPinnedExcerpt = useAppStore(s => s.addPinnedExcerpt);
-    const openRenameModal = useAppStore(s => s.openRenameModal);
+    const {
+        toggleBackupModal,
+        activeCampaignId,
+        setActiveCampaign,
+        deepArmed,
+        toggleDeepArmed,
+        settings,
+        updateSettings,
+        openLoreCheck,
+        addPinnedExcerpt,
+        openRenameModal,
+    } = useAppStore(useShallow(s => ({
+        toggleBackupModal: s.toggleBackupModal,
+        activeCampaignId: s.activeCampaignId,
+        setActiveCampaign: s.setActiveCampaign,
+        deepArmed: s.deepArmed,
+        toggleDeepArmed: s.toggleDeepArmed,
+        settings: s.settings,
+        updateSettings: s.updateSettings,
+        openLoreCheck: s.openLoreCheck,
+        addPinnedExcerpt: s.addPinnedExcerpt,
+        openRenameModal: s.openRenameModal,
+    })));
 
     const [loreSel, setLoreSel] = useState<SelectionSnapshot | null>(null);
     const [pinSel, setPinSel] = useState<SelectionSnapshot | null>(null);
@@ -125,9 +136,9 @@ export function Header() {
 
     const handleExit = async () => {
         if (activeCampaignId) {
-            await saveCampaignState(activeCampaignId, { context, messages, condenser });
-            const divReg = useAppStore.getState().divergenceRegister;
-            await saveDivergenceRegister(activeCampaignId, divReg);
+            const state = useAppStore.getState();
+            await saveCampaignState(activeCampaignId, { context: state.context, messages: state.messages, condenser: state.condenser });
+            await saveDivergenceRegister(activeCampaignId, state.divergenceRegister);
         }
         setActiveCampaign(null);
     };

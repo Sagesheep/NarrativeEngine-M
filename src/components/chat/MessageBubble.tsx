@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import { Edit2, RotateCcw, Trash2, Loader2, Terminal, Zap, Check, X, Pin, PinOff, ImagePlus, AlertCircle, XCircle } from 'lucide-react';
 import type { ChatMessage } from '../../types';
 import { EngineTraceView } from '../engine-trace/EngineTraceView';
 import { ContentWithChips } from './ContentWithChips';
 import { useAppStore } from '../../store/useAppStore';
+import { useShallow } from 'zustand/react/shallow';
 import { toast } from '../Toast';
 import { illustrateMessage } from '../../services/image';
 import { imageStorage } from '../../services/storage/imageStorage';
@@ -109,7 +110,7 @@ function ImageAttachment({ msg }: ImageAttachmentProps) {
     return null;
 }
 
-export function MessageBubble({
+export const MessageBubble = memo(function MessageBubble({
     msg,
     isStreaming,
     isLastMessage,
@@ -139,16 +140,10 @@ export function MessageBubble({
     const bubbleRef = useRef<HTMLDivElement>(null);
     const actionsDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const pinnedExcerpts = useAppStore(s => s.pinnedExcerpts);
+    const fullMessagePin = useAppStore(useShallow(s => s.pinnedExcerpts.find(p => p.isFullMessage && p.sourceMessageId === msg.id)));
+    const hasPinBadge = useAppStore(useShallow(s => s.pinnedExcerpts.some(p => p.sourceMessageId === msg.id)));
     const addPinnedExcerpt = useAppStore(s => s.addPinnedExcerpt);
     const removePinnedExcerpt = useAppStore(s => s.removePinnedExcerpt);
-
-    // Full-message pin for this bubble (if it exists)
-    const fullMessagePin = pinnedExcerpts.find(
-        p => p.isFullMessage && p.sourceMessageId === msg.id
-    );
-    // Any pin referencing this bubble (for the badge)
-    const hasPinBadge = pinnedExcerpts.some(p => p.sourceMessageId === msg.id);
 
     const clearActionsDismissTimer = () => {
         if (actionsDismissTimer.current) {
@@ -459,4 +454,4 @@ export function MessageBubble({
             </div>
         </div>
     );
-}
+});

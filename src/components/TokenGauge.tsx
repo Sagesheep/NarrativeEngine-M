@@ -1,14 +1,23 @@
 import { useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
+import { useShallow } from 'zustand/react/shallow';
 import { countTokens } from '../services/infrastructure';
 import { countRegisterTokens } from '../services/campaign-state';
 
 export function TokenGauge() {
-    const context = useAppStore(s => s.context);
-    const messages = useAppStore(s => s.messages);
-    const settings = useAppStore(s => s.settings);
-    const condenser = useAppStore(s => s.condenser);
-    const divergenceRegister = useAppStore(s => s.divergenceRegister);
+    const { context, condenser, settings, divergenceRegister } = useAppStore(useShallow(s => ({
+        context: s.context,
+        condenser: s.condenser,
+        settings: s.settings,
+        divergenceRegister: s.divergenceRegister,
+    })));
+
+    const messageContents = useAppStore(useShallow(s => {
+        const activeMessages = (s.condenser.condensedUpToIndex !== undefined && s.condenser.condensedUpToIndex >= 0)
+            ? s.messages.slice(s.condenser.condensedUpToIndex + 1)
+            : s.messages;
+        return activeMessages.map(m => m.content || '');
+    }));
 
     const systemText = useMemo(() => {
         const parts: string[] = [];
@@ -31,11 +40,8 @@ export function TokenGauge() {
     const totalSystemTokens = systemTokens + divTokens;
 
     const historyText = useMemo(() => {
-        const activeMessages = (condenser.condensedUpToIndex !== undefined && condenser.condensedUpToIndex >= 0)
-            ? messages.slice(condenser.condensedUpToIndex + 1)
-            : messages;
-        return activeMessages.map((m) => m.content || '').join('');
-    }, [messages, condenser.condensedUpToIndex]);
+        return messageContents.join('');
+    }, [messageContents]);
 
     const historyTokens = useMemo(() => countTokens(historyText), [historyText]);
 
