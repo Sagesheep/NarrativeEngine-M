@@ -32,17 +32,17 @@ export function ContextDrawer() {
   const setMobileView = useAppStore((s) => s.setMobileView);
   const [activeTab, setActiveTab] = useState<TabId>('sys');
 
-  const combatActive = useAppStore((s) => s.combatState?.active ?? false);
+  const combatModeActive = useAppStore((s) => s.context.combatModeActive ?? false);
   const activeCampaignId = useAppStore((s) => s.activeCampaignId);
 
-  // If the active tab is comp but combat becomes active, fallback to sys
-  if (activeTab === 'comp' && (!activeCampaignId || combatActive)) {
+  // Compendium is combat-only; if it's active when combat mode turns off, fall back to sys
+  if (activeTab === 'comp' && (!activeCampaignId || !combatModeActive)) {
     setActiveTab('sys');
   }
 
   const visibleTabs = TABS.filter(tab => {
     if (tab.id === 'comp') {
-      return !!activeCampaignId && !combatActive;
+      return !!activeCampaignId && combatModeActive;
     }
     return true;
   });

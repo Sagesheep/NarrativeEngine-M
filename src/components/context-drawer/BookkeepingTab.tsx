@@ -46,12 +46,15 @@ export function BookkeepingTab() {
         }
     };
 
+    const combatModeActive = context.combatModeActive ?? false;
+
     return (
         <div className="px-4 py-4 space-y-4">
             <p className="text-[9px] text-text-dim/50">
-                Toggle ON = appended to context. Use Check Inventory to auto-update.
+                Toggle ON = appended to context.{combatModeActive ? ' Use Check Inventory to auto-update.' : ''}
             </p>
 
+            {combatModeActive && (
             <div>
                 <TemplateField
                     icon={<Briefcase size={13} />}
@@ -76,8 +79,9 @@ export function BookkeepingTab() {
                     </button>
                 </div>
             </div>
+            )}
 
-            <div className="pt-4 border-t border-border/50">
+            <div className={combatModeActive ? 'pt-4 border-t border-border/50' : ''}>
                 <TemplateField
                     icon={<User size={13} />}
                     label="Character Profile"
