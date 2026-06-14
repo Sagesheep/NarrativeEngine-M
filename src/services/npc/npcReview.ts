@@ -44,7 +44,7 @@ export async function runNPCReview(
     cancel: NPCReviewCancelled,
     onProgress: (msg: string, done: number, total: number) => void,
 ): Promise<NPCReviewResult> {
-    const eligible = npcs.filter(n => !n.archived && n.name?.trim());
+    const eligible = npcs.filter(n => n.name?.trim());
     if (eligible.length === 0) return { candidates: [], failedBatches: 0 };
 
     const batches: NPCEntry[][] = [];

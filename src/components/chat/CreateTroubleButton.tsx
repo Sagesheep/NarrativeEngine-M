@@ -31,6 +31,7 @@ export function CreateTroubleButton({ onDone }: { onDone?: () => void } = {}) {
                 state.archiveIndex ?? [],
                 state.chapters ?? [],
                 state.npcLedger ?? [],
+                state.npcPressure ?? {},
                 sceneNote,
             );
             openTroubleModal(options);

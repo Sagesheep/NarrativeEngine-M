@@ -151,7 +151,7 @@ describe('assembleWorldBlocks — reserved names block', () => {
         const ledger = [
             baseNpc({ id: 'npc_1', name: 'Voss' }),
             baseNpc({ id: 'npc_2', name: 'Maren Blackwood' }),
-            baseNpc({ id: 'npc_3', name: 'Old Garruk', archived: true }),
+            baseNpc({ id: 'npc_3', name: 'Old Garruk' }),
         ];
 
         const blocks = assembleWorldBlocks({

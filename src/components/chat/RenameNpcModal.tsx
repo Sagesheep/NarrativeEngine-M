@@ -93,7 +93,7 @@ export function RenameNpcModal() {
                             className="w-full bg-void border border-border focus:border-terminal text-[13px] text-text-primary rounded px-2 py-1.5 outline-none"
                         />
                         <datalist id="npc-rename-targets">
-                            {npcLedger.filter(n => !n.archived).map(n => <option key={n.id} value={n.name} />)}
+                            {npcLedger.map(n => <option key={n.id} value={n.name} />)}
                         </datalist>
                     </div>
                     <p className="text-[10px] text-text-dim/70 leading-relaxed">

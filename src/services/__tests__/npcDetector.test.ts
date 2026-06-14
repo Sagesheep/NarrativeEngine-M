@@ -87,12 +87,23 @@ describe('npcDetector', () => {
             expect(names).toContain('Aldric of Westhold');
         });
 
-        // ── Two-cap-token pass ─────────────────────────────────────────────
-        it('keeps legit multi-word names like Seraphine Thornmere', () => {
-            const content = 'Seraphine Thornmere entered the hall. Dorian Ashworth followed.';
+        // ── Multi-word names require a signal (Pass 7 removed) ─────────────
+        it('keeps legit multi-word names introduced with a signal', () => {
+            const content = '"Welcome," said Seraphine Thornmere. The knight Dorian Ashworth bowed.';
             const names = extractNPCNames(content);
             expect(names).toContain('Seraphine Thornmere');
             expect(names).toContain('Dorian Ashworth');
+        });
+
+        it('drops signal-less Title Case noun phrases (no Pass 7 prose fishing)', () => {
+            // These were the real graveyard offenders — capitalized prose with no
+            // introduction signal that the old two-cap-token pass turned into NPCs.
+            const content = 'They crossed the Inner Courtyard. A Tactical Decision loomed. The Rescue Force mobilized as Standard Convergence held the line.';
+            const names = extractNPCNames(content);
+            expect(names).not.toContain('Inner Courtyard');
+            expect(names).not.toContain('Tactical Decision');
+            expect(names).not.toContain('Rescue Force');
+            expect(names).not.toContain('Standard Convergence');
         });
 
         // ── Exclusion / deduplication ──────────────────────────────────────

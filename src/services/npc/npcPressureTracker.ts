@@ -1,4 +1,4 @@
-import type { NPCEntry, NPCPressureHistory } from '../../types';
+import type { NPCEntry, NPCPressure, NPCPressureHistory } from '../../types';
 
 export const DECAY_RATE = 0.1;
 const MAX_HISTORY = 50;
@@ -146,51 +146,16 @@ export function applyDecay(current: number, lastDecayTurn: number, currentTurn: 
     return Math.max(0, current - DECAY_RATE * turnsSinceDecay);
 }
 
-const ARCHIVE_THRESHOLD_TURNS = 15;
-const ARCHIVE_PRESSURE_FLOOR = 0.5;
-// Affinity is a 0-100 scale (0=Nemesis, 50=Neutral, 100=Ally) and NPCs are
-// CREATED at 50 — see npcGeneration.ts. Only protect NPCs the player has built
-// a genuine bond with. A previous value of 7 protected every default NPC (50 >= 7),
-// which silently disabled auto-archive entirely and let ledgers grow to 295+.
-const ARCHIVE_AFFINITY_PROTECT = 70;
-
-function lastEngagedTurn(npc: NPCEntry): number {
-    const history = npc.pressure?.history ?? [];
-    for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].type === 'engaged') return history[i].turn;
-    }
-    return 0;
-}
-
-export function shouldArchiveNPC(npc: NPCEntry, currentTurn: number, thresholdTurns = ARCHIVE_THRESHOLD_TURNS): { shouldArchive: boolean; turnsSince: number } {
-    if (npc.archived) return { shouldArchive: false, turnsSince: 0 };
-    if ((npc.affinity ?? 0) >= ARCHIVE_AFFINITY_PROTECT) return { shouldArchive: false, turnsSince: 0 };
-    if (npc.shiftNote) return { shouldArchive: false, turnsSince: 0 };
-
-    const last = lastEngagedTurn(npc);
-    const turnsSince = currentTurn - last;
-    if (turnsSince < thresholdTurns) return { shouldArchive: false, turnsSince };
-
-    const decayedEngaged = applyDecay(npc.pressure?.engaged ?? 0, npc.pressure?.lastDecayTurn ?? 0, currentTurn);
-    const decayedIgnored = applyDecay(npc.pressure?.ignored ?? 0, npc.pressure?.lastDecayTurn ?? 0, currentTurn);
-    return {
-        shouldArchive: decayedEngaged < ARCHIVE_PRESSURE_FLOOR && decayedIgnored < ARCHIVE_PRESSURE_FLOOR,
-        turnsSince,
-    };
-}
-
-export function findArchivedToRestore(playerInput: string, archivedNPCs: NPCEntry[]): string[] {
-    return archivedNPCs
-        .filter(n => mentionsName(playerInput, npcNamePatterns(n)))
-        .map(n => n.id);
-}
-
+/**
+ * Build an updated NPCPressure object from a prior pressure value (from the pressure map)
+ * and the current scan update. Returns the new NPCPressure to store in the map.
+ */
 export function buildPressurePatch(
-    npc: NPCEntry,
+    prevPressure: NPCPressure | undefined,
     update: PressureUpdate,
     currentTurn: number
-): Partial<NPCEntry> {
-    const prev = npc.pressure;
+): NPCPressure {
+    const prev = prevPressure;
     const prevIgnored = applyDecay(prev?.ignored ?? 0, prev?.lastDecayTurn ?? 0, currentTurn);
     const prevEngaged = applyDecay(prev?.engaged ?? 0, prev?.lastDecayTurn ?? 0, currentTurn);
 
@@ -210,11 +175,9 @@ export function buildPressurePatch(
     }
 
     return {
-        pressure: {
-            ignored: newIgnored,
-            engaged: newEngaged,
-            lastDecayTurn: currentTurn,
-            history: newHistory,
-        },
+        ignored: newIgnored,
+        engaged: newEngaged,
+        lastDecayTurn: currentTurn,
+        history: newHistory,
     };
 }

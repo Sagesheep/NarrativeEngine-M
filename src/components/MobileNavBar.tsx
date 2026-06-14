@@ -13,10 +13,11 @@ export function MobileNavBar() {
   const toggleDrawer = useAppStore((s) => s.toggleDrawer);
   const drawerOpen = useAppStore((s) => s.drawerOpen);
   const npcLedger = useAppStore((s) => s.npcLedger);
+  const npcPressure = useAppStore((s) => s.npcPressure);
   const debugMode = useAppStore((s) => s.settings.debugMode);
 
   const pressureCount = debugMode
-    ? npcLedger.filter(n => !n.archived && (n.drives || n.pressure)).length
+    ? npcLedger.filter(n => n.drives || npcPressure[n.id]).length
     : 0;
 
   const handleTap = (tabId: typeof TABS[number]['id']) => {

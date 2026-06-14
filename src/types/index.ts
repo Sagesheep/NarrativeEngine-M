@@ -417,13 +417,9 @@ export type NPCEntry = {
     behavioralTriggers?: NPCBehavioralTrigger[];
     hardBoundaries?: string[];
     softBoundaries?: string[];
-    pressure?: NPCPressure;
     previousSnapshot?: { personality: string; voice: string; affinity: number };
     shiftNote?: string;
     shiftTurnCount?: number;
-    archived?: boolean;
-    archivedAtTurn?: number;
-    archivedReason?: string;
     tier?: 'recurring' | 'oneshot' | 'walkon';
     recalledByEmbedding?: boolean;
     lastUpdateScene?: number;

@@ -25,8 +25,6 @@ export function NPCLedgerModal() {
   const addNPC = useAppStore(s => s.addNPC);
   const updateNPC = useAppStore(s => s.updateNPC);
   const removeNPC = useAppStore(s => s.removeNPC);
-  const restoreNPC = useAppStore(s => s.restoreNPC);
-  const archiveNPC = useAppStore(s => s.archiveNPC);
   const setNPCLedger = useAppStore(s => s.setNPCLedger);
   const setMobileView = useAppStore(s => s.setMobileView);
   const activeCampaignId = useAppStore(s => s.activeCampaignId);
@@ -259,11 +257,7 @@ export function NPCLedgerModal() {
       await api.backup.create(activeCampaignId, { trigger: 'pre-npc-review-delete', isAuto: true }).catch(() => {});
     }
 
-    const turn = useAppStore.getState().archiveIndex.length > 0
-      ? parseInt(useAppStore.getState().archiveIndex.slice(-1)[0].sceneId, 10) || 0
-      : 0;
-
-    for (const id of archiveIds) archiveNPC(id, turn, 'review: flagged not an NPC');
+    for (const id of archiveIds) removeNPC(id);
     for (const id of deleteIds) removeNPC(id);
 
     if (selectedId && (archiveIds.includes(selectedId) || deleteIds.includes(selectedId))) {
@@ -271,9 +265,9 @@ export function NPCLedgerModal() {
       setIsEditing(false);
     }
 
+    const removedCount = archiveIds.length + deleteIds.length;
     const parts: string[] = [];
-    if (archiveIds.length) parts.push(`archived ${archiveIds.length}`);
-    if (deleteIds.length) parts.push(`deleted ${deleteIds.length}`);
+    if (removedCount) parts.push(`removed ${removedCount}`);
     if (parts.length) toast.success(`NPC review: ${parts.join(', ')}`);
 
     setReviewOpen(false);
@@ -282,13 +276,9 @@ export function NPCLedgerModal() {
     setReviewError(null);
   };
 
-  const activeNPCList = npcLedger.filter(n => !n.archived);
-  const archivedNPCList = npcLedger.filter(n => n.archived);
-
-  const handleRestore = (id: string) => {
-    restoreNPC(id);
-    if (selectedId === id) { setSelectedId(null); setIsEditing(false); }
-  };
+  const byName = (a: NPCEntry, b: NPCEntry) =>
+    (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true });
+  const activeNPCList = npcLedger.slice().sort(byName);
 
   const showDetail = !!selectedId || (isEditing && !selectedId);
 
@@ -364,25 +354,6 @@ export function NPCLedgerModal() {
               ? <NPCListView npcLedger={activeNPCList} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })} onDelete={handleDelete} />
               : <NPCGalleryView npcLedger={activeNPCList} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })} onDelete={handleDelete} />
             }
-            {archivedNPCList.length > 0 && (
-              <div className="border-t border-border/40 mt-2">
-                <p className="px-3 pt-2 pb-1 text-[9px] text-text-dim uppercase tracking-widest opacity-60">Archived ({archivedNPCList.length})</p>
-                {archivedNPCList.map(npc => (
-                  <div key={npc.id} className="flex items-center justify-between px-3 py-2 opacity-50 hover:opacity-70 transition-opacity">
-                    <div className="truncate min-w-0">
-                      <p className="text-[13px] text-text-dim truncate">{npc.name}</p>
-                      {npc.archivedReason && <p className="text-[10px] text-text-dim/60 truncate">{npc.archivedReason}</p>}
-                    </div>
-                    <button
-                      onClick={() => handleRestore(npc.id)}
-                      className="ml-2 shrink-0 text-[10px] px-2 py-1 border border-terminal/30 text-terminal/70 rounded hover:border-terminal hover:text-terminal transition-colors"
-                    >
-                      Restore
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 

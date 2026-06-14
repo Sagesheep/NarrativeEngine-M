@@ -103,7 +103,7 @@ export function renderRegisterForPayload(
     const offStageSet = new Set<string>();
     if (npcLedger && onStageSet.size > 0) {
         for (const n of npcLedger) {
-            if (!n.archived && !onStageSet.has(n.id)) {
+            if (!onStageSet.has(n.id)) {
                 offStageSet.add(n.id);
             }
         }

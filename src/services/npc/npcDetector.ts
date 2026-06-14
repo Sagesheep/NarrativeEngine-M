@@ -59,22 +59,6 @@ for (const w of NAME_BLOCKLIST_DATA as string[]) NPC_NAME_BLOCKLIST.add(w);
 // Contraction suffix pattern — straight and curly apostrophes
 const CONTRACTION_SUFFIX_RE = /['’](s|re|t|ve|ll|d|m)$/i;
 
-// Structural/location words that invalidate two-word candidates even if not in the general blocklist
-const STRUCTURAL_WORDS = new Set([
-    "gate", "wall", "hall", "tower", "bridge", "mouth", "square", "market",
-    "outpost", "garrison", "district", "quarter", "road", "path", "bay",
-    "canal", "harbor", "harbour", "port", "keep", "fortress", "castle",
-    "temple", "shrine", "chapel", "tavern", "inn", "manor", "estate",
-    "forest", "mountain", "valley", "river", "lake", "sea", "ocean",
-    "north", "south", "east", "west", "northern", "southern", "eastern", "western",
-    "upper", "lower", "old", "new", "great", "grand",
-    "office", "business", "bureau", "department", "agency", "company",
-    "corporation", "ministry", "council", "committee", "guild", "union",
-    "league", "alliance", "federation", "syndicate", "consortium",
-    "headquarters", "bank", "shop", "store", "school", "college",
-    "university", "hospital", "library", "prison", "barracks",
-]);
-
 // Bounded speech attribution verbs
 const SPEECH_VERBS = 'said|asked|whispered|shouted|replied|muttered|growled|spoke|called|answered|continued|added|cried|yelled|barked|snapped|hissed|murmured|breathed|intoned|declared|announced|exclaimed|demanded|ordered|commanded|pleaded|begged|insisted|admitted|confessed|offered|suggested|noted|observed|remarked|commented|explained|stated';
 
@@ -150,18 +134,13 @@ export function extractNPCNames(content: string, excludeNames: string[] = []): s
         tryAdd(m[1].trim());
     }
 
-    // Pass 7: Two consecutive capitalized non-blocklisted, non-title tokens — "Seraphine Thornmere"
-    for (const m of content.matchAll(/\b([A-Z][a-z''’-]+)\s+([A-Z][a-z''’-]+)\b/g)) {
-        const [, a, b] = m;
-        if (
-            !CONTRACTION_SUFFIX_RE.test(a) && !CONTRACTION_SUFFIX_RE.test(b) &&
-            !NPC_NAME_BLOCKLIST.has(a.toLowerCase()) && !NPC_NAME_BLOCKLIST.has(b.toLowerCase()) &&
-            !STRUCTURAL_WORDS.has(a.toLowerCase()) && !STRUCTURAL_WORDS.has(b.toLowerCase()) &&
-            !TITLES_SET.has(a.toLowerCase()) && !TITLES_SET.has(b.toLowerCase())
-        ) {
-            tryAdd(`${a} ${b}`);
-        }
-    }
+    // NOTE: a former Pass 7 matched ANY two consecutive capitalized tokens with no
+    // introduction signal. LLM GM prose is wall-to-wall Title Case noun phrases
+    // ("Inner Courtyard", "Tactical Decision", "Rescue Force"), so it manufactured a
+    // fake NPC every turn and no blocklist could keep up. Removed entirely: every
+    // remaining pass requires a real signal (bracket, title, speech verb, "named X",
+    // apposition, connective). A multi-word name introduced with zero signal is
+    // missed until it next appears with one — rare, and far cheaper than the garbage.
 
     return Array.from(candidates);
 }

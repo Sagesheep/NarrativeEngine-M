@@ -5,9 +5,8 @@ import { countTokens } from '../services/infrastructure';
 import { countRegisterTokens } from '../services/campaign-state';
 
 export function TokenGauge() {
-    const { context, condenser, settings, divergenceRegister } = useAppStore(useShallow(s => ({
+    const { context, settings, divergenceRegister } = useAppStore(useShallow(s => ({
         context: s.context,
-        condenser: s.condenser,
         settings: s.settings,
         divergenceRegister: s.divergenceRegister,
     })));

@@ -54,8 +54,8 @@ describe('nameSwap', () => {
             expect(decideSwap({ npc: base, onStage: false, inPayload: false })).toBe('swap');
         });
 
-        it('row 3: archived → swap', () => {
-            expect(decideSwap({ npc: npc({ id: 'n1', name: 'Voss', archived: true }), onStage: false, inPayload: true })).toBe('swap');
+        it('row 3: dead (status text) → swap', () => {
+            expect(decideSwap({ npc: npc({ id: 'n1', name: 'Voss', status: 'was slain' }), onStage: false, inPayload: true })).toBe('swap');
         });
 
         it('row 3: dead (condition) → swap', () => {

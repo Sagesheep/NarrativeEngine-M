@@ -3,6 +3,7 @@ import type {
     GameContext,
     ChatMessage,
     NPCEntry,
+    NPCPressure,
     LoreChunk,
     CondenserState,
     ArchiveIndexEntry,
@@ -66,8 +67,7 @@ export type TurnCallbacks = {
     setStreamingStats?: (stats: StreamingStats | null) => void;
     setDivergenceRegister?: (register: DivergenceRegister) => void;
     updateMessageDivergence?: (messageId: string, divergenceIds: string[]) => void;
-    archiveNPC?: (id: string, turn: number, reason: string) => void;
-    restoreNPC?: (id: string) => void;
+    applyPressurePatch?: (id: string, p: NPCPressure) => void;
     setOnStageNpcIds?: (ids: string[]) => void;
     initiateCombat?: (namedNpcIds: string[], pcIds: string[], mookSpecs: { combatTier: import('../../types').CombatTier; archetype: import('../../types').Archetype; count: number }[], auxProvider?: import('../../types').LLMProvider, recentContext?: string) => Promise<void>;
     stageInventoryProposal?: (proposal: InventoryProposal) => void;
@@ -105,6 +105,7 @@ export type TurnState = {
     deepContextSearch?: boolean;
     divergenceRegister?: DivergenceRegister;
     onStageNpcIds?: string[];
+    npcPressure?: Record<string, NPCPressure>;
     items: ItemDef[];
     skills: SkillDef[];
     /** Live combat snapshot (Phase C) — surfaced in the volatile block while a fight is active. */

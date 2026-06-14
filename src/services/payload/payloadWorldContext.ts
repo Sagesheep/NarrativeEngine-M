@@ -71,7 +71,7 @@ function filterRecallByPerception(
         const currentActiveIds = new Set<string>();
         if (npcLedger) {
             for (const n of npcLedger) {
-                if (!n.archived) currentActiveIds.add(n.id);
+                currentActiveIds.add(n.id);
             }
         }
         const onStageSet = new Set(onStageNpcIds ?? []);
@@ -110,36 +110,34 @@ function selectActiveNPCs(opts: {
     scanHistory: string;
 }): NPCEntry[] {
     const { npcLedger, mode, recommendedNames, loreHeadersSet, scanHistory } = opts;
-    const nonArchivedLedger = npcLedger.filter(npc => !npc.archived);
-
     let activeNPCs: NPCEntry[];
 
     if (mode === 'recommended' && recommendedNames && recommendedNames.length > 0) {
         const recommendedSet = new Set(recommendedNames.map(n => n.toLowerCase()));
-        activeNPCs = nonArchivedLedger.filter(npc => {
+        activeNPCs = npcLedger.filter(npc => {
             if (!npc.name || loreHeadersSet.has(npc.name.toLowerCase())) return false;
             const aliases = (npc.aliases || '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean);
             const allNames = [npc.name.toLowerCase(), ...aliases];
             return allNames.some(n => recommendedSet.has(n));
         });
         const matched = activeNPCs.map(n => n.name);
-        const omitted = nonArchivedLedger.length - activeNPCs.length;
-        console.log(`[NPC] path=recommender total=${nonArchivedLedger.length} matched=[${matched.join(',')}] omitted=${omitted} (archived/lore-collision)`);
+        const omitted = npcLedger.length - activeNPCs.length;
+        console.log(`[NPC] path=recommender total=${npcLedger.length} matched=[${matched.join(',')}] omitted=${omitted} (lore-collision)`);
     } else {
-        activeNPCs = nonArchivedLedger.filter(npc => {
+        activeNPCs = npcLedger.filter(npc => {
             if (!npc.name || loreHeadersSet.has(npc.name.toLowerCase())) return false;
             const aliases = (npc.aliases || '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean);
             const patterns = [npc.name.toLowerCase(), ...aliases];
             return patterns.some(p => scanHistory.toLowerCase().includes(p));
         });
         const matched = activeNPCs.map(n => n.name);
-        const omitted = nonArchivedLedger.length - activeNPCs.length;
-        console.log(`[NPC] path=fallback total=${nonArchivedLedger.length} matched=[${matched.join(',')}] omitted=${omitted} (archived/lore-collision)`);
+        const omitted = npcLedger.length - activeNPCs.length;
+        console.log(`[NPC] path=fallback total=${npcLedger.length} matched=[${matched.join(',')}] omitted=${omitted} (lore-collision)`);
     }
 
     if (activeNPCs.length === 0) {
         const path = mode;
-        console.log(`[NPC] no NPCs included this turn — path=${path} candidates=${nonArchivedLedger.length}`);
+        console.log(`[NPC] no NPCs included this turn — path=${path} candidates=${npcLedger.length}`);
     }
 
     return activeNPCs;
@@ -167,12 +165,11 @@ function mergeSemanticRecall(
 
     const MAX_TOTAL_NPCS = 10;
     const existingIds = new Set(activeNPCs.map(n => n.id));
-    const nonArchivedLedger = npcLedger.filter(n => !n.archived);
     const recalled: NPCEntry[] = [];
     for (const id of semanticallyRecalledNpcIds) {
         if (existingIds.has(id)) continue;
         if (activeNPCs.length + recalled.length >= MAX_TOTAL_NPCS) break;
-        const npc = nonArchivedLedger.find(n => n.id === id);
+        const npc = npcLedger.find(n => n.id === id);
         if (npc) {
             npc.recalledByEmbedding = true;
             recalled.push(npc);

@@ -338,20 +338,16 @@ describe('NPC lifecycle', () => {
         expect(idbStore.get(`nn_embed_${id}_npc_g1`)).toBeDefined();
     });
 
-    it('archiveNPC / restoreNPC mutate flags and save, with no embedding', async () => {
-        useAppStore.setState({ npcLedger: [makeNPC('Gandalf', { id: 'g1' })] });
+    it('removeNPC removes from ledger, clears pressure, and saves — no embedding', async () => {
+        useAppStore.setState({
+            npcLedger: [makeNPC('Gandalf', { id: 'g1' }), makeNPC('Frodo', { id: 'f1' })],
+            npcPressure: { g1: { ignored: 3, engaged: 1, lastDecayTurn: 0, history: [] } },
+        });
 
-        useAppStore.getState().archiveNPC('g1', 12, 'left the party');
-        let n = useAppStore.getState().npcLedger[0];
-        expect(n.archived).toBe(true);
-        expect(n.archivedAtTurn).toBe(12);
-        expect(n.archivedReason).toBe('left the party');
+        useAppStore.getState().removeNPC('g1');
 
-        useAppStore.getState().restoreNPC('g1');
-        n = useAppStore.getState().npcLedger[0];
-        expect(n.archived).toBe(false);
-        expect(n.archivedAtTurn).toBeUndefined();
-        expect(n.archivedReason).toBeUndefined();
+        expect(useAppStore.getState().npcLedger.map(n => n.id)).toEqual(['f1']);
+        expect(useAppStore.getState().npcPressure['g1']).toBeUndefined();
 
         expect(embedText).not.toHaveBeenCalled();
         await fireDebounce();

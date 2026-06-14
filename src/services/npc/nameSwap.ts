@@ -89,7 +89,7 @@ export function decideSwap(opts: { npc: NPCEntry; onStage: boolean; inPayload: b
     const { npc, onStage, inPayload } = opts;
     if (npc.isPC) return 'leave';        // never rename the player character
     if (onStage) return 'leave';         // row 1 — physically present → it's a reference (hard veto)
-    if (npc.archived || isDead(npc)) return 'swap'; // row 3 — a new same-name character can't be them
+    if (isDead(npc)) return 'swap';      // row 3 — a new same-name character can't be them
     if (!inPayload) return 'swap';       // row 2 — model never saw them this turn; coincidence mint
     return 'flag';                       // rows 4/5/6 — in payload, off-stage: gray zone → flag, don't guess
 }

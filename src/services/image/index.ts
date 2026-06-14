@@ -20,7 +20,6 @@ function stripMarkup(text: string): string {
 
 function gatherNPCAppearances(text: string, npcLedger: NPCEntry[]): string {
     const mentioned = npcLedger.filter(npc => {
-        if (npc.archived) return false;
         const name = npc.name.toLowerCase();
         return text.toLowerCase().includes(name);
     });

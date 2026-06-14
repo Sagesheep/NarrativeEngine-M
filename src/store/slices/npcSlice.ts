@@ -89,9 +89,7 @@ export type NPCSlice = {
     addNPCs: (newNpcs: NPCEntry[]) => void;
     updateNPC: (id: string, patch: Partial<NPCEntry>) => void;
     removeNPC: (id: string) => void;
-    archiveNPC: (id: string, turn: number, reason: string) => void;
     mergeOrRenameNpc: (from: string, to: string, turn: number) => 'merged' | 'renamed' | 'none';
-    restoreNPC: (id: string) => void;
 
     // On-stage NPC tracking (perception bounding)
     onStageNpcIds: string[];
@@ -102,6 +100,7 @@ export type NPCSlice = {
 
 type NPCDeps = NPCSlice & {
     activeCampaignId: string | null;
+    clearNpcPressure: (id: string) => void;
 };
 
 // ── Slice creator ──────────────────────────────────────────────────────
@@ -146,21 +145,15 @@ export const createNPCSlice: StateCreator<NPCDeps, [], [], NPCSlice> = (set, get
             imageStorage.deletePortrait(s.activeCampaignId, id)
                 .catch(e => console.warn('[NPC] Portrait delete failed:', e));
         }
-        return { npcLedger: newLedger };
-    }),
-    archiveNPC: (id, turn, reason) => set((s) => {
-        const newLedger = s.npcLedger.map(n =>
-            n.id === id ? { ...n, archived: true, archivedAtTurn: turn, archivedReason: reason } : n
-        );
-        debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
+        get().clearNpcPressure(id);
         return { npcLedger: newLedger };
     }),
     // Manual rename/merge backstop for the user-driven highlight→rename tool.
     // Find the ledger entry that owns `from`. If `to` is already owned by a
-    // DIFFERENT active entry, this was a duplicate/phantom → archive the `from`
-    // entry (merge into the real one). Otherwise rename the `from` entry to `to`.
+    // DIFFERENT entry, this was a duplicate/phantom → delete the `from` entry
+    // (merge into the real one). Otherwise rename the `from` entry to `to`.
     // Renaming via updateNPC re-embeds with the correct model id (invariant).
-    mergeOrRenameNpc: (from, to, turn) => {
+    mergeOrRenameNpc: (from, to, _turn) => {
         const fromKey = from.trim().toLowerCase();
         const toKey = to.trim().toLowerCase();
         if (!fromKey || !toKey || fromKey === toKey) return 'none';
@@ -169,23 +162,16 @@ export const createNPCSlice: StateCreator<NPCDeps, [], [], NPCSlice> = (set, get
             const names = [n.name, ...(n.aliases || '').split(',')].map(x => x.trim().toLowerCase());
             return names.includes(key) || n.name?.trim().toLowerCase().startsWith(key + ' ');
         };
-        const fromNpc = s.npcLedger.find(n => !n.archived && matches(n, fromKey));
+        const fromNpc = s.npcLedger.find(n => matches(n, fromKey));
         if (!fromNpc) return 'none';
-        const toNpc = s.npcLedger.find(n => !n.archived && n.id !== fromNpc.id && matches(n, toKey));
+        const toNpc = s.npcLedger.find(n => n.id !== fromNpc.id && matches(n, toKey));
         if (toNpc) {
-            get().archiveNPC(fromNpc.id, turn, `merged into ${toNpc.name}`);
+            get().removeNPC(fromNpc.id);
             return 'merged';
         }
         get().updateNPC(fromNpc.id, { name: to.trim() });
         return 'renamed';
     },
-    restoreNPC: (id) => set((s) => {
-        const newLedger = s.npcLedger.map(n =>
-            n.id === id ? { ...n, archived: false, archivedAtTurn: undefined, archivedReason: undefined } : n
-        );
-        debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
-        return { npcLedger: newLedger };
-    }),
 
     onStageNpcIds: [],
     setOnStageNpcIds: (ids) => set({ onStageNpcIds: ids }),

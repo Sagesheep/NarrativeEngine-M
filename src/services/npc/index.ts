@@ -5,7 +5,7 @@ export { swapDuplicateNames, decideSwap, detectCollisions, applySwap } from './n
 export type { SwapResult, SwapContext, SwapVerdict, Collision } from './nameSwap';
 export { drawUnusedName, lookupCultures, genderOf, isKnownName, NAME_CULTURES } from './nameBank';
 export type { Gender } from './nameBank';
-export { scanPressure, shouldArchiveNPC, findArchivedToRestore, buildPressurePatch, applyDecay, DECAY_RATE } from './npcPressureTracker';
+export { scanPressure, buildPressurePatch, applyDecay, DECAY_RATE } from './npcPressureTracker';
 export { runNPCReview } from './npcReview';
 export type { NPCReviewCandidate, NPCReviewCancelled, NPCReviewResult } from './npcReview';
 export {

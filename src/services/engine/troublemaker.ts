@@ -1,4 +1,4 @@
-import type { LLMProvider, ChatMessage, ArchiveIndexEntry, ArchiveChapter, NPCEntry } from '../../types';
+import type { LLMProvider, ChatMessage, ArchiveIndexEntry, ArchiveChapter, NPCEntry, NPCPressure } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import {
     ANCHOR_BEFORE_INPUT,
@@ -14,6 +14,7 @@ export async function generateTroubleOptions(
     archiveIndex: ArchiveIndexEntry[],
     chapters: ArchiveChapter[],
     npcLedger: NPCEntry[],
+    npcPressure: Record<string, NPCPressure>,
     sceneNote?: string,
 ): Promise<string[]> {
     const conversationMessages = messages.filter(m => m.role === 'user' || m.role === 'assistant');
@@ -37,14 +38,14 @@ export async function generateTroubleOptions(
 
     const activeNPCs = npcLedger
         .filter(npc => {
-            const pressure = npc.pressure;
+            const pressure = npcPressure[npc.id];
             return pressure && (pressure.ignored > 1 || pressure.engaged > 1);
         })
         .map(npc => ({
             name: npc.name,
             role: npc.storyRelevance || 'unknown',
-            ignoredPressure: npc.pressure?.ignored ?? 0,
-            engagedPressure: npc.pressure?.engaged ?? 0,
+            ignoredPressure: npcPressure[npc.id]?.ignored ?? 0,
+            engagedPressure: npcPressure[npc.id]?.engaged ?? 0,
         }));
 
     const prompt = joinPromptSections(

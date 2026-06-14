@@ -1,5 +1,5 @@
 import { get, set, del } from 'idb-keyval';
-import type { Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, ArchiveChapter, SemanticFact, TimelineEvent, EntityEntry, DivergenceRegister, PinnedExcerpt, CombatState, ItemDef, SkillDef } from '../types';
+import type { Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, ArchiveChapter, SemanticFact, TimelineEvent, EntityEntry, DivergenceRegister, PinnedExcerpt, CombatState, ItemDef, SkillDef, NPCPressure } from '../types';
 import { imageStorage } from '../services/storage/imageStorage';
 
 export type CampaignState = {
@@ -87,6 +87,16 @@ export async function saveNPCLedger(campaignId: string, npcs: NPCEntry[]): Promi
 export async function getNPCLedger(campaignId: string): Promise<NPCEntry[]> {
     const npcs = await get(`npcs_${campaignId}`);
     return npcs || [];
+}
+
+// ─── NPC Pressure ───
+
+export async function savePressure(campaignId: string, map: Record<string, NPCPressure>): Promise<void> {
+    await set(`npc_pressure_${campaignId}`, map);
+}
+
+export async function getPressure(campaignId: string): Promise<Record<string, NPCPressure>> {
+    return (await get(`npc_pressure_${campaignId}`)) || {};
 }
 
 // ─── Archive Index (Tier 4) ───

@@ -10,7 +10,7 @@ import { shouldAutoSeal, sealChapter, sealChapterCombined, type CombinedSealResu
 import { computeOpenThreads } from '../payload/payloadWorldContext';
 import { fetchFacts, scanCharacterProfile, scanInventory, mergeSealEntries } from '../campaign-state';
 import { loadChapters } from '../../store/campaignStore';
-import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToRestore, applyDecay } from '../npc';
+import { scanPressure, buildPressurePatch, applyDecay } from '../npc';
 import { llmCall } from '../../utils/llmCall';
 import {
     backgroundQueue,
@@ -407,64 +407,34 @@ function runNPCPressureScan(
             ? parseInt(archiveIndex[archiveIndex.length - 1].sceneId, 10) || 0
             : 0;
 
-        const archivedNPCs = npcLedger.filter(n => n.archived);
-        const activeNPCs = npcLedger.filter(n => !n.archived);
-
-        // Auto-restore archived NPCs whose names are mentioned in player input or GM response
-        if (archivedNPCs.length > 0 && callbacks.restoreNPC) {
-            const toRestoreFromPlayer = findArchivedToRestore(displayInput, archivedNPCs);
-            const toRestoreFromGM = lastAssistantContent ? findArchivedToRestore(lastAssistantContent, archivedNPCs) : [];
-            const toRestore = [...new Set([...toRestoreFromPlayer, ...toRestoreFromGM])];
-            for (const id of toRestore) {
-                callbacks.restoreNPC(id);
-                const npc = archivedNPCs.find(n => n.id === id);
-                console.log(`[NPC Archive] Restored "${npc?.name}" (mentioned in conversation)`);
-            }
-        }
-
-        const pressureUpdates = scanPressure(displayInput, activeNPCs, lastAssistantContent);
+        const pressureMap = state.npcPressure ?? {};
+        const pressureUpdates = scanPressure(displayInput, npcLedger, lastAssistantContent);
         const updatedIds = new Set<string>();
         if (pressureUpdates.length > 0) {
             for (const update of pressureUpdates) {
-                const npc = activeNPCs.find(n => n.id === update.npcId);
+                const npc = npcLedger.find(n => n.id === update.npcId);
                 if (!npc) continue;
-                const patch = buildPressurePatch(npc, update, sceneNumber);
-                callbacks.updateNPC(npc.id, patch);
+                const newPressure = buildPressurePatch(pressureMap[npc.id], update, sceneNumber);
+                callbacks.applyPressurePatch?.(npc.id, newPressure);
                 updatedIds.add(npc.id);
                 if (update.reasons.length > 0) {
-                    console.log(`[PressureTracker] ${npc.name}: ignored=${patch.pressure?.ignored?.toFixed(1)}, engaged=${patch.pressure?.engaged?.toFixed(1)} — ${update.reasons.join(', ')}`);
+                    console.log(`[PressureTracker] ${npc.name}: ignored=${newPressure.ignored.toFixed(1)}, engaged=${newPressure.engaged.toFixed(1)} — ${update.reasons.join(', ')}`);
                 }
             }
         }
 
         // Passive decay: apply decay to all NPCs with pressure data that weren't updated this turn
-        for (const npc of activeNPCs) {
-            if (!npc.pressure || updatedIds.has(npc.id)) continue;
-            const decayedIgnored = applyDecay(npc.pressure.ignored, npc.pressure.lastDecayTurn, sceneNumber);
-            const decayedEngaged = applyDecay(npc.pressure.engaged, npc.pressure.lastDecayTurn, sceneNumber);
-            if (decayedIgnored !== npc.pressure.ignored || decayedEngaged !== npc.pressure.engaged) {
-                callbacks.updateNPC(npc.id, {
-                    pressure: {
-                        ignored: decayedIgnored,
-                        engaged: decayedEngaged,
-                        lastDecayTurn: sceneNumber,
-                        history: npc.pressure.history,
-                    },
+        for (const [npcId, pressure] of Object.entries(pressureMap)) {
+            if (updatedIds.has(npcId)) continue;
+            const decayedIgnored = applyDecay(pressure.ignored, pressure.lastDecayTurn, sceneNumber);
+            const decayedEngaged = applyDecay(pressure.engaged, pressure.lastDecayTurn, sceneNumber);
+            if (decayedIgnored !== pressure.ignored || decayedEngaged !== pressure.engaged) {
+                callbacks.applyPressurePatch?.(npcId, {
+                    ignored: decayedIgnored,
+                    engaged: decayedEngaged,
+                    lastDecayTurn: sceneNumber,
+                    history: pressure.history,
                 });
-            }
-        }
-
-        // Auto-archive stale NPCs (cheap decay math, no LLM)
-        if (callbacks.archiveNPC) {
-            const threshold = state.settings.autoArchiveStaleNPCsTurns ?? 15;
-            if (threshold > 0) {
-                for (const npc of activeNPCs) {
-                    const { shouldArchive, turnsSince } = shouldArchiveNPC(npc, sceneNumber, threshold);
-                    if (shouldArchive) {
-                        callbacks.archiveNPC(npc.id, sceneNumber, `stale: no engagement for ${turnsSince} turns`);
-                        console.log(`[NPC Archive] Auto-archived "${npc.name}" (${turnsSince} turns since last engagement)`);
-                    }
-                }
             }
         }
     }

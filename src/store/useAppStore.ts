@@ -7,6 +7,7 @@ import { createUISlice, type UISlice } from './slices/uiSlice';
 import { createArchiveSlice, type ArchiveSlice } from './slices/archiveSlice';
 import { createLoreSlice, type LoreSlice } from './slices/loreSlice';
 import { createNPCSlice, type NPCSlice } from './slices/npcSlice';
+import { createPressureSlice, type PressureSlice } from './slices/pressureSlice';
 import { createCombatSlice, type CombatSlice } from './slices/combatSlice';
 import { createItemSlice, type ItemSlice } from './slices/itemSlice';
 import { createSkillSlice, type SkillSlice } from './slices/skillSlice';
@@ -27,7 +28,7 @@ export type { ReindexState } from './slices/uiSlice';
 
 // ── Combined store type ────────────────────────────────────────────────
 
-type AppState = SettingsSlice & CampaignSlice & ChatSlice & UISlice & ArchiveSlice & LoreSlice & NPCSlice & CombatSlice & ItemSlice & SkillSlice;
+type AppState = SettingsSlice & CampaignSlice & ChatSlice & UISlice & ArchiveSlice & LoreSlice & NPCSlice & PressureSlice & CombatSlice & ItemSlice & SkillSlice;
 
 // ── Store ──────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ export const useAppStore = create<AppState>()((set, get, store) => {
     const archiveSlice = createArchiveSlice(set, get, store);
     const loreSlice = createLoreSlice(set, get, store);
     const npcSlice = createNPCSlice(set, get, store);
+    const pressureSlice = createPressureSlice(set, get, store);
     const combatSlice = createCombatSlice(set, get, store);
     const itemSlice = createItemSlice(set, get, store);
     const skillSlice = createSkillSlice(set, get, store);
@@ -51,6 +53,7 @@ export const useAppStore = create<AppState>()((set, get, store) => {
         ...archiveSlice,
         ...loreSlice,
         ...npcSlice,
+        ...pressureSlice,
         ...combatSlice,
         ...itemSlice,
         ...skillSlice,

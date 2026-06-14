@@ -55,8 +55,9 @@ export async function runTurn(
 
     // Async character introduction engine (Phase 4) — Max tier only
     if (tierAllows(settings.aiTier, 'introEngine')) {
+        const pm = state.npcPressure ?? {};
         const seenNpcNames = npcLedger
-            .filter(npc => (npc.pressure?.engaged ?? 0) > 0)
+            .filter(npc => (pm[npc.id]?.engaged ?? 0) > 0)
             .map(npc => npc.name);
         const recentMessages = state.messages.slice(-10);
         const utilityProvider = state.getUtilityEndpoint?.();
