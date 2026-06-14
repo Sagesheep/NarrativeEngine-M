@@ -423,7 +423,7 @@ export const MessageBubble = memo(function MessageBubble({
                                     </div>
                                 </details>
                             )}
-                            <ContentWithChips content={cleanContent} />
+                            <ContentWithChips content={cleanContent} streaming={isStreaming && isLastMessage} />
                         </div>
 
                         {hasSummary && (

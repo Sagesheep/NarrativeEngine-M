@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import type { ChatMessage } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../services/apiClient';
@@ -21,15 +21,23 @@ interface UseMessageEditorDeps {
 export function useMessageEditor(deps: UseMessageEditorDeps) {
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
-    const startEditing = (msg: ChatMessage) => {
+    // Keep latest deps in a ref so the handlers below can have stable identities
+    // (empty dep arrays). This lets React.memo on MessageBubble actually hold —
+    // otherwise these handlers get a new reference every render and, during
+    // streaming, defeat the memo so every bubble re-renders/re-parses per token.
+    const depsRef = useRef(deps);
+    depsRef.current = deps;
+
+    const startEditing = useCallback((msg: ChatMessage) => {
         setEditingMessageId(msg.id);
-    };
+    }, []);
 
-    const cancelEditing = () => {
+    const cancelEditing = useCallback(() => {
         setEditingMessageId(null);
-    };
+    }, []);
 
-    const rollbackArchiveFrom = async (fromTimestamp: number) => {
+    const rollbackArchiveFrom = useCallback(async (fromTimestamp: number) => {
+        const deps = depsRef.current;
         if (!deps.activeCampaignId) return;
         const sorted = [...deps.archiveIndex].sort((a, b) => parseInt(a.sceneId) - parseInt(b.sceneId));
         const target = sorted.find((e: any) => e.timestamp >= fromTimestamp);
@@ -63,9 +71,10 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         } catch (err) {
             toast.warning('Archive rollback failed');
         }
-    };
+    }, []);
 
-    const handleEditSubmit = (id: string, newContent: string) => {
+    const handleEditSubmit = useCallback((id: string, newContent: string) => {
+        const deps = depsRef.current;
         const msg = deps.messages.find(m => m.id === id);
         if (!msg) return;
 
@@ -80,9 +89,10 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             useAppStore.getState().updateMessageContent(msg.id, newContent.trim());
             setEditingMessageId(null);
         }
-    };
+    }, [rollbackArchiveFrom]);
 
-    const handleRegenerate = (id: string) => {
+    const handleRegenerate = useCallback((id: string) => {
+        const deps = depsRef.current;
         const msgs = deps.messages;
         const idx = msgs.findIndex(m => m.id === id);
         if (idx === -1) return;
@@ -95,7 +105,7 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
                 deps.onAfterRegenerate(lastUser.displayContent || lastUser.content);
             }, 50);
         }
-    };
+    }, [rollbackArchiveFrom]);
 
     return {
         editingMessageId,
