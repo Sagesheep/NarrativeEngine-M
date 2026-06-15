@@ -11,6 +11,14 @@ export type { PinnedExcerpt };
 
 const PINNED_EXCERPTS_TOKEN_CAP = 3000;
 
+// In debug mode every GM turn attaches a full `debugPayload` (the entire
+// assembled prompt — hundreds of KB) to its message. The inline payload viewer
+// only renders on the last ~visibleCount (10) bubbles, so payloads on older
+// messages are invisible AND accumulate unbounded over a long session, rebuilding
+// the same renderer-OOM baggage the persistence strip removed. Keep only the most
+// recent N payloads in memory.
+const DEBUG_PAYLOAD_RETENTION = 10;
+
 // The divergence register persists to its own `divergence_<id>` key, separate from
 // the campaign-state payload. UI-edit actions only debounce-saved campaign state
 // (which omits the register), so manual MemoryTab edits were lost on reload.
@@ -261,6 +269,17 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             const lastIdx = msgs.length - 1;
             if (lastIdx >= 0) {
                 msgs[lastIdx] = { ...msgs[lastIdx], ...patch };
+            }
+            // Cap retained debug payloads so they don't accumulate unbounded.
+            if (patch.debugPayload !== undefined) {
+                const withPayload: number[] = [];
+                for (let i = 0; i < msgs.length; i++) {
+                    if (msgs[i].debugPayload !== undefined) withPayload.push(i);
+                }
+                for (let j = 0; j < withPayload.length - DEBUG_PAYLOAD_RETENTION; j++) {
+                    const { debugPayload: _drop, ...rest } = msgs[withPayload[j]];
+                    msgs[withPayload[j]] = rest;
+                }
             }
             return { messages: msgs };
         }),
