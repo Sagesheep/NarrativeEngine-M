@@ -104,7 +104,7 @@ export function BackupModal() {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={toggleBackupModal}>
             <div
-                className="bg-surface border border-border rounded-lg w-full max-w-lg max-h-[85vh] flex flex-col mx-4"
+                className="bg-surface border border-border rounded-lg w-full max-w-lg max-h-[calc(85*var(--app-vh))] flex flex-col mx-4"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between p-4 border-b border-border">

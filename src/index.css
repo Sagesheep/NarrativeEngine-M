@@ -66,6 +66,14 @@
     font-family: var(--font-mono);
     background: var(--color-void);
     color: var(--color-text-primary);
+    /* Zoom-corrected viewport units. html { zoom: var(--ui-scale) } scales raw
+       vh/vw/dvh, so anything sized against the REAL viewport (full-screen
+       overlays, modal max-heights, image lightboxes) must use these instead —
+       e.g. max-h-[calc(85*var(--app-vh))]. Without it, vh-based modals overflow
+       the screen at scale >1 and shrink at scale <1. */
+    --app-vh: calc(1vh / var(--ui-scale, 1));
+    --app-vw: calc(1vw / var(--ui-scale, 1));
+    --app-dvh: calc(1dvh / var(--ui-scale, 1));
   }
 
   body {

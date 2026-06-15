@@ -63,7 +63,7 @@ export function DivergenceEntryModal({ onAdd, onClose, provider, chapterId = 'ma
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-void/80 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-surface border border-border rounded p-4 w-[90vw] max-w-md space-y-3" onClick={e => e.stopPropagation()}>
+            <div className="bg-surface border border-border rounded p-4 w-[calc(90*var(--app-vw))] max-w-md space-y-3" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-2 mb-2">
                     <Zap size={14} className="text-amber-400" />
                     <span className="text-[10px] text-amber-400 uppercase tracking-widest font-bold">Add Fact</span>

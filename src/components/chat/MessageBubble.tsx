@@ -98,7 +98,7 @@ function ImageAttachment({ msg }: ImageAttachmentProps) {
                         <img
                             src={imageUrl}
                             alt="Scene illustration"
-                            className="max-w-[95vw] max-h-[90vh] object-contain rounded"
+                            className="max-w-[calc(95*var(--app-vw))] max-h-[calc(90*var(--app-vh))] object-contain rounded"
                             onClick={e => e.stopPropagation()}
                         />
                     </div>

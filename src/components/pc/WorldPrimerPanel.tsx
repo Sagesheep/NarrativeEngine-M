@@ -36,7 +36,7 @@ export function WorldPrimerPanel({ onClose }: { onClose: () => void }) {
 
     return (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-void/80 backdrop-blur-sm p-4">
-            <div className="bg-surface border border-border shadow-2xl rounded-lg w-full max-w-3xl max-h-[75vh] flex flex-col overflow-hidden">
+            <div className="bg-surface border border-border shadow-2xl rounded-lg w-full max-w-3xl max-h-[calc(75*var(--app-vh))] flex flex-col overflow-hidden">
                 <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                     <h3 className="text-[13px] font-medium text-terminal uppercase tracking-widest">World Primer</h3>
                     <button onClick={onClose} className="text-text-dim hover:text-text-bright transition-colors text-lg leading-none">&times;</button>
@@ -50,7 +50,7 @@ export function WorldPrimerPanel({ onClose }: { onClose: () => void }) {
                     ) : (
                         <div className="flex flex-col md:flex-row">
                             {/* Chunk list */}
-                            <div className="md:w-1/3 border-r border-border/50 overflow-y-auto max-h-[60vh]">
+                            <div className="md:w-1/3 border-r border-border/50 overflow-y-auto max-h-[calc(60*var(--app-vh))]">
                                 {loreChunks.map(chunk => (
                                     <button
                                         key={chunk.id}
@@ -62,7 +62,7 @@ export function WorldPrimerPanel({ onClose }: { onClose: () => void }) {
                                 ))}
                             </div>
                             {/* Content */}
-                            <div className="md:w-2/3 p-4 overflow-y-auto max-h-[60vh]">
+                            <div className="md:w-2/3 p-4 overflow-y-auto max-h-[calc(60*var(--app-vh))]">
                                 {activeChunk ? (
                                     <div>
                                         <h4 className="text-[12px] font-medium text-text-bright mb-2">{activeChunk.header}</h4>

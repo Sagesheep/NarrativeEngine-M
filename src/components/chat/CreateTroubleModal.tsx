@@ -21,7 +21,7 @@ export function CreateTroubleModal({ onSelect }: Props) {
             onClick={close}
         >
             <div
-                className="bg-void-darker border border-border max-w-2xl w-full max-h-[85vh] overflow-y-auto rounded font-mono text-sm"
+                className="bg-void-darker border border-border max-w-2xl w-full max-h-[calc(85*var(--app-vh))] overflow-y-auto rounded font-mono text-sm"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between p-3 border-b border-border">

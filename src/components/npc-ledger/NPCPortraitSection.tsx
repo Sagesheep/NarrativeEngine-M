@@ -97,7 +97,7 @@ export function NPCPortraitSection({ npc }: Props) {
                     <img
                         src={portraitUrl}
                         alt={npc.name || 'NPC Portrait'}
-                        className="max-w-[95vw] max-h-[90vh] object-contain rounded"
+                        className="max-w-[calc(95*var(--app-vw))] max-h-[calc(90*var(--app-vh))] object-contain rounded"
                         onClick={e => e.stopPropagation()}
                     />
                 </div>

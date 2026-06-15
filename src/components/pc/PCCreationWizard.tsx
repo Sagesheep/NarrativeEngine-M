@@ -233,7 +233,7 @@ export function PCCreationWizard({ onComplete, onCancel }: {
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-void/80 backdrop-blur-sm p-4">
-            <div className="bg-surface border border-border shadow-2xl rounded-lg w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="bg-surface border border-border shadow-2xl rounded-lg w-full max-w-2xl max-h-[calc(85*var(--app-vh))] flex flex-col overflow-hidden">
                 {/* Header */}
                 <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                     <h2 className="text-[13px] font-medium text-terminal uppercase tracking-widest">Create Your Character</h2>

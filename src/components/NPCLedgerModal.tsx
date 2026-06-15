@@ -254,7 +254,7 @@ export function NPCLedgerModal() {
       {/* Desktop Backdrop */}
       <div className="hidden md:absolute md:inset-0 md:bg-void/80 md:backdrop-blur-sm" onClick={handleClose} />
 
-      <div className="relative bg-surface w-full h-full md:max-w-6xl md:h-[85vh] md:border md:border-border md:shadow-2xl flex flex-col md:flex-row overflow-hidden">
+      <div className="relative bg-surface w-full h-full md:max-w-6xl md:h-[calc(85*var(--app-vh))] md:border md:border-border md:shadow-2xl flex flex-col md:flex-row overflow-hidden">
 
         {/* Navigation / List Side */}
         <div className={`flex flex-col min-h-0 w-full h-full border-r border-border bg-void-lighter transition-transform duration-300 ${showDetail ? 'hidden md:flex md:w-80' : 'flex'}`}>

@@ -158,13 +158,13 @@ export function GalleryTab() {
                     </button>
 
                     <div
-                        className="flex flex-col max-w-[95vw] max-h-[90vh]"
+                        className="flex flex-col max-w-[calc(95*var(--app-vw))] max-h-[calc(90*var(--app-vh))]"
                         onClick={e => e.stopPropagation()}
                     >
                         <img
                             src={lightbox.url}
                             alt={lightbox.prompt || 'Scene illustration'}
-                            className="max-w-[95vw] max-h-[70vh] object-contain rounded"
+                            className="max-w-[calc(95*var(--app-vw))] max-h-[calc(70*var(--app-vh))] object-contain rounded"
                         />
                         <div className="mt-3 bg-void-darker/90 border border-border rounded p-3 text-left">
                             {lightbox.prompt && (

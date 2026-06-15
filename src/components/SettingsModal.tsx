@@ -34,7 +34,7 @@ export function SettingsModal() {
         <div className={`mobile-page md:fixed md:inset-0 md:z-[100] md:flex md:items-center md:justify-center ${settingsOpen ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="Settings">
             <div className="hidden md:absolute md:inset-0 md:bg-ember/40 md:backdrop-blur-sm" onClick={handleClose} />
 
-            <div className="relative bg-surface border-border w-full h-full md:h-[85vh] md:max-w-xl md:mx-4 md:border md:shadow-2xl flex flex-col overflow-hidden">
+            <div className="relative bg-surface border-border w-full h-full md:h-[calc(85*var(--app-vh))] md:max-w-xl md:mx-4 md:border md:shadow-2xl flex flex-col overflow-hidden">
                 <div className="mobile-page-header safe-top md:hidden px-4 py-3 border-b border-border bg-void">
                     <button onClick={handleClose} className="back-btn -ml-2">
                         <ArrowLeft size={24} />

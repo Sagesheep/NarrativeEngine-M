@@ -127,7 +127,7 @@ export function PinnedMemoriesPanel({ open, onClose }: Props) {
             />
 
             {/* Panel */}
-            <div className="relative bg-surface border-border w-full h-full md:h-[80vh] md:max-w-lg md:mx-4 md:border md:shadow-2xl flex flex-col overflow-hidden">
+            <div className="relative bg-surface border-border w-full h-full md:h-[calc(80*var(--app-vh))] md:max-w-lg md:mx-4 md:border md:shadow-2xl flex flex-col overflow-hidden">
                 {/* Mobile header */}
                 <div className="mobile-page-header safe-top md:hidden px-4 py-3 border-b border-border bg-void">
                     <button onClick={handleClose} className="back-btn -ml-2">
