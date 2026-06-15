@@ -315,8 +315,8 @@ export function NPCLedgerModal() {
 
           <div className="flex-1 min-h-0 overflow-y-auto npc-ledger-scroll">
             {viewMode === 'list'
-              ? <NPCListView npcLedger={activeNPCList} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })} onDelete={handleDelete} />
-              : <NPCGalleryView npcLedger={activeNPCList} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })} onDelete={handleDelete} />
+              ? <NPCListView npcLedger={activeNPCList} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })} onDelete={handleDelete} />
+              : <NPCGalleryView npcLedger={activeNPCList} selectedId={selectedId} selectMode={selectMode} checkedIds={checkedIds} onSelect={handleSelect} onToggleCheck={(id) => setCheckedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })} onDelete={handleDelete} />
             }
           </div>
         </div>

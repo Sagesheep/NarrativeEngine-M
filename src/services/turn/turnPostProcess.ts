@@ -75,7 +75,7 @@ Output schema: a JSON array of NPC ID strings, e.g. ["npc_1", "npc_3"]. If no NP
             const knownIds = new Set(ledger.map(n => n.id));
             return parsed.filter((id: unknown) => typeof id === 'string' && knownIds.has(id));
         }
-    } catch {}
+    } catch { /* malformed LLM JSON → no recallable ids */ }
     return [];
 }
 
@@ -226,7 +226,7 @@ function queueIndexPatch(
         // ── Fused index patch (importance + witness in one read/write) ──
         backgroundQueue.push('Index-Patch', async () => {
             let changed = false;
-            let index = await api.archive.getIndex(cid);
+            const index = await api.archive.getIndex(cid);
             const entry = index.find(e => e.sceneId === sceneId);
             if (!entry) return;
 

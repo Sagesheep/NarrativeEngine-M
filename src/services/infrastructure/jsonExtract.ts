@@ -29,7 +29,7 @@ export function extractJsonRobust<T>(raw: string, fallback: T): { value: T; pars
     const start = clean.indexOf('{');
     if (start === -1) return { value: fallback, parseOk: false };
 
-    let text = clean.slice(start);
+    const text = clean.slice(start);
 
     try {
         return { value: JSON.parse(text) as T, parseOk: true };

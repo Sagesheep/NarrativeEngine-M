@@ -26,6 +26,7 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
     // otherwise these handlers get a new reference every render and, during
     // streaming, defeat the memo so every bubble re-renders/re-parses per token.
     const depsRef = useRef(deps);
+    // eslint-disable-next-line react-hooks/refs -- intentional: latest deps mirrored into a ref so the memoized handlers stay stable and don't defeat MessageBubble's React.memo during streaming
     depsRef.current = deps;
 
     const startEditing = useCallback((msg: ChatMessage) => {
@@ -68,7 +69,7 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             }
 
             console.log(`[Archive] Rolled back from scene #${target.sceneId}`);
-        } catch (err) {
+        } catch {
             toast.warning('Archive rollback failed');
         }
     }, []);

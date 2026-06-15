@@ -87,7 +87,7 @@ Each arc must:
         }
         return parsed.slice(0, 4).map(String);
     } catch {
-        const lines = raw.split('\n').map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(l => l.length > 10);
+        const lines = raw.split('\n').map(l => l.replace(/^\d+[.)]\s*/, '').trim()).filter(l => l.length > 10);
         if (lines.length >= 4) return lines.slice(0, 4);
         throw new Error('Could not parse trouble options from LLM response');
     }

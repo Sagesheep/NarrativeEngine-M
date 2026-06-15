@@ -92,7 +92,6 @@ export function startUtilityCall(
 
     // Chain: every time we resolve, re-check if deadline moved; if so, wait again. Only resolve to caller when truly elapsed.
     const deadlinePromise: Promise<void> = (async () => {
-        // eslint-disable-next-line no-constant-condition
         while (true) {
             await waitForDeadline();
             const cur = active.find(c => c.id === id);

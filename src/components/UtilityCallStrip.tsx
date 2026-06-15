@@ -25,6 +25,7 @@ export function UtilityCallStrip() {
     return (
         <div className="border-b border-terminal/20 bg-terminal/5">
             {active.map(call => {
+                // eslint-disable-next-line react-hooks/purity -- intentional: this strip is a live countdown, re-rendered every 1s by the setInterval tick above; Date.now() is the clock source
                 const now = Date.now();
                 const elapsed = Math.floor((now - call.startedAt) / 1000);
                 const totalSec = Math.floor(call.initialTimeoutMs / 1000);

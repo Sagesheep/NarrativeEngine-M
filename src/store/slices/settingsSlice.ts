@@ -308,7 +308,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
             if (newProviders.length === 0) return {};
             const firstProviderId = newProviders[0].id;
             const newPresets = s.settings.presets.map(preset => {
-                let updated = { ...preset };
+                const updated = { ...preset };
                 if (updated.storyAIProviderId === id) {
                     updated.storyAIProviderId = firstProviderId;
                 }

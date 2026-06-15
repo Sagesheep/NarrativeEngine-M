@@ -182,13 +182,11 @@ export const MessageBubble = memo(function MessageBubble({
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showActions]);
 
     // Clean up timer on unmount
     useEffect(() => {
         return () => clearActionsDismissTimer();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handlePinToggle = () => {

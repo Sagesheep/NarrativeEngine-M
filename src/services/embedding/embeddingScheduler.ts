@@ -175,8 +175,7 @@ async function drainQueue(): Promise<void> {
                 reason: 'progressive',
             });
         }
-    } catch {
-    }
+    } catch { /* progress callback is advisory; never let it break the embedding loop */ }
 
     if (queue.length === 0 || abortController?.signal.aborted) {
         setReindexProgress({ active: false, total: 0, done: 0, reason: null });

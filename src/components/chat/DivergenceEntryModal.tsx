@@ -57,7 +57,7 @@ export function DivergenceEntryModal({ onAdd, onClose, provider, chapterId = 'ma
             const result = JSON.parse(jsonStr);
             if (result.text) setText(result.text);
             if (result.category) setCategory(result.category as DivergenceCategory);
-        } catch {}
+        } catch { /* best-effort structuring; keep the user's raw text on failure */ }
         setStructuring(false);
     };
 

@@ -362,7 +362,6 @@ export function ChatArea() {
 
     useEffect(() => {
         if (pipelinePhase !== 'generating') {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setStreamingStatsLocal(null);
             return;
         }

@@ -25,7 +25,7 @@ export function NPCSuggestionsPanel({ suggestions, onAccept, onDismiss, onClearA
 
     const toggle = (name: string) => setChecked(prev => {
         const n = new Set(prev);
-        n.has(name) ? n.delete(name) : n.add(name);
+        if (n.has(name)) n.delete(name); else n.add(name);
         return n;
     });
 

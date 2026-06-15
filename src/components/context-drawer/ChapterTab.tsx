@@ -122,7 +122,7 @@ export function ChapterTab() {
             await api.chapters.create(activeCampaignId);
             await refreshChapters();
             toast.success('New chapter created');
-        } catch (err) {
+        } catch {
             toast.error('Failed to create chapter');
         } finally {
             setIsCreating(false);
