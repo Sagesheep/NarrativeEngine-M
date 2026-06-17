@@ -97,7 +97,13 @@ export const RUNG_LABELS = ['Novice', 'Skilled', 'Expert', 'Veteran', 'Master'] 
 // recurring few (no random parade as the ledger grows). All tunable.
 export const DEEP_TIER_CAP = 3;        // max simultaneously-active agents near the player
 export const AUDITION_PROB = 0.15;     // chance a beat ticks a BACKGROUND proximate NPC instead of a deep-tier member
-export const ACTIVITY_DECAY = 1;       // per beat, an NPC's activity score decays by this toward 0
+export const ACTIVITY_DECAY = 0.5;     // per beat, an NPC's activity score decays by this toward 0
+// ⚠ WO-07 DEVIATION (2026-06-18, GLM): was 1 per spec. With decay=1 and bump=+1, current_activity
+// could never exceed 1 (bump exactly cancels one beat's decay), so ACTIVITY_PROMOTE=3 was unreachable
+// and the deep tier froze to the 3 lowest-id NPCs — concentration still worked, but "sustained
+// promotion / dormancy relegation" (Opus §4) did not. Decay=0.5 lets sustained picks accumulate
+// +0.5/beat (reaches PROMOTE after ~6 sustained picks) and dormant NPCs decay to RELEGATE=0 in
+// 2·value beats. User-approved pending Opus ratification — re-read this comment before tuning.
 export const ACTIVITY_PROMOTE = 3;     // activity ≥ this promotes a background NPC into the deep tier
 export const ACTIVITY_RELEGATE = 0;    // activity ≤ this relegates a deep-tier NPC back to background
 

@@ -4,6 +4,10 @@ import type { GoalHorizon } from '../../types';
 
 export type TickDelta = {
     npcId: string;
+    // WO-08 (id-leak fix, Opus-ratified 2026-06-18): the player-facing prose MUST use names, not
+    // internal ids. `proseLine` prefers `npcName` when present; falls back to `npcId` only for
+    // backwards compat (callers that haven't been migrated). The debug view always shows the id.
+    npcName?: string;
     goalText: string;
     horizon: GoalHorizon;
     band: Band;
@@ -27,8 +31,9 @@ function visibilityFromBand(band: Band, horizon: GoalHorizon): TickDelta['visibi
 }
 
 function proseLine(delta: TickDelta): string {
+    const who = delta.npcName ?? delta.npcId;  // WO-08: prefer name, fall back to id (pre-fix callers)
     const verb = BAND_PROSE[delta.band] ?? 'moved on';
-    return `${delta.npcId} ${verb} "${delta.goalText}"${delta.note ? '; ' + delta.note : ''}`;
+    return `${who} ${verb} "${delta.goalText}"${delta.note ? '; ' + delta.note : ''}`;
 }
 
 function debugLine(delta: TickDelta): string {

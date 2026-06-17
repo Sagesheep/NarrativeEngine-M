@@ -504,6 +504,10 @@ export type NPCEntry = {
     // ---- NPC Agency Phase 4: power-rung ladder (Piece C) ----
     skillRung?: number;           // 0..4 ladder position; undefined = not yet set (default Novice=0 on fill)
     rungCeiling?: number;         // 0..4 talent cap; LLM-set once, default 3. skillRung may never exceed this.
+    // ---- NPC Agency Phase 4: promotion / audition (Piece D) ----
+    // Lazy-decay activity accumulator (Opus §2, WO-07). Default-absent = treated as { value: 0, tick: now }
+    // on read via currentActivity(). Never persisted as a separate deepTier — membership is derived.
+    agencyActivity?: { value: number; tick: number };
 };
 
 

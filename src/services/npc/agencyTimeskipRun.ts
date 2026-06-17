@@ -1,11 +1,12 @@
 import type { Band } from './agencyConstants';
-import { VISIBILITY_RUBRIC, HEARTBEAT_DC, GOAL_BASE_DC } from './agencyConstants';
+import { VISIBILITY_RUBRIC, HEARTBEAT_DC, GOAL_BASE_DC, COLLISION_TANGLE_PROB } from './agencyConstants';
 import { ticksForDuration, allocateTicks } from './agencyTimeskip';
 import { rollGoal, nextFailStreak } from './agencyDice';
 import { applyBandToGoal } from './agencyProgress';
 import { contextAllow } from './agencySelection';
 import { isAgencyEligible } from './agencyLifecycle';
 import { applyGoalOutcomeNudge, applyTierCross } from './agencyDrift';
+import { goalsCoincide, topActiveGoal, relationTone, resolveTangle, buildTangleDeltas } from './agencyCollision';
 import type { NPCEntry, SceneStakes } from '../../types';
 import type { TickDelta } from './agencyDigest';
 
@@ -271,6 +272,7 @@ export function runTimeskip(cfg: TimeskipConfig): TimeskipNarrationResult {
             const vis = VISIBILITY_RUBRIC[band]?.[goal.horizon] ?? 'hidden';
             deltas.push({
                 npcId: npc.id,
+                npcName: npc.name,  // WO-08: name not id (id-leak fix)
                 goalText: goal.text,
                 horizon: goal.horizon,
                 band,
@@ -283,6 +285,48 @@ export function runTimeskip(cfg: TimeskipConfig): TimeskipNarrationResult {
 
         // Write back goals
         npc.goalRecords = [...goals];
+    }
+
+    // ── WO-08 Piece E: post-loop pairwise tangle pass ──
+    // After each NPC's solo ticks are resolved, scan the ticked roster for coinciding pairs
+    // (same region OR shared keyword in their top active goal). For each pair that tangles
+    // (rng < COLLISION_TANGLE_PROB), resolve the tangle and emit a shared-beat delta pair.
+    // These are ADDITIONAL beats (the tangle is a distinct event from the solo ticks), so no
+    // double-counting — the solo deltas are "Alden worked on X", the tangle is "Alden and Bryn
+    // clashed over X". The worthTelling filter + REVEAL_CAP cap below surface the most dramatic.
+    // Proximity-only by construction (the roster is already proximity-gated). +0 LLM.
+    const tickedNpcs = updatedNPCs.filter(n => isAgencyEligible(n) && (n.goalRecords ?? []).some(g => g.state === 'active'));
+    for (let i = 0; i < tickedNpcs.length; i++) {
+        const aNpc = tickedNpcs[i];
+        const aGoal = topActiveGoal(aNpc);
+        if (!aGoal) continue;
+        for (let j = i + 1; j < tickedNpcs.length; j++) {
+            const bNpc = tickedNpcs[j];
+            const bGoal = topActiveGoal(bNpc);
+            if (!bGoal) continue;
+            // Stakes gate: skip if either goal is blocked by dangerous stakes
+            if (sceneStakes === 'dangerous' && (aGoal.horizon === 'long' || bGoal.horizon === 'long')) continue;
+            if (!goalsCoincide(aNpc, aGoal, bNpc, bGoal)) continue;
+            if (!(rngFn() < COLLISION_TANGLE_PROB)) continue;
+            const { tone } = relationTone(aNpc, bNpc);
+            const outcome = resolveTangle(aNpc, aGoal, bNpc, bGoal, tone, rngFn);
+            // Apply the tangle bands to both NPCs' goals (progress + failStreak)
+            const aUpdated = applyBandToGoal(aGoal, outcome.aBand, now + totalTicks);
+            const bUpdated = applyBandToGoal(bGoal, outcome.bBand, now + totalTicks);
+            aNpc.goalRecords = (aNpc.goalRecords ?? []).map(g =>
+                g.text === aGoal.text && g.horizon === aGoal.horizon ? { ...aUpdated, failStreak: nextFailStreak(g.failStreak, outcome.aBand) } : g
+            );
+            bNpc.goalRecords = (bNpc.goalRecords ?? []).map(g =>
+                g.text === bGoal.text && g.horizon === bGoal.horizon ? { ...bUpdated, failStreak: nextFailStreak(g.failStreak, outcome.bBand) } : g
+            );
+            // Emit the shared-beat deltas (npcName populated → names, not ids)
+            const tangleDeltas = buildTangleDeltas(
+                aNpc, aGoal, outcome.aBand,
+                bNpc, bGoal, outcome.bBand,
+                tone,
+            );
+            deltas.push(...tangleDeltas);
+        }
     }
 
     // Advance agencyTick ONCE per timeskip (the whole skip is one batch)

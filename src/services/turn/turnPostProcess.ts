@@ -17,8 +17,14 @@ import {
     runTimeskip,
     applyGoalOutcomeNudge,
     applyTierCross,
+    selectTickTarget,
+    activityBumpPatch,
+    detectCollision,
+    resolveTangle,
+    buildTangleDeltas,
     HEARTBEAT_DC,
     GOAL_BASE_DC,
+    COLLISION_TANGLE_PROB,
 } from '../npc';
 import type { TickDelta, Band } from '../npc';
 import { api } from '../apiClient';
@@ -224,6 +230,16 @@ export async function handlePostTurn(
     runNPCPressureScan(state, callbacks, npcLedger, displayInput, lastAssistantContent);
 
     runAgencyTick(state, callbacks, npcLedger, displayInput);
+
+    // WO-07 Piece D completion (Opus ratification 2026-06-18): bump activity for every NPC that
+    // was on-stage last turn. The engine-only tick (runAgencyTick above) happens too rarely to
+    // outrun ACTIVITY_DECAY — without this bump, every NPC drifts back to 0 and the deep tier
+    // freezes onto 3 arbitrary NPCs. The on-stage signal is "who the player actually interacted
+    // with" — the people you keep talking to rise to the top and stay; the ones you ignore fade.
+    // Synchronous, pure, +0 LLM. `state.onStageNpcIds` is the previous turn's on-stage set (the
+    // store update from setOnStageNpcIds above doesn't reflect into this turn's snapshot), which
+    // is exactly the right signal: bump who you *were* interacting with, not who you *just* met.
+    bumpOnStageActivity(state, callbacks, npcLedger);
 }
 
 function queueIndexPatch(
@@ -529,9 +545,17 @@ function runAgencyTick(
     const roster = buildProximityRoster(npcLedger, pc);
     if (roster.length === 0) return;
 
-    // Pick one random eligible NPC from the roster
-    const pick = roster[Math.floor(Math.random() * roster.length)];
+    // Pick the NPC to tick this beat. WO-07 Piece D: instead of uniform-random across the roster
+    // (which bloated the cast as the ledger grew), tick a small "deep tier" of high-activity NPCs
+    // preferentially, with a low-prob audition roll for background NPCs. Sustained picks accumulate
+    // activity → promotion; dormancy decays → relegation. `now` must be computed BEFORE the pick
+    // because selectTickTarget evaluates lazy-decay activity against the agency clock.
     const now = currentTick + 1;
+    const { pick, isAudition, deepTier } = selectTickTarget(roster, now);
+    if (!pick) return;
+    if (isAudition) {
+        console.log(`[AgencyTick] heartbeat tick=${now} audition pick=${pick.id} (deepTier=${deepTier.map(n => n.id).join(',')})`);
+    }
 
     // ── Goal upgrade: idempotent wants→goalRecords migration (§9.6) ──
     let updatedNpc = { ...pick };
@@ -554,6 +578,67 @@ function runAgencyTick(
         // contextAllow is checked inside chooseTick (goals blocked by stakes are excluded)
         // but double-check: if somehow a blocked goal got through, skip it
         if (goal.state !== 'active') return;
+
+        // ── WO-08 Piece E: event collision detection ──
+        // Among the NPCs active this beat (deepTier ∪ {pick}, minus pick), find at most ONE partner
+        // whose top active goal coincides with pick's chosen goal (same region OR shared keyword).
+        // If found AND rng < COLLISION_TANGLE_PROB, resolve as a tangle (one shared beat, two NPCs);
+        // else fall through to the solo path below. Proximity-only, two-at-a-time max, +0 LLM.
+        const collisionCandidates = [...deepTier, pick].filter(n => n.id !== pick.id);
+        const collision = detectCollision(pick, goal, collisionCandidates, sceneStakes);
+        if (collision && Math.random() < COLLISION_TANGLE_PROB) {
+            const partner = collision.partner;
+            const partnerGoal = collision.partnerGoal;
+
+            // Resolve the tangle: ally→cooperate (share band), rival→contest (loser feeds winner
+            // via COLLISION_OPPORTUNITY_BONUS as rollGoal extraMods this beat), neutral→mild contest.
+            const outcome = resolveTangle(pick, goal, partner, partnerGoal, collision.tone);
+
+            // ── Apply both NPCs' resolutions ──
+            // Pick (NPC a)
+            const aUpdatedGoal = applyBandToGoal(goal, outcome.aBand, now);
+            const aNewFailStreak = nextFailStreak(goal.failStreak, outcome.aBand);
+            const aResolvedGoal = { ...aUpdatedGoal, failStreak: aNewFailStreak };
+            const aGoalRecords = (updatedNpc.goalRecords ?? []).map(g =>
+                g.text === goal.text && g.horizon === goal.horizon ? aResolvedGoal : g
+            );
+            callbacks.updateNPC(updatedNpc.id, { goalRecords: aGoalRecords });
+
+            // Partner (NPC b) — spread a fresh copy so we don't mutate the ledger ref
+            const updatedPartner = { ...partner };
+            const bUpdatedGoal = applyBandToGoal(partnerGoal, outcome.bBand, now);
+            const bNewFailStreak = nextFailStreak(partnerGoal.failStreak, outcome.bBand);
+            const bResolvedGoal = { ...bUpdatedGoal, failStreak: bNewFailStreak };
+            const bGoalRecords = (updatedPartner.goalRecords ?? []).map(g =>
+                g.text === partnerGoal.text && g.horizon === partnerGoal.horizon ? bResolvedGoal : g
+            );
+            callbacks.updateNPC(updatedPartner.id, { goalRecords: bGoalRecords });
+
+            // Advance tick counter (one tick for the shared beat, not two)
+            callbacks.updateContext({ agencyTick: now });
+
+            // Build the two shared-beat deltas (note names the partner → renders as ONE combined beat)
+            const tangleDeltas = buildTangleDeltas(
+                updatedNpc, goal, outcome.aBand,
+                updatedPartner, partnerGoal, outcome.bBand,
+                collision.tone,
+            );
+
+            // Fold into player digest (npcName populated → proseLine uses names, not ids)
+            const existingDigest = state.context.agencyDigest ?? '';
+            const newDigest = buildDigest(tangleDeltas, 'player');
+            if (newDigest) {
+                const combined = existingDigest ? existingDigest + '\n' + newDigest : newDigest;
+                callbacks.updateContext({ agencyDigest: combined });
+            }
+            const debugDigest = buildDigest(tangleDeltas, 'debug');
+            if (debugDigest) {
+                console.log(`[AgencyTick] heartbeat tick=${now} tangle ${collision.tone} npc=${updatedNpc.id}+${updatedPartner.id}\n${debugDigest}`);
+            }
+            return;  // tangle handled — skip the solo path below
+        }
+
+        // ── Solo path (today's behavior, unchanged) ──
 
         // Roll the goal (Piece B, §9.6). Fixed base DC — karma inside rollGoal eases the roll;
         // difficulty must NOT scale with failStreak or it cancels the anti-deadlock nudge.
@@ -623,6 +708,7 @@ function runAgencyTick(
         const visibility = visibilityFromBand(band, goal.horizon);
         const delta: TickDelta = {
             npcId: updatedNpc.id,
+            npcName: updatedNpc.name,  // WO-08: name not id (id-leak fix)
             goalText: goal.text,
             horizon: goal.horizon,
             band,
@@ -651,6 +737,50 @@ function runAgencyTick(
         // Need tick: all goals blocked, surfaced a pool need — no goal delta
         callbacks.updateContext({ agencyTick: now });
         console.log(`[AgencyTick] heartbeat tick=${now} npc=${updatedNpc.id} kind=need (all goals blocked)`);
+    }
+
+    // WO-07 Piece D: activity bump on every non-idle, non-blocked tick (Opus §5 — bump BOTH the
+    // real-time pick and the audition pick). `idle` returns early at line 548; a blocked `goal`
+    // returns early at line 556; so reaching here means the NPC actually ticked. The bump uses
+    // `updatedNpc` (which carries the pre-bump agencyActivity via the spread at line 537), not
+    // `pick`, so the lazy-decay current is computed against the right baseline.
+    callbacks.updateNPC(updatedNpc.id, activityBumpPatch(updatedNpc, now));
+}
+
+/**
+ * WO-07 Piece D completion (Opus ratification 2026-06-18): bump activity for every NPC that was
+ * on-stage last turn. Without this, the engine-only tick (one NPC per heartbeat) is too rare to
+ * outrun ACTIVITY_DECAY (0.5/beat), so every NPC drifts to 0 and the deep tier freezes onto 3
+ * arbitrary NPCs — the "cast tracks who you care about" behaviour doesn't happen.
+ *
+ * The on-stage signal is the real driver: ALL on-stage NPCs get +1 per turn, vs one NPC per
+ * heartbeat via the tick. With 3 on-stage NPCs, that's +3/turn total vs +1/heartbeat — sustained
+ * on-stage presence reaches ACTIVITY_PROMOTE in ~5 turns; off-stage NPCs decay to 0 in ~6 beats.
+ * The deep tier naturally tracks the player's active social circle and rotates between scenes.
+ *
+ * Pure, synchronous, +0 LLM. Runs unconditionally (not tier-gated) — same pattern as the short-want
+ * lifecycle at line 353. `state.onStageNpcIds` is the previous turn's on-stage set (set via
+ * callbacks.setOnStageNpcIds during the previous turn's post-processing).
+ */
+function bumpOnStageActivity(
+    state: TurnState,
+    callbacks: TurnCallbacks,
+    npcLedger: NPCEntry[],
+): void {
+    const onStageIds = state.onStageNpcIds;
+    if (!onStageIds || onStageIds.length === 0) return;
+
+    // Clock matches the heartbeat's `now` (currentTick + 1) so decay math stays consistent.
+    const now = (state.context.agencyTick ?? 0) + 1;
+
+    const npcById = new Map<string, NPCEntry>();
+    for (const npc of npcLedger) npcById.set(npc.id, npc);
+
+    for (const id of onStageIds) {
+        const npc = npcById.get(id);
+        if (!npc) continue;
+        if (!isAgencyEligible(npc)) continue;  // skip PC, locked, dead — same gate as the tick
+        callbacks.updateNPC(id, activityBumpPatch(npc, now));
     }
 }
 
