@@ -31,13 +31,18 @@ type FactsView = 'chapter' | 'topic' | 'subject';
 /** Human-readable label for a single knownBy token. */
 function knownByTokenLabel(tok: string, npcLedger: NPCEntry[]): string {
     const parsed = parseKnownByToken(tok);
-    if (!parsed) return tok;
-    if (parsed.kind === 'player') return 'player';
-    if (parsed.kind === 'npc') {
-        const npc = npcLedger.find(n => n.id === parsed.id);
-        return npc ? npc.name : parsed.id;
+    // Bare token (no "npc:"/"faction:"/"player" prefix) — try it as a raw NPC id,
+    // then fall back to a readable word rather than printing the raw uid.
+    if (!parsed) {
+        const npc = npcLedger.find(n => n.id === tok.trim());
+        return npc ? npc.name : 'unknown';
     }
-    return parsed.name;
+    if (parsed.kind === 'player') return 'the player';
+    if (parsed.kind === 'faction') return `${parsed.name} members`;
+    // npc:<id> — resolve to the ledger name; if the NPC has left the ledger
+    // (auto-archived, cleared, or deleted) we no longer have a name to show.
+    const npc = npcLedger.find(n => n.id === parsed.id);
+    return npc ? npc.name : 'someone (removed)';
 }
 
 /** Render the knownBy list as a short "known to: ..." suffix string. */
