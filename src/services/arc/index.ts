@@ -22,3 +22,7 @@ export {
     ARC_SURFACE_TIER,
     ARC_LIVE_PRESSURE_THRESHOLD,
 } from './arcConstants';
+
+// WO-03 — spawn (+1 LLM, seam-only)
+export { spawnArc } from './arcSpawn';
+export type { SpawnArcInput, SpawnArcAnchor } from './arcSpawn';
