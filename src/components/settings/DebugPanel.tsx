@@ -64,6 +64,9 @@ export function DebugPanel() {
     const updateSettings = useAppStore(s => s.updateSettings);
     const [debugPanelOpen, setDebugPanelOpen] = useState(false);
     const { history: utilityHistory } = useUtilityCalls();
+    // Hooks must run unconditionally — read this at the top, not inside the
+    // collapsed-panel JSX (calling it there changed the hook count on toggle → React #310).
+    const sceneStakesFallbackCount = useSceneStakesFallbackCount();
 
     return (
         <div className="bg-void p-4 border border-border rounded">
@@ -123,8 +126,8 @@ export function DebugPanel() {
                             <p className="text-[9px] text-text-dim">Times the GM omitted the [[SCENE_STAKES]] tag and the cheap classifier fired</p>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="text-terminal font-bold font-mono text-xs">{useSceneStakesFallbackCount()}</span>
-                            {useSceneStakesFallbackCount() > 0 && (
+                            <span className="text-terminal font-bold font-mono text-xs">{sceneStakesFallbackCount}</span>
+                            {sceneStakesFallbackCount > 0 && (
                                 <button
                                     onClick={() => resetSceneStakesFallbackCount()}
                                     className="text-[9px] text-text-dim hover:text-danger transition-colors uppercase tracking-wider"
