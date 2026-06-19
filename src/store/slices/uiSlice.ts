@@ -28,13 +28,6 @@ export type UISlice = {
     deepArmed: boolean;
     setDeepArmed: (val: boolean) => void;
     toggleDeepArmed: () => void;
-    troubleModalOpen: boolean;
-    troubleOptions: string[];
-    troubleLoading: boolean;
-    openTroubleModal: (options: string[]) => void;
-    closeTroubleModal: () => void;
-    pendingArcSeed: string | null;
-    setPendingArcSeed: (seed: string | null) => void;
     pendingCombatPrompt: { entitiesReferenced: string[]; originalInput: string } | null;
     setPendingCombatPrompt: (prompt: { entitiesReferenced: string[]; originalInput: string } | null) => void;
     pendingInventoryProposal: InventoryProposal | null;
@@ -62,13 +55,6 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     deepArmed: false,
     setDeepArmed: (val) => set({ deepArmed: val }),
     toggleDeepArmed: () => set((s) => ({ deepArmed: !s.deepArmed })),
-    troubleModalOpen: false,
-    troubleOptions: [],
-    troubleLoading: false,
-    openTroubleModal: (options) => set({ troubleModalOpen: true, troubleOptions: options, troubleLoading: false }),
-    closeTroubleModal: () => set({ troubleModalOpen: false, troubleOptions: [], troubleLoading: false }),
-    pendingArcSeed: null,
-    setPendingArcSeed: (seed) => set({ pendingArcSeed: seed }),
     pendingCombatPrompt: null,
     setPendingCombatPrompt: (prompt) => set({ pendingCombatPrompt: prompt }),
     pendingInventoryProposal: null,

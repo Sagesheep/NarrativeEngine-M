@@ -29,6 +29,8 @@ import type {
     ArcSurface,
     ArcType,
     LLMProvider,
+    NPCEntry,
+    NPCPressure,
 } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { uid } from '../../utils/uid';
@@ -42,6 +44,7 @@ import {
     LADDER_MIN,
     LADDER_MAX,
     ARC_TICK_DC,
+    TYPE_COOLDOWN_SEAMS,
 } from './arcConstants';
 
 export type SpawnArcAnchor =
@@ -243,4 +246,63 @@ export async function spawnArc(input: SpawnArcInput): Promise<ArcRecord | null> 
         bornScene: input.bornScene,
         lastTickScene: input.bornScene,
     };
+}
+
+/**
+ * Pick the spawn inputs for a MANUAL arc injection (the Arc Injector button).
+ *
+ * Unlike the removed seam gate, this does NOT gate on arcWorldState or an active-arc
+ * cap — the player pressing the button IS the signal that they want a new arc
+ * ("nothing more reliable than the user"). It only:
+ *   - feeds the type cooldown as suppressedTypes (steers toward variety; never blocks),
+ *   - picks ONE anchor: freshest open thread → most-pressured NPC's want → a fallback
+ *     snippet (so a press always has something to ground on once any story exists).
+ *
+ * Returns the spawn input minus `provider`, or null only if there is genuinely nothing
+ * to anchor against (brand-new campaign, no threads / NPCs / fallback text). Pure, +0.
+ */
+export function pickArcSpawnInput(params: {
+    arcs: ArcRecord[];
+    openThreads: { text: string }[];
+    pressure: Record<string, NPCPressure>;
+    npcLedger: NPCEntry[];
+    worldContext: string;
+    bornScene: string;
+    nowScene: number;
+    fallbackAnchorText?: string;
+}): Omit<SpawnArcInput, 'provider'> | null {
+    const { arcs, openThreads, pressure, npcLedger, worldContext, bornScene, nowScene, fallbackAnchorText } = params;
+
+    // Type cooldown → suppressedTypes only (variety steer). Never blocks the press.
+    const suppressedTypes = new Set<ArcType>();
+    for (const a of arcs) {
+        const born = parseInt(a.bornScene, 10);
+        if (Number.isFinite(born) && nowScene - born < TYPE_COOLDOWN_SEAMS) {
+            suppressedTypes.add(a.type);
+        }
+    }
+
+    // Anchor: freshest open thread → most-pressured NPC → fallback snippet.
+    let anchor: SpawnArcAnchor | null = null;
+    if (openThreads.length > 0) {
+        anchor = { kind: 'thread', text: openThreads[openThreads.length - 1].text };
+    } else {
+        let best: NPCEntry | null = null;
+        let bestScore = 0;
+        for (const npc of npcLedger) {
+            const p = pressure[npc.id];
+            if (!p) continue;
+            const score = (p.ignored ?? 0) + (p.engaged ?? 0);
+            if (score > bestScore) { bestScore = score; best = npc; }
+        }
+        if (best) {
+            const want = best.wants?.long?.[0] ?? best.wants?.medium?.[0] ?? best.storyRelevance ?? 'unknown';
+            anchor = { kind: 'agent', name: best.name, want };
+        } else if (fallbackAnchorText && fallbackAnchorText.trim()) {
+            anchor = { kind: 'thread', text: fallbackAnchorText.trim().slice(0, 400) };
+        }
+    }
+    if (!anchor) return null;
+
+    return { anchor, worldContext, suppressedTypes: Array.from(suppressedTypes), bornScene };
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { MoreHorizontal, Zap, Pin } from 'lucide-react';
-import { CreateTroubleButton } from './CreateTroubleButton';
+import { ArcInjectorButton } from './ArcInjectorButton';
 
 type ActionSpeedDialProps = {
     onTrim: () => void;
@@ -44,7 +44,7 @@ export function ActionSpeedDial({ onTrim, pinnedCount, onOpenPins, trimDisabled 
                     >
                         <Zap size={13} /> TRIM
                     </button>
-                    <CreateTroubleButton onDone={() => setOpen(false)} />
+                    <ArcInjectorButton onDone={() => setOpen(false)} />
                     <button
                         onClick={() => { onOpenPins(); setOpen(false); }}
                         className="relative shrink-0 flex items-center gap-1.5 bg-void border border-terminal/20 text-text-dim hover:text-terminal text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all hover:bg-terminal/5 hover:border-terminal/40 whitespace-nowrap"

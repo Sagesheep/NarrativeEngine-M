@@ -1,4 +1,4 @@
-import type { NPCEntry, ArchiveChapter, ArchiveIndexEntry, LLMProvider, WitnessSource, SceneStakes, DivergenceEntry, NPCPressure } from '../../types';
+import type { NPCEntry, ArchiveChapter, ArchiveIndexEntry, LLMProvider, WitnessSource, SceneStakes, DivergenceEntry } from '../../types';
 import { tierAllows, NPC_UPDATE_COOLDOWN } from './aiTier';
 import type { TurnCallbacks, TurnState } from './turnTypes';
 import { updateExistingNPCs, backfillNPCDrives, populateAgencyFields } from '../chatEngine';
@@ -41,12 +41,8 @@ import {
     advanceRung,
     arcSurfaceLine,
     scanArcStance,
-    arcWorldState,
-    spawnArc,
-    MAX_ACTIVE_ARCS,
-    TYPE_COOLDOWN_SEAMS,
 } from '../arc';
-import type { ArcRecord, ArcType } from '../../types';
+import type { ArcRecord } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import {
     backgroundQueue,
@@ -1186,13 +1182,10 @@ async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, act
                     toast.warning('Chapter sealed but divergence facts failed to parse');
                 }
 
-                // ── Arc Engine spawn gate (WO-05, +1 LLM, seam-only) ──
-                // Fires only when ALL hold: arcWorldState ≠ 'live' (no live arc tick /
-                // NPC pressure / recent thread), active arcs < MAX_ACTIVE_ARCS, and the
-                // candidate type is off cooldown. spawnArc authors ONE arc grounded
-                // against a single anchor (one open thread, or one NPC with pressure).
-                // This is the ONLY deliberate LLM cost in the Arc Engine.
-                await maybeSpawnArc(state, callbacks, openThreadsList, sealed);
+                // Arc Engine spawn is MANUAL — fired by the Arc Injector button, never
+                // automatically at the seam. The player pressing the button is the spawn
+                // signal ("nothing more reliable than the user"), so no arcWorldState
+                // gate is needed. runArcTick below still ticks/surfaces existing arcs.
             }
 
             const updatedChapters = await loadChapters(activeCampaignId);
@@ -1205,120 +1198,3 @@ async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, act
     }
 }
 
-/**
- * Arc Engine spawn gate (WO-05). Fires at the seal seam only when:
- *   - tier allows arcSpawn (pro/max — same gate as sealChapter)
- *   - arcWorldState ≠ 'live' (no recently-ticked arc, no NPC pressure above threshold)
- *   - active arc count < MAX_ACTIVE_ARCS
- *   - candidate type is off cooldown (not fired within TYPE_COOLDOWN_SEAMS seams)
- *
- * Picks ONE anchor for spawnArc: an open thread if any exist, else an NPC with
- * pressure (the agent anchor). Authors ONE arc via the +1 LLM spawn call and
- * appends it to context.arcs. On failure (generation/validation), silently skips.
- */
-async function maybeSpawnArc(
-    state: TurnState,
-    callbacks: TurnCallbacks,
-    openThreadsList: string[],
-    sealed: ArchiveChapter,
-): Promise<void> {
-    if (!tierAllows(state.settings.aiTier, 'arcSpawn')) return;
-    const provider = state.getFreshSummarizerProvider?.() ?? state.getFreshProvider();
-    if (!provider) return;
-
-    const arcs = state.context.arcs ?? [];
-
-    // Gate 1: active arc count.
-    const activeCount = arcs.filter(a => a.status === 'active').length;
-    if (activeCount >= MAX_ACTIVE_ARCS) return;
-
-    // Gate 2: arcWorldState. Read-model over open threads + NPC pressure + recent
-    // arc ticks. Pure, no embeddings, no prose parsing. The open threads list was
-    // already computed at the call site (handleSealChapter) from alreadySealedChapters.
-    const openThreadObjs = openThreadsList.map(text => ({ text }));
-    const pressureMap: Record<string, NPCPressure> = state.npcPressure ?? {};
-    const archiveIndex = state.archiveIndex;
-    const nowScene = archiveIndex.length > 0
-        ? parseInt(archiveIndex[archiveIndex.length - 1].sceneId, 10) || 0
-        : 0;
-    const world = arcWorldState(arcs, openThreadObjs, pressureMap, nowScene);
-    if (world === 'live') {
-        console.log(`[ArcSpawn] gate: arcWorldState=live → spawn blocked`);
-        return;
-    }
-
-    // Gate 3: type cooldown. Build the suppressed set from arcs that fired (born)
-    // within TYPE_COOLDOWN_SEAMS seams of the current scene — regardless of status
-    // (a boiled_over arc still cools its type).
-    const suppressedTypes = new Set<ArcType>();
-    for (const a of arcs) {
-        const bornScene = parseInt(a.bornScene, 10);
-        if (Number.isFinite(bornScene) && nowScene - bornScene < TYPE_COOLDOWN_SEAMS) {
-            suppressedTypes.add(a.type);
-        }
-    }
-
-    // Pick the anchor: prefer an open thread (the unresolved thread IS the arc
-    // liveness signal). Fall back to an NPC with pressure (the agent anchor).
-    let anchor: import('../arc').SpawnArcAnchor | null = null;
-    if (openThreadObjs.length > 0) {
-        // Pick the most recent open thread (computeOpenThreads returns last 12, oldest
-        // → newest; the last is the freshest).
-        const freshest = openThreadObjs[openThreadObjs.length - 1];
-        anchor = { kind: 'thread', text: freshest.text };
-    } else {
-        const npcLedger = state.npcLedger ?? [];
-        // Pick the NPC with the highest combined pressure — the one the player has
-        // been engaging/ignoring most. That NPC's want is the grounding anchor.
-        let bestNpc: NPCEntry | null = null;
-        let bestPressure = 0;
-        for (const npc of npcLedger) {
-            const p = pressureMap[npc.id];
-            if (!p) continue;
-            const score = (p.ignored ?? 0) + (p.engaged ?? 0);
-            if (score > bestPressure) {
-                bestPressure = score;
-                bestNpc = npc;
-            }
-        }
-        if (bestNpc) {
-            const want = bestNpc.wants?.long?.[0] ?? bestNpc.wants?.medium?.[0] ?? bestNpc.storyRelevance ?? 'unknown';
-            anchor = { kind: 'agent', name: bestNpc.name, want };
-        }
-    }
-    if (!anchor) {
-        // 'dry' world with no anchor — nothing to ground a new arc against. Skip.
-        console.log(`[ArcSpawn] gate: no anchor (no open threads, no pressured NPC) → spawn skipped`);
-        return;
-    }
-
-    // World context: the sealed chapter's summary + the freshest open threads, so
-    // the spawn LLM can ground the seed in the current world state.
-    const worldContext = sealed.summary
-        ? `Recently sealed chapter "${sealed.title}": ${sealed.summary}`
-        : '';
-
-    const bornScene = archiveIndex.length > 0
-        ? archiveIndex[archiveIndex.length - 1].sceneId
-        : '000';
-
-    console.log(`[ArcSpawn] gate open (world=${world}, active=${activeCount}, suppressed=[${Array.from(suppressedTypes).join(',')}]) → spawning`);
-    try {
-        const newArc = await spawnArc({
-            provider,
-            anchor,
-            worldContext,
-            suppressedTypes: Array.from(suppressedTypes),
-            bornScene,
-        });
-        if (!newArc) {
-            console.log(`[ArcSpawn] spawnArc returned null (generation/validation failed) → skipped`);
-            return;
-        }
-        const currentArcs = state.context.arcs ?? [];
-        callbacks.updateContext({ arcs: [...currentArcs, newArc] });
-        console.log(`[ArcSpawn] arc ${newArc.id} (type=${newArc.type}, rungs=${newArc.ladder.length}) spawned at scene ${bornScene}`);
-    } catch (err) {
-        console.warn('[ArcSpawn] spawnArc threw — skipped:', err);
-    }
-}

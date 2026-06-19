@@ -14,7 +14,6 @@ import { toast } from './Toast';
 import { MessageBubble } from './chat/MessageBubble';
 
 import { PinnedMemoriesPanel } from './chat/PinnedMemoriesPanel';
-import { CreateTroubleModal } from './chat/CreateTroubleModal';
 
 import { ChatInput } from './chat/ChatInput';
 import { ActionSpeedDial } from './chat/ActionSpeedDial';
@@ -59,8 +58,6 @@ export function ChatArea() {
         setDeepArmed,
         setDivergenceRegister,
         updateMessageDivergence,
-        pendingArcSeed,
-        setPendingArcSeed,
         pendingCombatPrompt,
         setPendingCombatPrompt,
         pendingInventoryProposal,
@@ -103,8 +100,6 @@ export function ChatArea() {
         setDeepArmed: s.setDeepArmed,
         setDivergenceRegister: s.setDivergenceRegister,
         updateMessageDivergence: s.updateMessageDivergence,
-        pendingArcSeed: s.pendingArcSeed,
-        setPendingArcSeed: s.setPendingArcSeed,
         pendingCombatPrompt: s.pendingCombatPrompt,
         setPendingCombatPrompt: s.setPendingCombatPrompt,
         pendingInventoryProposal: s.pendingInventoryProposal,
@@ -232,9 +227,7 @@ export function ChatArea() {
             resetTextareaHeight();
         }
 
-        const arcSeed = useAppStore.getState().pendingArcSeed;
-        if (arcSeed) setPendingArcSeed(null);
-        const llmInput = arcSeed ? `${textToUse}\n\n[SYS: Introduce this arc naturally going forward — ${arcSeed}]` : textToUse;
+        const llmInput = textToUse;
 
         try {
             await runTurn({
@@ -503,13 +496,6 @@ export function ChatArea() {
 
             <TelemetryStrip phase={pipelinePhase} stats={streamingStats} loadingStatus={loadingStatus} />
 
-            {pendingArcSeed && (
-                <div className="px-2 md:px-4 py-1 flex items-center gap-2 bg-amber-500/10 border-t border-amber-500/20">
-                    <span className="text-[9px] uppercase tracking-widest text-amber-400 font-bold flex-1 truncate">⚡ Arc queued — fires on next send</span>
-                    <button onClick={() => setPendingArcSeed(null)} className="text-amber-400/60 hover:text-amber-400 shrink-0"><X size={12} /></button>
-                </div>
-            )}
-
             {pendingCombatPrompt && (
                 <div className="px-2 md:px-4 py-2 flex items-center gap-2 bg-red-500/10 border-t border-red-500/20">
                     <Sword size={14} className="text-red-400 shrink-0" />
@@ -635,7 +621,6 @@ export function ChatArea() {
                 <button onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })} className="fixed bottom-[calc(140px+env(safe-area-inset-bottom))] right-4 z-50 w-10 h-10 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"><ChevronDown size={20} /></button>
             )}
 
-            <CreateTroubleModal onSelect={(opt) => { setPendingArcSeed(opt); }} />
 
             <RenameNpcModal />
 

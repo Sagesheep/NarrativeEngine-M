@@ -23,8 +23,8 @@ export {
     ARC_LIVE_PRESSURE_THRESHOLD,
 } from './arcConstants';
 
-// WO-03 — spawn (+1 LLM, seam-only)
-export { spawnArc } from './arcSpawn';
+// WO-03 — spawn (+1 LLM). Seam gate removed; now fired manually via the Arc Injector.
+export { spawnArc, pickArcSpawnInput } from './arcSpawn';
 export type { SpawnArcInput, SpawnArcAnchor } from './arcSpawn';
 
 // WO-04 — stance scan (+0, deterministic)
