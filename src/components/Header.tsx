@@ -20,6 +20,9 @@ type SelectionSnapshot = {
     bubbleText: string;
 };
 
+// Strip markdown bold/italic markers so selecting from a [**NAME**] chip gives "NAME".
+const stripMarkdown = (s: string) => s.replace(/\*\*/g, '').replace(/\*/g, '').trim();
+
 export function Header() {
 
     const {
@@ -66,8 +69,15 @@ export function Header() {
         const text = sel.toString().trim();
         if (!messageId || text.length < 1) return null;
         const bubbleText = bubble.textContent ?? '';
-        const start = bubbleText.indexOf(text);
-        if (start === -1) return null;
+        // Exact match first; fall back to whitespace-normalised comparison (handles
+        // multi-paragraph selections where ReactMarkdown <p> tags add extra \n).
+        let start = bubbleText.indexOf(text);
+        if (start === -1) {
+            const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+            start = norm(bubbleText).indexOf(norm(text));
+        }
+        // Still no match — keep start=0 so callers at least get the selected text.
+        if (start === -1) start = 0;
         return { messageId, text, start, end: start + text.length, bubbleText };
     };
 
@@ -104,7 +114,7 @@ export function Header() {
         const after = snap.bubbleText.slice(snap.end, Math.min(snap.bubbleText.length, snap.end + 200));
         openLoreCheck({
             messageId: snap.messageId,
-            selectedText: snap.text,
+            selectedText: stripMarkdown(snap.text),
             start: snap.start,
             end: snap.end,
             surroundingContext: `${before}[[HIGHLIGHTED]]${snap.text}[[/HIGHLIGHTED]]${after}`,
@@ -132,7 +142,7 @@ export function Header() {
         e.preventDefault();
         const snap = captureFromBubble('[data-message-id]') ?? renameSel;
         if (!snap) return;
-        openRenameModal(snap.text);
+        openRenameModal(stripMarkdown(snap.text));
         window.getSelection()?.removeAllRanges();
         setRenameSel(null);
         setPinSel(null);
@@ -153,10 +163,11 @@ export function Header() {
         setLoreSel(null);
         setPinSel(null);
         setNpcAdding(true);
-        toast.info(`Resolving "${snap.text.trim()}"…`);
+        const cleanName = stripMarkdown(snap.text);
+        toast.info(`Resolving "${cleanName}"…`);
         try {
             const result = await addNpcFromSelection({
-                rawText: snap.text,
+                rawText: cleanName,
                 ledger: state.npcLedger ?? [],
                 messages: state.messages,
                 campaignId,
