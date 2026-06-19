@@ -527,7 +527,7 @@ export function trimWorldBlocks(
         if (currentWorldTokens + block.tokens <= budget) {
             worldContent += (worldContent ? '\n\n' : '') + block.content;
             currentWorldTokens += block.tokens;
-            addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: block.reason, included: true, position: 'system_dynamic' });
+            addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: block.reason, included: true, position: 'system_dynamic', preview: block.content });
             continue;
         }
 
@@ -548,13 +548,13 @@ export function trimWorldBlocks(
                 currentWorldTokens += tokens;
                 const dropped = block.segments.length - kept.length;
                 console.warn(`[Payload] ${block.source} truncated to fit world budget: kept ${kept.length}/${block.segments.length} scenes, dropped ${dropped}`);
-                addTrace({ source: block.source, classification: 'world_context', tokens, reason: `${block.reason} (truncated: kept ${kept.length}/${block.segments.length})`, included: true, position: 'system_dynamic' });
+                addTrace({ source: block.source, classification: 'world_context', tokens, reason: `${block.reason} (truncated: kept ${kept.length}/${block.segments.length})`, included: true, position: 'system_dynamic', preview: content });
                 continue;
             }
         }
 
         console.warn(`[Payload] ${block.source} dropped — ${block.tokens}t exceeds remaining world budget (${remaining}t of ${budget}t)`);
-        addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: `Dropped: Exceeds World budget (${budget} t)`, included: false, position: 'system_dynamic' });
+        addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: `Dropped: Exceeds World budget (${budget} t)`, included: false, position: 'system_dynamic', preview: block.content });
     }
     return { worldContent, currentWorldTokens };
 }

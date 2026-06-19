@@ -169,7 +169,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
 
     const volatileContent = volatileParts.join('\n\n');
     const volatileTokens = countTokens(volatileContent);
-    addTrace({ source: 'Profile/Inventory/SceneNote', classification: 'volatile_state', tokens: volatileTokens, reason: 'Player state + scene note', included: true, position: 'system_dynamic' });
+    addTrace({ source: 'Profile/Inventory/SceneNote', classification: 'volatile_state', tokens: volatileTokens, reason: 'Player state + scene note', included: true, position: 'system_dynamic', preview: volatileContent });
 
     const nonHistoryTokens = stableTokens + divergenceTokens + pinnedMemoriesTokens + currentWorldTokens + volatileTokens;
 
@@ -219,7 +219,16 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     const finalUserContent = volatileBlock
         ? `${volatileBlock}\n\n---\n\n${userMessage}`
         : userMessage;
-    addTrace({ source: 'User Message (with world context)', classification: 'volatile_state', tokens: countTokens(finalUserContent), reason: 'Current turn + folded world/volatile context', included: true, position: 'user' });
+    // Trace the THREE buckets distinctly so debug differentiates them:
+    //   - world_context rows (incl. Arc Digest = injection) are traced upstream in trimWorldBlocks
+    //   - volatile_state row (Profile/Inventory/SceneNote/Combat) traced above
+    //   - the actual player input is THIS row.
+    // We physically fold worldContent + volatileContent into the user message (cache
+    // locality), but they're already counted in their own rows — so this row counts
+    // ONLY `userMessage`, avoiding the prior double-count. NOTE: `userMessage` still
+    // carries any engine-event tags rollEngines appended onto the typed text upstream
+    // (surprise/encounter/world-rumour) — that's the spillage to watch.
+    addTrace({ source: 'Player Input', classification: 'player_input', tokens: countTokens(userMessage), reason: 'This turn\'s typed input (+ any engine-event tags appended by rollEngines)', included: true, position: 'user', preview: userMessage });
     messages.push({ role: 'user', content: finalUserContent });
 
     return { messages, trace: isDebug ? trace : undefined, activeNpcIds };

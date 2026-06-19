@@ -565,7 +565,7 @@ export type OpenAITool = {
     };
 };
 
-export type ContextSourceClassification = 'stable_truth' | 'summary' | 'world_context' | 'volatile_state' | 'scene_local';
+export type ContextSourceClassification = 'stable_truth' | 'summary' | 'world_context' | 'volatile_state' | 'scene_local' | 'player_input';
 
 export type PayloadTrace = {
     source: string;

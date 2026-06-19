@@ -9,16 +9,18 @@ const roleLabel = (role: string) =>
 const TraceRow: React.FC<{ trace: PayloadTrace }> = ({ trace }) => {
     const [open, setOpen] = useState(false);
     const hasChildren = trace.childMessages && trace.childMessages.length > 0;
+    const hasPreview = !!trace.preview;
+    const expandable = hasChildren || hasPreview;
     return (
         <div className={`border-l-2 ${trace.included ? 'border-terminal/50 bg-terminal/5' : 'border-red-500/50 bg-red-500/5 opacity-60'}`}>
             <div
-                className={`p-2 ${hasChildren ? 'cursor-pointer hover:bg-terminal/10' : ''}`}
-                onClick={hasChildren ? () => setOpen(p => !p) : undefined}
+                className={`p-2 ${expandable ? 'cursor-pointer hover:bg-terminal/10' : ''}`}
+                onClick={expandable ? () => setOpen(p => !p) : undefined}
             >
                 <div className="flex justify-between items-start mb-1">
                     <div className="flex flex-col">
                         <div className="flex items-center gap-1">
-                            {hasChildren && (open
+                            {expandable && (open
                                 ? <ChevronDown size={10} className="text-terminal/50 shrink-0" />
                                 : <ChevronRight size={10} className="text-terminal/50 shrink-0" />
                             )}
@@ -37,6 +39,13 @@ const TraceRow: React.FC<{ trace: PayloadTrace }> = ({ trace }) => {
                     {trace.reason}
                 </div>
             </div>
+            {hasPreview && open && (
+                <div className="border-t border-terminal/10 px-3 py-2">
+                    <pre className="text-[9px] text-text-dim/80 whitespace-pre-wrap break-words max-h-64 overflow-y-auto font-mono leading-snug">
+                        {trace.preview}
+                    </pre>
+                </div>
+            )}
             {hasChildren && open && (
                 <div className="border-t border-terminal/10 divide-y divide-terminal/5">
                     {trace.childMessages!.map((m, i) => (
