@@ -461,7 +461,7 @@ function runBookkeepingScans(
         if (bkProvider) {
             const sceneId = appendedSceneId;
             const allMsgs = state.getMessages();
-            if (tierAllows(state.settings.aiTier, 'profileScan')) {
+            if (state.context.characterProfileActive && tierAllows(state.settings.aiTier, 'profileScan')) {
                 backgroundQueue.push('Profile-Scan', async () => {
                     const newProfile = await scanCharacterProfile(bkProvider, allMsgs, state.context.characterProfile);
                     callbacks.updateContext({ characterProfile: newProfile, characterProfileLastScene: sceneId });
