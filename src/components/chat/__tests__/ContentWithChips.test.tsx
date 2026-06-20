@@ -46,13 +46,14 @@ describe('ContentWithChips', () => {
         expect(container.textContent).toContain('DICE OUTCOMES: COMBAT=(...)');
     });
 
-    it('renders [**Name**] as inline bold, not a chip', () => {
+    it('renders [**Name**] as inline bold, kept in the same line as its sentence', () => {
         const { container } = render(<ContentWithChips content="[**Vance**] drew his blade." />);
         const strong = container.querySelector('strong');
         expect(strong).not.toBeNull();
         expect(strong!.textContent).toBe('Vance');
-        // The literal bracket/asterisk markers must not survive into the rendered text.
-        expect(container.textContent).toContain('drew his blade.');
+        // Name and sentence flow inside ONE paragraph — no block break, space preserved.
+        expect(container.querySelectorAll('p')).toHaveLength(1);
+        expect(container.textContent).toBe('Vance drew his blade.');
         expect(container.textContent).not.toContain('[');
         expect(container.textContent).not.toContain('**');
     });
@@ -61,18 +62,16 @@ describe('ContentWithChips', () => {
         const { container } = render(<ContentWithChips content="[Noir] nodded." />);
         const strong = container.querySelector('strong');
         expect(strong!.textContent).toBe('Noir');
-        expect(container.textContent).toContain('nodded.');
-        expect(container.textContent).not.toContain('[Noir]');
+        expect(container.querySelectorAll('p')).toHaveLength(1);
+        expect(container.textContent).toBe('Noir nodded.');
     });
 
-    it('keeps multi-word names inline as bold without bracket markers', () => {
+    it('keeps multi-word names inline on one line', () => {
         const { container } = render(<ContentWithChips content="The contact, [**Kael Druen**], waited." />);
         const strong = container.querySelector('strong');
         expect(strong!.textContent).toBe('Kael Druen');
-        expect(container.textContent).toContain('The contact,');
-        expect(container.textContent).toContain('waited.');
-        expect(container.textContent).not.toContain('[');
-        expect(container.textContent).not.toContain('*');
+        expect(container.querySelectorAll('p')).toHaveLength(1);
+        expect(container.textContent).toBe('The contact, Kael Druen, waited.');
     });
 
     it('still renders a colon-bearing tag as a chip even without a known keyword', () => {
