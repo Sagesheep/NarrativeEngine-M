@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveChapter, ArchiveIndexEntry, PinnedExcerpt, CombatState } from '../../types';
+import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveChapter, ArchiveIndexEntry, PinnedExcerpt } from '../../types';
 import type { OpenAIMessage } from '../llm/llmService';
 import { countTokens } from '../infrastructure';
 import { computeBudgets, type BudgetMap } from './payloadBudgeter';
@@ -28,48 +28,9 @@ export interface BuildPayloadOptions {
     archiveIndex?: ArchiveIndexEntry[];
     semanticallyRecalledNpcIds?: string[];
     pinnedExcerpts?: PinnedExcerpt[];
-    /** Live combat snapshot — rendered into the volatile block while a fight is active. */
-    combatState?: CombatState | null;
 }
 
 export { pinnedExcerptsTokenCost };
-
-/**
- * Live combat snapshot for the volatile payload block (A10: "live HP/FOC in the volatile block only").
- * Terse by design — one line per living combatant + a range-relation summary.
- */
-export function buildCombatStateBlock(combatState: CombatState, statLabelMap?: Record<string, string>): string {
-    const focLabel = statLabelMap?.FOC ?? 'FOC';
-    const living = Object.values(combatState.combatants).filter(c => c.currentHP > 0);
-
-    const lines = living.map(c => {
-        const tags: string[] = [];
-        if (c.position) tags.push(c.position);
-        if (c.statusEffects && c.statusEffects.length > 0) tags.push(...c.statusEffects);
-        const tagStr = tags.length > 0 ? ` [${tags.join(', ')}]` : '';
-        const who = c.isPC ? `${c.name} (PC)` : c.name;
-        return `- ${who}: HP ${c.currentHP}/${c.maxHP} · ${focLabel} ${c.currentFOC}/${c.maxFOC}${tagStr}`;
-    });
-
-    // Range relations: list distinct Engaged pairs (Apart is the default, omit for brevity).
-    const engagedPairs: string[] = [];
-    const seen = new Set<string>();
-    for (const [a, rels] of Object.entries(combatState.rangeRelations)) {
-        for (const [b, rel] of Object.entries(rels)) {
-            const key = [a, b].sort().join('|');
-            if (seen.has(key)) continue;
-            seen.add(key);
-            const ca = combatState.combatants[a];
-            const cb = combatState.combatants[b];
-            if (rel === 'Engaged' && (ca?.currentHP ?? 0) > 0 && (cb?.currentHP ?? 0) > 0) {
-                engagedPairs.push(`${ca?.name ?? a}⇔${cb?.name ?? b}`);
-            }
-        }
-    }
-    const rangeSummary = engagedPairs.length > 0 ? `\nEngaged (melee range): ${engagedPairs.join(', ')}` : '';
-
-    return `[COMBAT STATE: VOLATILE]\nRound ${combatState.round}\n${lines.join('\n')}${rangeSummary}`;
-}
 
 export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessage[]; trace?: PayloadTrace[]; activeNpcIds: string[] } {
     const {
@@ -91,7 +52,6 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         archiveIndex,
         semanticallyRecalledNpcIds,
         pinnedExcerpts,
-        combatState,
     } = opts;
 
     const trace: PayloadTrace[] = [];
@@ -165,7 +125,6 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     if (context.characterProfileActive && context.characterProfile) volatileParts.push(`[CHARACTER PROFILE]\n${context.characterProfile}`);
     if (context.inventoryActive && context.inventory) volatileParts.push(`[PLAYER INVENTORY]\n${context.inventory}`);
     if (context.sceneNoteActive && context.sceneNote) volatileParts.push(`[SCENE NOTE: VOLATILE GUIDANCE]\n${context.sceneNote}`);
-    if (context.combatModeActive && combatState?.active) volatileParts.push(buildCombatStateBlock(combatState, context.statLabelMap));
 
     const volatileContent = volatileParts.join('\n\n');
     const volatileTokens = countTokens(volatileContent);

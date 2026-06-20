@@ -1,5 +1,4 @@
 import type { CombatTier, Archetype, StatBlock } from '../../types';
-import { computeAC, computeMaxHP, computeMaxFOC, proficiencyBonusForTier } from './combatEngine';
 
 // ─── Point-buy budget tables ──────────────────────────────────────────────────
 
@@ -27,25 +26,6 @@ const OP_POINT_BUY_COST: Record<number, number> = {
 export function getPointCost(value: number, budget: 'NORMAL' | 'OP'): number {
     if (budget === 'OP') return OP_POINT_BUY_COST[value] ?? 99;
     return POINT_BUY_COST[value] ?? 99;
-}
-
-// ─── Derived stat preview ────────────────────────────────────────────────────
-
-export type DerivedPreview = {
-    hp: number;
-    foc: number;
-    ac: number;
-    proficiency: number;
-};
-
-export function computePCDerived(stats: StatBlock, budget: 'NORMAL' | 'OP'): DerivedPreview {
-    const tier = PC_POINT_BUY[budget].tier;
-    return {
-        hp: computeMaxHP(tier, stats.VIT),
-        foc: computeMaxFOC(tier, stats.WIL),
-        ac: computeAC(stats.RES, 0),
-        proficiency: proficiencyBonusForTier(tier),
-    };
 }
 
 // ─── Point-buy allocation logic ───────────────────────────────────────────────
@@ -147,12 +127,9 @@ export function buildCharacterProfileText(entry: {
     archetype: Archetype;
     isOP: boolean;
 }): string {
-    const tier = getPCTier(entry.isOP);
-    const preview = computePCDerived(entry.stats, entry.isOP ? 'OP' : 'NORMAL');
     const lines: string[] = [
         `**${entry.name}**`,
-        `Archetype: ${entry.archetype} | Tier: ${tier}`,
-        `HP: ${preview.hp} | FOC: ${preview.foc} | AC: ${preview.ac} | Proficiency: +${preview.proficiency}`,
+        `Archetype: ${entry.archetype}`,
         `VIT ${entry.stats.VIT} | PWR ${entry.stats.PWR} | RES ${entry.stats.RES} | FOC ${entry.stats.FOC} | SPD ${entry.stats.SPD} | WIL ${entry.stats.WIL}`,
     ];
     if (entry.concept) lines.push(`Concept: ${entry.concept}`);

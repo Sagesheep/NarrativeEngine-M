@@ -36,15 +36,6 @@ export { resolveNpcSelection, normalizeSelection, findLedgerMatches } from './np
 export type { NpcResolution } from './npcManualResolve';
 export { addNpcFromSelection } from './manualAdd';
 export type { AddNpcResult, AddNpcDeps } from './manualAdd';
-export {
-    deriveStatsFromBudget,
-    TIER_DICE_BUDGETS,
-    createItemDefFromTemplate,
-    createSkillDefFromTemplate,
-    resolveOrAddItemDef,
-    resolveOrAddSkillDef,
-    assignCombatLoadout,
-} from './npcCombatGeneration';
 export { ticksForDuration, allocateTicks } from './agencyTimeskip';
 export { detectTimeskip, runTimeskip } from './agencyTimeskipRun';
 export type { TimeskipDetected, TimeskipAmbiguous, TimeskipResult, TimeskipConfig, TimeskipNarrationResult } from './agencyTimeskipRun';

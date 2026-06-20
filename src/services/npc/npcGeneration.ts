@@ -22,8 +22,6 @@ import {
     joinPromptSections,
 } from '../infrastructure';
 import { COMBAT_TIER_ARCHETYPE_RUBRIC } from './npcDetector';
-import { assignCombatLoadout } from './npcCombatGeneration';
-import type { ItemDef, SkillDef } from '../../types';
 import { getPCTier } from '../engine/pcCreationScript';
 
 const RETRY_SUFFIX = '\n\nIMPORTANT: Your previous response was not valid JSON. Respond with ONLY valid JSON. No markdown fences, no comments, no trailing commas, no extra text before or after the JSON.';
@@ -215,10 +213,6 @@ export async function generateNPCProfile(
     addNPCToStore: (npc: NPCEntry) => void,
     existingLedger?: NPCEntry[],
     campaignId?: string,
-    existingItems?: ItemDef[],
-    addItemDef?: (item: ItemDef) => void,
-    existingSkills?: SkillDef[],
-    addSkillDef?: (skill: SkillDef) => void,
     matureMode: boolean = false,
 ): Promise<void> {
     try {
@@ -361,33 +355,6 @@ export async function generateNPCProfile(
                     ? (finalParsed.archetype as NPCEntry['archetype'])
                     : undefined,
             };
-
-            if (newEntry.combatTier && newEntry.archetype) {
-                const loadout = assignCombatLoadout(
-                    newEntry.combatTier,
-                    newEntry.archetype,
-                    existingItems ?? [],
-                    existingSkills ?? [],
-                );
-                newEntry.stats = loadout.stats;
-                newEntry.equippedWeapon = loadout.equippedWeapon;
-                newEntry.knownSkills = loadout.knownSkills;
-                newEntry.inventory = loadout.inventory;
-                newEntry.overrides = loadout.overrides;
-
-                if (addItemDef && loadout.newItemDefs.length > 0) {
-                    for (const itemDef of loadout.newItemDefs) {
-                        addItemDef(itemDef);
-                    }
-                }
-                if (addSkillDef && loadout.newSkillDefs.length > 0) {
-                    for (const skillDef of loadout.newSkillDefs) {
-                        addSkillDef(skillDef);
-                    }
-                }
-
-                console.log(`[NPC Generator] Assigned combat loadout for ${newEntry.name}: weapon=${loadout.equippedWeapon}, skills=${JSON.stringify(loadout.knownSkills)}`);
-            }
 
             // ---- NPC Agency Phase 2: come out already populated (wants / hexagon / traits / region) ----
             const agencyTraits = validateTraits(finalParsed.traits, matureMode);
@@ -749,10 +716,6 @@ export async function generatePCProfile(
     addNPCToStore: (npc: NPCEntry) => void,
     _existingLedger?: NPCEntry[],
     campaignId?: string,
-    existingItems?: ItemDef[],
-    addItemDef?: (item: ItemDef) => void,
-    existingSkills?: SkillDef[],
-    addSkillDef?: (skill: SkillDef) => void,
 ): Promise<NPCEntry> {
     const combatTier = getPCTier(overrides.isOP);
 
@@ -838,14 +801,6 @@ export async function generatePCProfile(
             condition: 'healthy',
         };
 
-        const loadout = assignCombatLoadout(combatTier, overrides.archetype, existingItems ?? [], existingSkills ?? []);
-        fallbackEntry.equippedWeapon = loadout.equippedWeapon;
-        fallbackEntry.knownSkills = loadout.knownSkills;
-        fallbackEntry.inventory = loadout.inventory;
-        fallbackEntry.overrides = loadout.overrides;
-        if (addItemDef) loadout.newItemDefs.forEach(addItemDef);
-        if (addSkillDef) loadout.newSkillDefs.forEach(addSkillDef);
-
         addNPCToStore(fallbackEntry);
 
         if (campaignId) {
@@ -891,14 +846,6 @@ export async function generatePCProfile(
     };
 
     const mergedEntry = mergePCWithLLMProfile(rawEntry, overrides);
-
-    const loadout = assignCombatLoadout(combatTier, overrides.archetype, existingItems ?? [], existingSkills ?? []);
-    mergedEntry.equippedWeapon = loadout.equippedWeapon;
-    mergedEntry.knownSkills = loadout.knownSkills;
-    mergedEntry.inventory = loadout.inventory;
-    mergedEntry.overrides = loadout.overrides;
-    if (addItemDef) loadout.newItemDefs.forEach(addItemDef);
-    if (addSkillDef) loadout.newSkillDefs.forEach(addSkillDef);
 
     addNPCToStore(mergedEntry);
 

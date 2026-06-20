@@ -1,13 +1,4 @@
 export { rollEngines, rollDiceFairness } from './engineRolls';
-export {
-    resolveWeapon,
-    resolveSkill,
-    resolveArmorBonus,
-    applyGearToAttack,
-    applyGearToSkillUse,
-    UNARMED_WEAPON,
-} from './gearResolver';
-export type { ResolvedWeapon, ResolvedSkill, GearResolvedAttack, SkillUseResult } from './gearResolver';
 export type { EngineRollResult } from './engineRolls';
 export { rollCharacterIntroEngine } from './charIntroEngine';
 export type { CharIntroResult } from './charIntroEngine';
@@ -15,73 +6,10 @@ export { mapTier } from './diceTier';
 export { populateEngineTags } from './tagGeneration';
 export { generateTroubleOptions } from './troublemaker';
 export {
-    abilityMod,
-    computeAC,
-    computeMaxHP,
-    computeMaxFOC,
-    proficiencyBonusForTier,
-    resolveAttack,
-    resolveMentalSave,
-    rollInitiative,
-    materializeCombatant,
-    recoveryBandToMaxHPPercent,
-    applyRecoveryBand,
-    lastConditionToRecoveryBand,
-    jitter,
-    resolveActionQueue,
-    checkRangeLegality,
-    applyCoverModifier,
-    resolveDefendBrace,
-    checkTermination,
-    runCombatRound,
-    generateCombatLedgerLine,
-    sortTurnOrderBySPD,
-    selectEnemyAction,
-    selectEnemyTarget,
-    buildEnemyAction,
-    weightedPick,
-    triggerMatches,
-    parseTrigger,
-    composeTriggerString,
-    calculateDerivedPreviews,
-    OVERRIDE_TRIGGER_KINDS,
-    ENEMY_ACTION_LABELS,
-    ARCHETYPE_BUDGETS,
-    ARCHETYPE_BEHAVIORS,
-    COMBAT_TIER_LEVEL_BANDS,
-    FOC_SPELL_COSTS,
-} from './combatEngine';
-export type {
-    CombatTier,
-    Archetype,
-    RecoveryBand,
-    StatBlock,
-    Combatant,
-    AttackResult,
-    MentalSaveResult,
-    InitiativeResult,
-    CombatAction,
-    ActionResolution,
-    ResolveAttackInput,
-    ResolveMentalSaveInput,
-    MaterializeInput,
-    BehaviorEntry,
-    PositionTag,
-    RangeRelation,
-    RangeLegalityResult,
-    CoverModifier,
-    DefendBraceResult,
-    TerminationResult,
-    RoundResult,
-    RiskOnFail,
-} from './combatEngine';
-export {
     PC_POINT_BUY,
     STAT_KEYS,
     getPointCost,
-    computePCDerived,
     validateAllocation,
-    allocateStat,
     ARCHETYPE_PRESETS,
     CREATION_QUESTIONS,
     getPCTier,
@@ -89,4 +17,4 @@ export {
     buildCharacterProfileText,
     DEFAULT_STATS,
 } from './pcCreationScript';
-export type { PointBuyAllocation, DerivedPreview, CreationQuestion, StatKey } from './pcCreationScript';
+export type { PointBuyAllocation, CreationQuestion, StatKey } from './pcCreationScript';

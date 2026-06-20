@@ -3,7 +3,6 @@ import {
     PC_POINT_BUY,
     STAT_KEYS,
     getPointCost,
-    computePCDerived,
     validateAllocation,
     allocateStat,
     ARCHETYPE_PRESETS,
@@ -120,25 +119,6 @@ describe('allocateStat', () => {
     });
 });
 
-describe('computePCDerived', () => {
-    it('computes HP, FOC, AC, proficiency for NORMAL budget', () => {
-        const stats: StatBlock = { VIT: 14, PWR: 10, RES: 12, FOC: 10, SPD: 10, WIL: 12 };
-        const preview = computePCDerived(stats, 'NORMAL');
-        expect(preview.hp).toBeGreaterThan(0);
-        expect(preview.foc).toBeGreaterThan(0);
-        expect(preview.ac).toBeGreaterThan(0);
-        expect(preview.proficiency).toBeGreaterThan(0);
-    });
-
-    it('OP budget uses elite tier which gives higher derived stats', () => {
-        const stats: StatBlock = { VIT: 14, PWR: 10, RES: 12, FOC: 10, SPD: 10, WIL: 12 };
-        const normal = computePCDerived(stats, 'NORMAL');
-        const op = computePCDerived(stats, 'OP');
-        expect(op.hp).toBeGreaterThan(normal.hp);
-        expect(op.proficiency).toBeGreaterThanOrEqual(normal.proficiency);
-    });
-});
-
 describe('getPCTier / getPCBudget', () => {
     it('NORMAL budget returns grunt tier', () => {
         expect(getPCTier(false)).toBe('grunt');
@@ -155,7 +135,7 @@ describe('getPCTier / getPCBudget', () => {
 });
 
 describe('buildCharacterProfileText', () => {
-    it('produces a profile string with name, archetype, stats, and derived values', () => {
+    it('produces a profile string with name, archetype, and stats', () => {
         const text = buildCharacterProfileText({
             name: 'Test Hero',
             concept: 'A wandering swordsman',
@@ -168,9 +148,7 @@ describe('buildCharacterProfileText', () => {
         });
         expect(text).toContain('Test Hero');
         expect(text).toContain('bulwark');
-        expect(text).toContain('grunt');
-        expect(text).toContain('HP:');
-        expect(text).toContain('AC:');
+        expect(text).toContain('VIT');
         expect(text).toContain('Concept: A wandering swordsman');
         expect(text).toContain('Voice: Deep, measured');
         expect(text).toContain('Drives: To find redemption');

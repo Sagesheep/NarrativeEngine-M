@@ -1,4 +1,4 @@
-import type { AppSettings, AIPreset, LLMProvider, NPCEntry, ApiFormat } from '../types';
+import type { AppSettings, AIPreset, LLMProvider, ApiFormat } from '../types';
 import { uid } from '../utils/uid';
 
 export const defaultProvider: LLMProvider = {
@@ -209,33 +209,3 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
     };
 }
 
-export function backfillNPCCombatStats(npcs: NPCEntry[]): NPCEntry[] {
-    return npcs.map(npc => {
-        const combatTier = npc.combatTier || 'grunt';
-        const archetype = npc.archetype || 'skirmisher';
-        const stats = npc.stats || {
-            VIT: 10,
-            PWR: 10,
-            RES: 10,
-            FOC: 10,
-            SPD: 10,
-            WIL: 10
-        };
-
-        return {
-            ...npc,
-            isPC: npc.isPC ?? false,
-            combatTier,
-            archetype,
-            stats,
-            equippedWeapon: npc.equippedWeapon ?? '',
-            knownSkills: npc.knownSkills ?? [],
-            inventory: npc.inventory ?? [],
-            condition: npc.condition ?? 'healthy',
-            lastCondition: npc.lastCondition ?? 'healthy',
-            lastSeenTimestamp: npc.lastSeenTimestamp ?? 0,
-            recoveryNote: npc.recoveryNote ?? '',
-            overrides: npc.overrides ?? []
-        };
-    });
-}

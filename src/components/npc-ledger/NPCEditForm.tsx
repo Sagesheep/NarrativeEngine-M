@@ -1,17 +1,9 @@
 import { useState, useMemo } from 'react';
-import { Trash2, Save, Loader2, Sparkles, Users, ScrollText, Shield, X, ChevronUp, ChevronDown, Search } from 'lucide-react';
-import type { NPCEntry, NPCBehavioralTrigger, DivergenceCategory, DivergenceEntry, CombatTier, Archetype, HexAxis } from '../../types';
+import { Trash2, Save, Loader2, Sparkles, Users, ScrollText, X, ChevronUp, ChevronDown, Search } from 'lucide-react';
+import type { NPCEntry, NPCBehavioralTrigger, DivergenceCategory, DivergenceEntry, HexAxis } from '../../types';
 import { CATEGORY_LABELS } from '../../services/campaign-state';
 import { useAppStore } from '../../store/useAppStore';
 import { NPCPortraitSection } from './NPCPortraitSection';
-import {
-    calculateDerivedPreviews,
-    OVERRIDE_TRIGGER_KINDS,
-    ENEMY_ACTION_LABELS,
-    composeTriggerString,
-    parseTrigger
-} from '../../services/engine/combatEngine';
-import { resolveArmorBonus } from '../../services/engine/gearResolver';
 import { TRAIT_NAMES, TRAIT_VOCAB } from '../../services/npc/agencyPools';
 import { hexBand, relationBand } from '../../services/npc/agencyBands';
 
@@ -33,10 +25,8 @@ export function NPCEditForm({
     form, setForm, selectedId, isEditing, isAIUpdating,
     onEdit, onSave, onCancel, onDelete, onAIUpdate, divergenceEntries,
 }: Props) {
-    const [selectedItemToAdd, setSelectedItemToAdd] = useState('');
     const [traitSearch, setTraitSearch] = useState('');
     const [relationTargetId, setRelationTargetId] = useState('');
-    const items = useAppStore(s => s.items || []);
     const npcLedger = useAppStore(s => s.npcLedger);
 
     const traitTierMap = useMemo(() => Object.fromEntries(TRAIT_VOCAB.map(t => [t.text, t.tier])), []);
@@ -95,21 +85,6 @@ export function NPCEditForm({
         setForm({ ...form, [field]: list });
     };
 
-    const updateOverride = (index: number, field: 'trigger' | 'action', value: string) => {
-        const list = [...(form.overrides || [])];
-        list[index] = { ...list[index], [field]: value };
-        setForm({ ...form, overrides: list });
-    };
-
-    const addOverride = () => {
-        setForm({ ...form, overrides: [...(form.overrides || []), { trigger: 'onSelfBelow(30)', action: 'attack' }] });
-    };
-
-    const removeOverride = (index: number) => {
-        const list = [...(form.overrides || [])];
-        list.splice(index, 1);
-        setForm({ ...form, overrides: list });
-    };
 
     return (
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col p-6 sm:p-8">
@@ -760,11 +735,11 @@ export function NPCEditForm({
                     </div>
                  </div>
 
-                {/* Combat Stats */}
+                {/* Character role */}
                 <div className="bg-void p-4 rounded border border-border space-y-3">
                     <div className="flex items-center justify-between">
-                        <span className="text-red-400 font-bold uppercase tracking-widest text-xs flex items-center gap-2">
-                            <Shield size={14} /> Combat Stats
+                        <span className="text-text-primary font-bold uppercase tracking-widest text-xs flex items-center gap-2">
+                            <Users size={14} /> Character Role
                         </span>
                         <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -776,300 +751,6 @@ export function NPCEditForm({
                             />
                             <span className="text-[10px] text-terminal uppercase tracking-widest font-bold">Player Character</span>
                         </label>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Combat Tier</label>
-                            <select
-                                value={form.combatTier ?? 'grunt'}
-                                onChange={e => setForm({ ...form, combatTier: e.target.value as CombatTier })}
-                                disabled={!isEditing}
-                                className="w-full bg-void border border-border rounded px-3 py-2 text-[14px] md:text-sm text-text-primary disabled:opacity-70 disabled:bg-surface outline-none focus:border-terminal transition-colors"
-                            >
-                                <option value="minion">Minion</option>
-                                <option value="grunt">Grunt</option>
-                                <option value="elite">Elite</option>
-                                <option value="boss">Boss</option>
-                                <option value="legendary">Legendary</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Archetype</label>
-                            <select
-                                value={form.archetype ?? 'skirmisher'}
-                                onChange={e => setForm({ ...form, archetype: e.target.value as Archetype })}
-                                disabled={!isEditing}
-                                className="w-full bg-void border border-border rounded px-3 py-2 text-[14px] md:text-sm text-text-primary disabled:opacity-70 disabled:bg-surface outline-none focus:border-terminal transition-colors"
-                            >
-                                <option value="bulwark">Bulwark</option>
-                                <option value="assassin">Assassin</option>
-                                <option value="caster">Caster</option>
-                                <option value="skirmisher">Skirmisher</option>
-                                <option value="brute">Brute</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">6-Stat Block (6–20)</label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {(['VIT', 'PWR', 'RES', 'FOC', 'SPD', 'WIL'] as const).map(stat => (
-                                <div key={stat}>
-                                    <label className="block text-[9px] text-text-dim uppercase tracking-wider mb-0.5">{stat}</label>
-                                    <input
-                                        type="number"
-                                        min={6}
-                                        max={20}
-                                        value={form.stats?.[stat] ?? 10}
-                                        onChange={e => {
-                                            const val = e.target.value === '' ? 10 : Math.max(6, Math.min(20, parseInt(e.target.value) || 10));
-                                            const currentStats = form.stats ?? { VIT: 10, PWR: 10, RES: 10, FOC: 10, SPD: 10, WIL: 10 };
-                                            setForm({ ...form, stats: { ...currentStats, [stat]: val } });
-                                        }}
-                                        disabled={!isEditing}
-                                        className="w-full bg-surface border border-border px-2 py-1 text-[12px] font-mono text-text-primary disabled:opacity-70 disabled:bg-void outline-none focus:border-terminal"
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Derived Previews */}
-                    {(() => {
-                        const itemsMap = Object.fromEntries(items.map(i => [i.id, i]));
-                        const armorBonus = resolveArmorBonus(form as NPCEntry, itemsMap);
-                        const stats = form.stats ?? { VIT: 10, PWR: 10, RES: 10, FOC: 10, SPD: 10, WIL: 10 };
-                        const previews = calculateDerivedPreviews(stats, form.combatTier ?? 'grunt', armorBonus);
-                        return (
-                            <div className="bg-void border border-border p-3 rounded flex justify-around text-center mt-2">
-                                <div>
-                                    <div className="text-[10px] text-text-dim uppercase tracking-wider">AC</div>
-                                    <div className="text-base font-bold text-terminal font-mono">{previews.ac}</div>
-                                </div>
-                                <div className="border-r border-border my-1" />
-                                <div>
-                                    <div className="text-[10px] text-text-dim uppercase tracking-wider">Max HP</div>
-                                    <div className="text-base font-bold text-danger font-mono">{previews.maxHP}</div>
-                                </div>
-                                <div className="border-r border-border my-1" />
-                                <div>
-                                    <div className="text-[10px] text-text-dim uppercase tracking-wider">Max FOC</div>
-                                    <div className="text-base font-bold text-ice font-mono">{previews.maxFOC}</div>
-                                </div>
-                            </div>
-                        );
-                    })()}
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Equipped Weapon</label>
-                            <select
-                                value={form.equippedWeapon ?? ''}
-                                onChange={e => setForm({ ...form, equippedWeapon: e.target.value || undefined })}
-                                disabled={!isEditing}
-                                className="w-full bg-void border border-border rounded px-3 py-2 text-[14px] md:text-sm text-text-primary disabled:opacity-70 disabled:bg-surface outline-none focus:border-terminal transition-colors"
-                            >
-                                <option value="">None (Unarmed)</option>
-                                {items.map(item => (
-                                    <option key={item.id} value={item.id}>{item.name} ({item.id})</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Condition</label>
-                            <select
-                                value={form.condition ?? 'healthy'}
-                                onChange={e => setForm({ ...form, condition: e.target.value as NPCEntry['condition'] })}
-                                disabled={!isEditing}
-                                className="w-full bg-void border border-border rounded px-3 py-2 text-[14px] md:text-sm text-text-primary disabled:opacity-70 disabled:bg-surface outline-none focus:border-terminal transition-colors"
-                            >
-                                <option value="healthy">Healthy</option>
-                                <option value="wounded">Wounded</option>
-                                <option value="critical">Critical</option>
-                                <option value="dead">Dead</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* Condition Read-Only Metadata Display */}
-                    <div className="bg-surface border border-border p-3 rounded space-y-1.5 text-xs">
-                        <div className="flex justify-between">
-                            <span className="text-text-dim">Last Known Condition:</span>
-                            <span className="text-text-primary font-bold uppercase">{form.lastCondition ?? 'None'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-text-dim">Last Seen in Combat:</span>
-                            <span className="text-text-primary font-mono">
-                                {form.lastSeenTimestamp ? new Date(form.lastSeenTimestamp).toLocaleString() : 'Never'}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Known Skills (comma-separated IDs)</label>
-                        <input
-                            type="text"
-                            value={(form.knownSkills ?? []).join(', ')}
-                            onChange={e => setForm({ ...form, knownSkills: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                            disabled={!isEditing}
-                            placeholder="fireball, healing_light, deflect"
-                            className="w-full bg-void border border-border rounded px-3 py-2 text-[14px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface outline-none focus:border-terminal transition-colors"
-                        />
-                    </div>
-
-                    {/* Inventory Picker Editor */}
-                    <div className="space-y-1.5">
-                        <label className="block text-text-dim text-[10px] uppercase tracking-wider">Inventory</label>
-                        <div className="space-y-1 max-h-32 overflow-y-auto border border-border rounded bg-surface p-2">
-                            {(form.inventory ?? []).length === 0 && (
-                                <div className="text-xs text-text-dim/40 italic text-center py-2">Empty Inventory</div>
-                            )}
-                            {(form.inventory ?? []).map((itemId, idx) => {
-                                const matchedItem = items.find(i => i.id === itemId);
-                                return (
-                                    <div key={idx} className="flex justify-between items-center bg-void border border-border px-2 py-1 rounded text-xs">
-                                        <span className="text-text-primary">{matchedItem?.name || itemId} <span className="text-text-dim text-[10px]">({itemId})</span></span>
-                                        {isEditing && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const nextInv = [...(form.inventory ?? [])];
-                                                    nextInv.splice(idx, 1);
-                                                    setForm({ ...form, inventory: nextInv });
-                                                }}
-                                                className="text-danger hover:text-danger/80 p-0.5 transition-colors"
-                                            >
-                                                <Trash2 size={12} />
-                                            </button>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        {isEditing && (
-                            <div className="flex gap-2">
-                                <select
-                                    value={selectedItemToAdd}
-                                    onChange={e => setSelectedItemToAdd(e.target.value)}
-                                    className="flex-1 bg-void border border-border rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-terminal"
-                                >
-                                    <option value="">-- Add Item --</option>
-                                    {items.map(item => (
-                                        <option key={item.id} value={item.id}>{item.name} ({item.id})</option>
-                                    ))}
-                                </select>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (selectedItemToAdd) {
-                                            const nextInv = [...(form.inventory ?? []), selectedItemToAdd];
-                                            setForm({ ...form, inventory: nextInv });
-                                            setSelectedItemToAdd('');
-                                        }
-                                    }}
-                                    disabled={!selectedItemToAdd}
-                                    className="px-3 py-1 bg-terminal text-void font-bold text-xs uppercase tracking-wider hover:brightness-110 disabled:opacity-40 transition-all"
-                                >
-                                    Add
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    <div>
-                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Recovery Note</label>
-                        <input
-                            type="text"
-                            value={form.recoveryNote ?? ''}
-                            onChange={e => setForm({ ...form, recoveryNote: e.target.value })}
-                            disabled={!isEditing}
-                            placeholder="Optional — how this NPC recovers between fights"
-                            className="w-full bg-void border border-border rounded px-3 py-2 text-[14px] md:text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-surface outline-none focus:border-terminal transition-colors"
-                        />
-                    </div>
-
-                    {/* Overrides dropdown editor */}
-                    <div className="border-t border-border pt-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                            <span className="text-text-primary font-bold uppercase tracking-widest text-[10px] text-text-dim">AI Overrides</span>
-                            {isEditing && (
-                                <button
-                                    type="button"
-                                    onClick={addOverride}
-                                    className="text-[9px] text-terminal hover:text-terminal/80 uppercase tracking-wider font-bold"
-                                >
-                                    + Add Override
-                                </button>
-                            )}
-                        </div>
-                        {(form.overrides || []).length === 0 && (
-                            <p className="text-[10px] text-text-dim/40 italic">No overrides defined. These triggers run deterministic actions during combat.</p>
-                        )}
-                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                            {(form.overrides || []).map((ov, i) => {
-                                const { kind, arg } = parseTrigger(ov.trigger);
-                                const isParameterized = kind !== 'onAllyFatal';
-
-                                return (
-                                    <div key={i} className="flex flex-col md:flex-row gap-2 items-start md:items-center bg-surface border border-border p-2 rounded">
-                                        <div className="flex-1 flex gap-2 w-full">
-                                            <select
-                                                value={kind}
-                                                onChange={e => {
-                                                    const newKind = e.target.value;
-                                                    const newArg = newKind === 'onAllyFatal' ? undefined : (arg ?? 30);
-                                                    updateOverride(i, 'trigger', composeTriggerString(newKind, newArg));
-                                                }}
-                                                disabled={!isEditing}
-                                                className="flex-1 bg-void border border-border rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-terminal"
-                                            >
-                                                {OVERRIDE_TRIGGER_KINDS.map(tk => (
-                                                    <option key={tk} value={tk}>{tk}</option>
-                                                ))}
-                                            </select>
-                                            
-                                            {isParameterized && (
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    value={arg ?? 0}
-                                                    onChange={e => {
-                                                        const newArg = parseInt(e.target.value) || 0;
-                                                        updateOverride(i, 'trigger', composeTriggerString(kind, newArg));
-                                                    }}
-                                                    disabled={!isEditing}
-                                                    className="w-16 bg-void border border-border rounded px-2 py-1 text-xs text-text-primary font-mono text-center outline-none focus:border-terminal"
-                                                />
-                                            )}
-                                        </div>
-
-                                        <span className="text-text-dim text-[10px] uppercase font-bold self-center hidden md:inline">→</span>
-
-                                        <select
-                                            value={ov.action}
-                                            onChange={e => updateOverride(i, 'action', e.target.value)}
-                                            disabled={!isEditing}
-                                            className="flex-1 bg-void border border-border rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-terminal w-full md:w-auto"
-                                        >
-                                            {ENEMY_ACTION_LABELS.map(act => (
-                                                <option key={act} value={act}>{act}</option>
-                                            ))}
-                                        </select>
-
-                                        {isEditing && (
-                                            <button
-                                                type="button"
-                                                onClick={() => removeOverride(i)}
-                                                className="text-danger/60 hover:text-danger p-1 shrink-0 transition-colors"
-                                            >
-                                                <Trash2 size={12} />
-                                            </button>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
                     </div>
                 </div>
 

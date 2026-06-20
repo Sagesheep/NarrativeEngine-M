@@ -1,4 +1,4 @@
-import type { NPCEntry, ChatMessage, LLMProvider, ItemDef, SkillDef } from '../../types';
+import type { NPCEntry, ChatMessage, LLMProvider } from '../../types';
 import { generateNPCProfile, updateExistingNPCs } from './npcGeneration';
 import { resolveNpcSelection } from './npcManualResolve';
 
@@ -22,12 +22,8 @@ export type AddNpcDeps = {
     campaignId: string;
     storyProvider?: LLMProvider;
     updateProvider?: LLMProvider;
-    items: ItemDef[];
-    skills: SkillDef[];
     addNPC: (npc: NPCEntry) => void;
     updateNPC: (id: string, patch: Partial<NPCEntry>) => void;
-    addItemDef: (item: ItemDef) => void;
-    addSkillDef: (skill: SkillDef) => void;
     matureMode?: boolean;   // gates mature-tier traits/wants for the generated NPC (default false)
 };
 
@@ -70,7 +66,7 @@ export async function addNpcFromSelection(deps: AddNpcDeps): Promise<AddNpcResul
             try {
                 await generateNPCProfile(
                     deps.storyProvider, deps.messages, resolution.name, deps.addNPC,
-                    deps.ledger, deps.campaignId, deps.items, deps.addItemDef, deps.skills, deps.addSkillDef,
+                    deps.ledger, deps.campaignId,
                     deps.matureMode ?? false,
                 );
                 return { ok: true, kind: 'created', name: resolution.name, message: `Added ${resolution.name} to the ledger.` };

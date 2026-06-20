@@ -173,12 +173,8 @@ export function Header() {
                 campaignId,
                 storyProvider: state.getActiveStoryEndpoint() ?? state.getActiveSummarizerEndpoint() ?? state.getActiveUtilityEndpoint(),
                 updateProvider: state.getActiveSummarizerEndpoint() ?? state.getActiveUtilityEndpoint() ?? state.getActiveStoryEndpoint(),
-                items: state.items ?? [],
-                skills: state.skills ?? [],
                 addNPC: state.addNPC,
                 updateNPC: state.updateNPC,
-                addItemDef: state.addItemDef,
-                addSkillDef: state.addSkillDef,
                 matureMode: state.settings?.matureMode ?? false,
             });
             if (result.ok) toast.success(result.message);

@@ -5,7 +5,6 @@ import {
     PC_POINT_BUY,
     STAT_KEYS,
     getPointCost,
-    computePCDerived,
     validateAllocation,
     ARCHETYPE_PRESETS,
     CREATION_QUESTIONS,
@@ -37,20 +36,12 @@ export function PCCreationWizard({ onComplete, onCancel }: {
         getActiveAuxiliaryEndpoint,
         npcLedger,
         activeCampaignId,
-        items,
-        skills,
-        addItemDef,
-        addSkillDef,
         loreChunks,
     } = useAppStore(useShallow(s => ({
         addNPC: s.addNPC,
         getActiveAuxiliaryEndpoint: s.getActiveAuxiliaryEndpoint,
         npcLedger: s.npcLedger,
         activeCampaignId: s.activeCampaignId,
-        items: s.items,
-        skills: s.skills,
-        addItemDef: s.addItemDef,
-        addSkillDef: s.addSkillDef,
         loreChunks: s.loreChunks,
     })));
 
@@ -67,7 +58,6 @@ export function PCCreationWizard({ onComplete, onCancel }: {
     const auxProvider = getActiveAuxiliaryEndpoint();
 
     const allocation = useMemo(() => validateAllocation(stats, budget), [stats, budget]);
-    const preview = useMemo(() => computePCDerived(stats, budget), [stats, budget]);
 
     const handleAnswerChange = useCallback((field: string, value: string) => {
         setAnswers(prev => ({ ...prev, [field]: value }));
@@ -167,16 +157,10 @@ export function PCCreationWizard({ onComplete, onCancel }: {
                     addNPC,
                     npcLedger,
                     activeCampaignId ?? undefined,
-                    items,
-                    addItemDef,
-                    skills,
-                    addSkillDef,
                 );
             } else {
                 const { uid } = await import('../../utils/uid');
-                const { assignCombatLoadout } = await import('../../services/npc/npcCombatGeneration');
                 const combatTier = getPCTier(isOP);
-                const loadoutResult = assignCombatLoadout(combatTier, selectedArchetype, items, skills);
                 pcEntry = {
                     id: uid(),
                     name: answers.name || 'Adventurer',
@@ -201,14 +185,8 @@ export function PCCreationWizard({ onComplete, onCancel }: {
                     combatTier,
                     archetype: selectedArchetype,
                     stats: overrides.stats,
-                    equippedWeapon: loadoutResult.equippedWeapon,
-                    knownSkills: loadoutResult.knownSkills,
-                    inventory: loadoutResult.inventory,
-                    overrides: loadoutResult.overrides,
                     condition: 'healthy' as const,
                 };
-                loadoutResult.newItemDefs.forEach(addItemDef);
-                loadoutResult.newSkillDefs.forEach(addSkillDef);
                 addNPC(pcEntry);
             }
 
@@ -229,7 +207,7 @@ export function PCCreationWizard({ onComplete, onCancel }: {
         } finally {
             setIsGenerating(false);
         }
-    }, [allocation, answers, addNPC, addItemDef, addSkillDef, auxProvider, isOP, items, skills, npcLedger, activeCampaignId, selectedArchetype, onComplete]);
+    }, [allocation, answers, addNPC, auxProvider, isOP, npcLedger, activeCampaignId, selectedArchetype, onComplete]);
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-void/80 backdrop-blur-sm p-4">
@@ -277,7 +255,6 @@ export function PCCreationWizard({ onComplete, onCancel }: {
                             stats={stats}
                             budget={budget}
                             allocation={allocation}
-                            preview={preview}
                             isOP={isOP}
                             selectedArchetype={selectedArchetype}
                             onStatChange={handleStatChange}
@@ -292,7 +269,6 @@ export function PCCreationWizard({ onComplete, onCancel }: {
                             stats={stats}
                             budget={budget}
                             allocation={allocation}
-                            preview={preview}
                             isOP={isOP}
                             selectedArchetype={selectedArchetype}
                             onCommit={handleCommit}
@@ -409,11 +385,10 @@ function QuestionField({ question, value, onChange, onSuggest, suggesting, auxAv
     );
 }
 
-function StatsStep({ stats, budget, allocation, preview, isOP, selectedArchetype, onStatChange, onArchetypePreset, onOPToggle, onAdvance }: {
+function StatsStep({ stats, budget, allocation, isOP, selectedArchetype, onStatChange, onArchetypePreset, onOPToggle, onAdvance }: {
     stats: StatBlock;
     budget: 'NORMAL' | 'OP';
     allocation: { pointsSpent: number; pointsRemaining: number; isValid: boolean };
-    preview: { hp: number; foc: number; ac: number; proficiency: number };
     isOP: boolean;
     selectedArchetype: Archetype | null;
     onStatChange: (key: StatKey, delta: number) => void;
@@ -474,17 +449,6 @@ function StatsStep({ stats, budget, allocation, preview, isOP, selectedArchetype
                 })}
             </div>
 
-            {/* Derived preview */}
-            <div className="bg-void-dark/50 border border-border/50 rounded p-3 space-y-1">
-                <p className="text-[10px] uppercase tracking-widest text-terminal/60">Derived Stats</p>
-                <div className="grid grid-cols-4 gap-2 text-[11px]">
-                    <div><span className="text-text-dim">HP</span> <span className="text-text-bright">{preview.hp}</span></div>
-                    <div><span className="text-text-dim">FOC</span> <span className="text-text-bright">{preview.foc}</span></div>
-                    <div><span className="text-text-dim">AC</span> <span className="text-text-bright">{preview.ac}</span></div>
-                    <div><span className="text-text-dim">Prof</span> <span className="text-text-bright">+{preview.proficiency}</span></div>
-                </div>
-            </div>
-
             {!allocation.isValid && (
                 <p className="text-red-400 text-[10px]">Invalid allocation: you have overspent your point budget.</p>
             )}
@@ -500,12 +464,11 @@ function StatsStep({ stats, budget, allocation, preview, isOP, selectedArchetype
     );
 }
 
-function ReviewStep({ answers, stats, budget, allocation, preview, isOP, selectedArchetype, onCommit, isGenerating, onBack }: {
+function ReviewStep({ answers, stats, budget, allocation, isOP, selectedArchetype, onCommit, isGenerating, onBack }: {
     answers: QuestionAnswers;
     stats: StatBlock;
     budget: 'NORMAL' | 'OP';
     allocation: { pointsSpent: number; pointsRemaining: number; isValid: boolean };
-    preview: { hp: number; foc: number; ac: number; proficiency: number };
     isOP: boolean;
     selectedArchetype: Archetype | null;
     onCommit: () => void;
@@ -533,12 +496,6 @@ function ReviewStep({ answers, stats, budget, allocation, preview, isOP, selecte
                                 <span className="text-text-dim">{key}:</span> <span className="text-text-bright">{stats[key]}</span>
                             </div>
                         ))}
-                    </div>
-                    <div className="mt-2 grid grid-cols-4 gap-2 text-[11px]">
-                        <div><span className="text-text-dim">HP</span> <span className="text-terminal">{preview.hp}</span></div>
-                        <div><span className="text-text-dim">FOC</span> <span className="text-terminal">{preview.foc}</span></div>
-                        <div><span className="text-text-dim">AC</span> <span className="text-terminal">{preview.ac}</span></div>
-                        <div><span className="text-text-dim">Prof</span> <span className="text-terminal">+{preview.proficiency}</span></div>
                     </div>
                 </div>
 

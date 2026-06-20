@@ -15,10 +15,6 @@ import type {
     StreamingStats,
     DivergenceRegister,
     PayloadTrace,
-    CombatState,
-    ItemDef,
-    SkillDef,
-    InventoryProposal,
     PinnedExcerpt,
     ThinkingEffort,
 } from '../../types';
@@ -72,10 +68,6 @@ export type TurnCallbacks = {
     updateMessageDivergence?: (messageId: string, divergenceIds: string[]) => void;
     applyPressurePatch?: (id: string, p: NPCPressure) => void;
     setOnStageNpcIds?: (ids: string[]) => void;
-    initiateCombat?: (namedNpcIds: string[], pcIds: string[], mookSpecs: { combatTier: import('../../types').CombatTier; archetype: import('../../types').Archetype; count: number }[], auxProvider?: import('../../types').LLMProvider, recentContext?: string) => Promise<void>;
-    stageInventoryProposal?: (proposal: InventoryProposal) => void;
-    addItemDef?: (item: ItemDef) => void;
-    addSkillDef?: (skill: SkillDef) => void;
 };
 
 export type TurnState = {
@@ -109,9 +101,5 @@ export type TurnState = {
     divergenceRegister?: DivergenceRegister;
     onStageNpcIds?: string[];
     npcPressure?: Record<string, NPCPressure>;
-    items: ItemDef[];
-    skills: SkillDef[];
-    /** Live combat snapshot (Phase C) — surfaced in the volatile block while a fight is active. */
-    combatState?: CombatState | null;
     pinnedExcerpts?: PinnedExcerpt[];
 };

@@ -126,7 +126,6 @@ export async function gatherContext(
         chapters: state.chapters,
         archiveIndex: state.archiveIndex,
         semanticallyRecalledNpcIds,
-        combatState: state.combatState,
         pinnedExcerpts: state.pinnedExcerpts,
     });
 

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { X, ScrollText, Globe, Zap, BookOpen, Bookmark, Brain, Sliders, Library, Images } from 'lucide-react';
+import { X, ScrollText, Globe, Zap, BookOpen, Bookmark, Brain, Sliders, Images } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { RulesTab } from './context-drawer/RulesTab';
 import { RulesManagerTab } from './context-drawer/RulesManagerTab';
@@ -9,7 +9,6 @@ import { ChapterTab } from './context-drawer/ChapterTab';
 import { BookkeepingTab } from './context-drawer/BookkeepingTab';
 import { ResolvedStatePanel } from './context-drawer/ResolvedStatePanel';
 import { MemoryTab } from './context-drawer/MemoryTab';
-import { CompendiumTab } from './context-drawer/CompendiumTab';
 import { GalleryTab } from './context-drawer/GalleryTab';
 
 const TABS = [
@@ -18,7 +17,6 @@ const TABS = [
   { id: 'world',    label: 'World',    icon: Globe },
   { id: 'mem',      label: 'Knowledge', icon: Brain },
   { id: 'eng',      label: 'Engines',  icon: Zap },
-  { id: 'comp',     label: 'Compendium', icon: Library },
   { id: 'gallery',  label: 'Gallery',  icon: Images },
   { id: 'chapters', label: 'Chapters', icon: BookOpen },
   { id: 'chr',      label: 'Bookkeep', icon: Bookmark },
@@ -32,20 +30,7 @@ export function ContextDrawer() {
   const setMobileView = useAppStore((s) => s.setMobileView);
   const [activeTab, setActiveTab] = useState<TabId>('sys');
 
-  const combatModeActive = useAppStore((s) => s.context.combatModeActive ?? false);
-  const activeCampaignId = useAppStore((s) => s.activeCampaignId);
-
-  // Compendium is combat-only; if it's active when combat mode turns off, fall back to sys
-  if (activeTab === 'comp' && (!activeCampaignId || !combatModeActive)) {
-    setActiveTab('sys');
-  }
-
-  const visibleTabs = TABS.filter(tab => {
-    if (tab.id === 'comp') {
-      return !!activeCampaignId && combatModeActive;
-    }
-    return true;
-  });
+  const visibleTabs = TABS;
 
   // ── Swipe-to-dismiss logic ──
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -93,7 +78,6 @@ export function ContextDrawer() {
       {activeTab === 'world' && <LoreTab />}
       {activeTab === 'mem' && <MemoryTab />}
       {activeTab === 'eng' && <EnginesTab />}
-      {activeTab === 'comp' && <CompendiumTab />}
       {activeTab === 'gallery' && <GalleryTab />}
       {activeTab === 'chapters' && <ChapterTab />}
       {activeTab === 'chr' && <><ResolvedStatePanel /><BookkeepingTab /></>}
