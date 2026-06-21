@@ -162,7 +162,11 @@ export function LoreCheckModal() {
 
     const accept = (text: string) => {
         if (!selection) return;
-        replaceMessageText(selection.messageId, selection.selectedText, text);
+        const ok = replaceMessageText(selection.messageId, selection.selectedText, text);
+        if (!ok) {
+            setError('Could not locate the original sentence in the message — it may have already been edited. Nothing was changed.');
+            return;
+        }
         close();
     };
 

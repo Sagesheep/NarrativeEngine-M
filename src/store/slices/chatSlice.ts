@@ -29,6 +29,69 @@ function saveDivergence(campaignId: string | null, register: DivergenceRegister)
         .catch(e => console.error('Failed to save divergence register', e));
 }
 
+// The lore-check / rename selection is captured from the RENDERED bubble text,
+// which has already had markdown stripped (bold/italic markers gone) and NPC name
+// brackets removed ([**Aldric**] renders as "Aldric"). The stored message content
+// still holds the raw markdown, so a literal `content.includes(selectedText)` misses
+// whenever the selected span contains any formatting — the accepted rewrite then
+// silently no-ops. locateRawSpan normalises the raw content the same way the renderer
+// does (drop * _ ` # [ ] and collapse whitespace) while keeping an index map back to
+// raw offsets, so we can find and splice the real span even when it was formatted.
+const MD_MARKER = /[*_`[\]#]/;
+
+function normalizeWithMap(raw: string): { norm: string; start: number[]; end: number[] } {
+    const norm: string[] = [];
+    const start: number[] = [];
+    const end: number[] = [];
+    let i = 0;
+    while (i < raw.length) {
+        const c = raw[i];
+        if (/\s/.test(c)) {
+            const runStart = i;
+            while (i < raw.length && /\s/.test(raw[i])) i++;
+            norm.push(' ');
+            start.push(runStart);
+            end.push(i);
+            continue;
+        }
+        if (MD_MARKER.test(c)) { i++; continue; }
+        norm.push(c);
+        start.push(i);
+        end.push(i + 1);
+        i++;
+    }
+    return { norm: norm.join(''), start, end };
+}
+
+function normalizeLoose(s: string): string {
+    return s.replace(/[*_`[\]#]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Find the raw [start, end) span in `raw` corresponding to `target`, tolerating the
+ * markdown/bracket/whitespace differences introduced by rendering. Returns null if
+ * the target can't be located even loosely (e.g. the text was already edited away).
+ */
+export function locateRawSpan(raw: string, target: string): { start: number; end: number } | null {
+    const exact = raw.indexOf(target);
+    if (exact !== -1) return { start: exact, end: exact + target.length };
+
+    const targetNorm = normalizeLoose(target);
+    if (!targetNorm) return null;
+
+    const { norm, start, end } = normalizeWithMap(raw);
+    const idx = norm.indexOf(targetNorm);
+    if (idx === -1) return null;
+
+    let s = start[idx];
+    let e = end[idx + targetNorm.length - 1];
+    // Swallow markdown markers that hug the span but were dropped during normalisation
+    // (e.g. the leading "[**" of an NPC name), so they aren't orphaned after splicing.
+    while (s > 0 && MD_MARKER.test(raw[s - 1])) s--;
+    while (e < raw.length && MD_MARKER.test(raw[e])) e++;
+    return { start: s, end: e };
+}
+
 // ── Slice type ─────────────────────────────────────────────────────────
 
 export type ChatSlice = {
@@ -38,8 +101,17 @@ export type ChatSlice = {
     updateLastAssistant: (content: string) => void;
     updateLastMessage: (patch: Partial<ChatMessage>) => void;
     updateMessageContent: (id: string, content: string) => void;
-    replaceMessageText: (id: string, oldText: string, newText: string) => void;
+    /** Returns true if the span was located and spliced; false if the original text could not be found. */
+    replaceMessageText: (id: string, oldText: string, newText: string) => boolean;
     renameAcrossMessages: (from: string, to: string) => number;
+    /**
+     * First-name-only rename on the LATEST assistant message. Replaces the leading
+     * token of `from` (e.g. "Pell" from "Pell Gravatt") with the leading token of
+     * `to` in the most recent GM narration only. Whole-word, case-insensitive.
+     * Returns 1 if the last assistant message was touched, 0 otherwise. Single-token
+     * `from` (no surname) returns 0 — full-name tier already handles that case.
+     */
+    renameFirstNameInLatestAssistant: (from: string, to: string) => number;
     deleteMessage: (id: string) => void;
     deleteMessagesFrom: (id: string) => void;
     setStreaming: (v: boolean) => void;
@@ -305,22 +377,34 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: msgs, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
             return { messages: msgs };
         }),
-    replaceMessageText: (id, oldText, newText) =>
+    replaceMessageText: (id, oldText, newText) => {
+        let applied = false;
         set((s) => {
             const msgs = s.messages.map(m => {
                 if (m.id !== id) return m;
                 const next = { ...m };
-                if (typeof m.content === 'string' && m.content.includes(oldText)) {
-                    next.content = m.content.replace(oldText, newText);
+                if (typeof m.content === 'string') {
+                    const span = locateRawSpan(m.content, oldText);
+                    if (span) {
+                        next.content = m.content.slice(0, span.start) + newText + m.content.slice(span.end);
+                        applied = true;
+                    }
                 }
-                if (typeof m.displayContent === 'string' && m.displayContent.includes(oldText)) {
-                    next.displayContent = m.displayContent.replace(oldText, newText);
+                if (typeof m.displayContent === 'string') {
+                    const span = locateRawSpan(m.displayContent, oldText);
+                    if (span) {
+                        next.displayContent = m.displayContent.slice(0, span.start) + newText + m.displayContent.slice(span.end);
+                        applied = true;
+                    }
                 }
                 return next;
             });
+            if (!applied) return {};
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: msgs, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
             return { messages: msgs };
-        }),
+        });
+        return applied;
+    },
     renameAcrossMessages: (from, to) => {
         const fromTrim = from.trim();
         if (!fromTrim || !to.trim()) return 0;
@@ -345,6 +429,45 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
                 return next;
             });
             if (changed === 0) return {};
+            debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: msgs, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            return { messages: msgs };
+        });
+        return changed;
+    },
+    renameFirstNameInLatestAssistant: (from, to) => {
+        const fromTrim = from.trim();
+        const toTrim = to.trim();
+        if (!fromTrim || !toTrim) return 0;
+        const firstName = fromTrim.split(/\s+/)[0];
+        const replacement = toTrim.split(/\s+/)[0];
+        // Single-token `from` has no separate first-name tier — the full-name
+        // pass (renameAcrossMessages) already covered it.
+        if (!firstName || !replacement || fromTrim.split(/\s+/).length === 1) return 0;
+        const pat = `\\b${firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`;
+        let changed = 0;
+        set((s) => {
+            // Find the LAST assistant message (not messages[length-1] — that may be
+            // the scene-marker system message inserted by turnPostProcess).
+            let lastIdx = -1;
+            for (let i = s.messages.length - 1; i >= 0; i--) {
+                if (s.messages[i].role === 'assistant') { lastIdx = i; break; }
+            }
+            if (lastIdx === -1) return {};
+            const m = s.messages[lastIdx];
+            const next = { ...m };
+            let touched = false;
+            if (typeof m.content === 'string') {
+                const rep = m.content.replace(new RegExp(pat, 'gi'), replacement);
+                if (rep !== m.content) { next.content = rep; touched = true; }
+            }
+            if (typeof m.displayContent === 'string') {
+                const rep = m.displayContent.replace(new RegExp(pat, 'gi'), replacement);
+                if (rep !== m.displayContent) { next.displayContent = rep; touched = true; }
+            }
+            if (!touched) return {};
+            const msgs = s.messages.slice();
+            msgs[lastIdx] = next;
+            changed = 1;
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: msgs, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
             return { messages: msgs };
         });

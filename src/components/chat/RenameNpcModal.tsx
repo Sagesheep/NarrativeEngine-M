@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, Replace, Loader2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { archiveStorage } from '../../services/storage/archiveStorage';
@@ -21,8 +21,9 @@ export function RenameNpcModal() {
     const onClose = useAppStore(s => s.closeRenameModal);
     const [to, setTo] = useState('');
     const [busy, setBusy] = useState(false);
+    const openedAtRef = useRef(0);
 
-    useEffect(() => { if (open) { setTo(''); setBusy(false); } }, [open, fromText]);
+    useEffect(() => { if (open) { setTo(''); setBusy(false); openedAtRef.current = Date.now(); } }, [open, fromText]);
 
     if (!open) return null;
 
@@ -41,6 +42,7 @@ export function RenameNpcModal() {
                 : 0;
 
             const msgCount = state.renameAcrossMessages(from, targetName);
+            const firstNameCount = state.renameFirstNameInLatestAssistant(from, targetName);
             const ledger = state.mergeOrRenameNpc(from, targetName, turn);
 
             let archiveCount = 0;
@@ -52,6 +54,7 @@ export function RenameNpcModal() {
             }
 
             const parts = [`${msgCount} message${msgCount === 1 ? '' : 's'}`];
+            if (firstNameCount > 0) parts.push(`${firstNameCount} current-scene first-name fix`);
             if (archiveCount > 0) parts.push(`${archiveCount} archived scene${archiveCount === 1 ? '' : 's'}`);
             if (ledger === 'merged') parts.push('merged NPC');
             else if (ledger === 'renamed') parts.push('renamed NPC');
@@ -64,8 +67,16 @@ export function RenameNpcModal() {
         }
     };
 
+    const handleBackdropClick = () => {
+        if (busy) return;
+        // Ignore the ghost-click that follows the touchstart/mousedown which opened
+        // this modal — otherwise it lands on the backdrop and closes us instantly.
+        if (Date.now() - openedAtRef.current < 350) return;
+        onClose();
+    };
+
     return (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60" onClick={busy ? undefined : onClose}>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60" onClick={handleBackdropClick}>
             <div className="bg-surface border border-border rounded-lg w-full max-w-sm mx-4 flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between p-4 border-b border-border">
                     <h2 className="text-terminal text-sm font-bold tracking-[0.2em] uppercase flex items-center gap-2">

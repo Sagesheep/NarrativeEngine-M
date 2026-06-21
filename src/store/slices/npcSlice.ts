@@ -169,7 +169,7 @@ export const createNPCSlice: StateCreator<NPCDeps, [], [], NPCSlice> = (set, get
         const s = get();
         const matches = (n: NPCEntry, key: string) => {
             const names = [n.name, ...(n.aliases || '').split(',')].map(x => x.trim().toLowerCase());
-            return names.includes(key) || n.name?.trim().toLowerCase().startsWith(key + ' ');
+            return names.includes(key);
         };
         const fromNpc = s.npcLedger.find(n => matches(n, fromKey));
         if (!fromNpc) return 'none';
