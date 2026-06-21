@@ -27,7 +27,13 @@
   --color-overlay: rgba(0, 0, 0, 0.30);
   --color-grain: transparent;
 
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  /* Trailing emoji/symbol families are GLYPH fallbacks: Android's generic
+     `monospace` doesn't chain into the system emoji/symbol fonts, so without
+     these any emoji or special symbol the GM emits renders as a tofu box
+     (the "?0?" / ◊◊ artifact). Order matters — mono first for Latin, emoji
+     + symbols last to catch only what mono lacks. */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace,
+    'Noto Color Emoji', 'Noto Sans Symbols2', 'Segoe UI Emoji', sans-serif;
 }
 
 [data-theme="dark"] {
