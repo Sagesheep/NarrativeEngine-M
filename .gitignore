@@ -29,6 +29,10 @@ data
 reddit_post.json
 *.apk
 
+# ADB / debug screenshots
+_adb_shot.png
+*_adb_shot.png
+
 # Graphify Outputs
 graphify-out/
 
