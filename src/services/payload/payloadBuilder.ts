@@ -180,7 +180,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         : userMessage;
     // Trace the THREE buckets distinctly so debug differentiates them:
     //   - world_context rows (incl. Arc Digest = injection) are traced upstream in trimWorldBlocks
-    //   - volatile_state row (Profile/Inventory/SceneNote/Combat) traced above
+    //   - volatile_state row (Profile/Inventory/SceneNote) traced above
     //   - the actual player input is THIS row.
     // We physically fold worldContent + volatileContent into the user message (cache
     // locality), but they're already counted in their own rows — so this row counts
