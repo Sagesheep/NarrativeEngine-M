@@ -40,7 +40,11 @@ export function ChapterTab() {
             context.rulesRaw,
             context.starterActive ? context.starter : '',
             context.continuePromptActive ? context.continuePrompt : '',
-            context.characterProfileActive ? context.characterProfile : '',
+            context.characterProfileActive ? (
+                context.characterProfile.identity.name
+                    ? `${context.characterProfile.identity.name}${context.characterProfile.activeTraits.filter(t => !t.superseded).length > 0 ? ` (${context.characterProfile.activeTraits.filter(t => !t.superseded).length} traits)` : ''}`
+                    : ''
+            ) : '',
             context.inventoryActive ? context.inventory : '',
         ].filter(Boolean).join('\n\n');
         const histText = messageContents.join('');

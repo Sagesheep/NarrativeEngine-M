@@ -1,7 +1,7 @@
-import type { GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, ArchiveChapter, ChatMessage, PayloadTrace, SceneEvent, DivergenceRegister, DivergenceEntry } from '../../types';
+import type { GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, ArchiveChapter, ChatMessage, PayloadTrace, SceneEvent, DivergenceRegister, DivergenceEntry, SceneEventType } from '../../types';
 import { countTokens } from '../infrastructure';
-import { buildBehaviorDirective, buildDriftAlert } from '../npc';
-import { relationBand } from '../npc/agencyBands';
+import { buildDriftAlert } from '../npc';
+import { relationBand, describeHex } from '../npc/agencyBands';
 import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
 
@@ -103,6 +103,105 @@ function filterRecallByPerception(
 }
 
 type NpcSelectMode = 'recommended' | 'fallback';
+
+/**
+ * Check whether a profile field's scene tags match the planner's event types.
+ * - No fieldTags on the NPC → always match (backward compatible: always inject).
+ * - Field not in fieldTags → always match (untagged = always inject).
+ * - Field in fieldTags but with empty tags → always match.
+ * - plannerTags null (planner didn't run or returned nothing) → always match.
+ * - Otherwise: intersect field tags with planner tags.
+ */
+function fieldTagMatches(
+    fieldName: string,
+    fieldTags: Record<string, SceneEventType[]> | undefined,
+    plannerTags: Set<SceneEventType> | null,
+): boolean {
+    if (!fieldTags) return true;
+    if (!plannerTags) return true;
+    const tags = fieldTags[fieldName];
+    if (!tags || tags.length === 0) return true;
+    return tags.some(t => plannerTags.has(t));
+}
+
+/**
+ * Core directive — always injected for every active NPC regardless of scene.
+ * Contains the 5-field "GM is never starved" floor: affinity, personality hex
+ * (if present, since it's compact word-bands), and the current active goal
+ * (wants.short[0] or drives fallback). This mirrors the most critical parts
+ * of buildBehaviorDirective but drops voice, boundaries, triggers, example,
+ * and drift — those move to the extended tier.
+ */
+function buildCoreDirective(npc: NPCEntry): string {
+    const parts: string[] = [];
+
+    const affinityLabel = npc.pcRelation !== undefined
+        ? relationBand(npc.pcRelation)
+        : undefined;
+    if (affinityLabel) parts.push(`[Aff: ${affinityLabel}]`);
+
+    if (npc.personalityHex) {
+        parts.push(`Personality: ${describeHex(npc.personalityHex)}`);
+    }
+
+    if (npc.wants?.short?.[0]) {
+        parts.push(`NOW: ${npc.wants.short[0].length > 40 ? npc.wants.short[0].substring(0, 40) + '…' : npc.wants.short[0]}`);
+    } else if (npc.drives?.sceneWant) {
+        const sw = npc.drives.sceneWant;
+        parts.push(`NOW: ${sw.length > 40 ? sw.substring(0, 40) + '…' : sw}`);
+    }
+
+    return parts.length > 0 ? `PLAY AS: ${parts.join(' | ')}` : '';
+}
+
+/**
+ * Extended directive — scene-tagged fields injected only when relevant to the
+ * current scene type. Contains: long/medium wants (goals), hard/soft boundaries,
+ * behavioral triggers, voice, example output. Each field is checked against
+ * the NPC's fieldTags (if any) intersected with the planner's eventTypes.
+ */
+function buildExtendedDirective(
+    npc: NPCEntry,
+    plannerTags: Set<SceneEventType> | null,
+): string {
+    const parts: string[] = [];
+
+    // Goals/pursuits — broadly relevant (promise, quest_milestone), but
+    // untagged by default so they always inject (goals are usually important).
+    if (npc.wants?.long) {
+        parts.push(`GOAL: ${npc.wants.long.length > 80 ? npc.wants.long.substring(0, 80) + '…' : npc.wants.long}`);
+    }
+    if (npc.wants?.medium?.[0]) {
+        parts.push(`PURSUING: ${npc.wants.medium[0].length > 60 ? npc.wants.medium[0].substring(0, 60) + '…' : npc.wants.medium[0]}`);
+    } else if (npc.drives && !npc.wants) {
+        const driveParts: string[] = [];
+        if (npc.drives.sessionWant) driveParts.push(npc.drives.sessionWant.length > 80 ? npc.drives.sessionWant.substring(0, 80) + '…' : npc.drives.sessionWant);
+        if (npc.drives.coreWant) driveParts.push(npc.drives.coreWant.length > 80 ? npc.drives.coreWant.substring(0, 80) + '…' : npc.drives.coreWant);
+        if (driveParts.length > 0) parts.push(`WANTS: ${driveParts.join(' ← ')}`);
+    }
+
+    if (npc.hardBoundaries?.length && fieldTagMatches('hardBoundaries', npc.fieldTags, plannerTags)) {
+        parts.push(`WON'T: ${npc.hardBoundaries.map(b => b.length > 40 ? b.substring(0, 40) + '…' : b).join('; ')}`);
+    }
+    if (npc.softBoundaries?.length && fieldTagMatches('softBoundaries', npc.fieldTags, plannerTags)) {
+        parts.push(`RESENTS: ${npc.softBoundaries.map(b => b.length > 40 ? b.substring(0, 40) + '…' : b).join('; ')}`);
+    }
+
+    if (npc.behavioralTriggers?.length && fieldTagMatches('behavioralTriggers', npc.fieldTags, plannerTags)) {
+        for (const t of npc.behavioralTriggers) {
+            parts.push(`ON "${t.keyword}": ${t.shift.length > 50 ? t.shift.substring(0, 50) + '…' : t.shift}`);
+        }
+    }
+
+    if (npc.voice && fieldTagMatches('voice', npc.fieldTags, plannerTags)) {
+        parts.push(`Voice: ${npc.voice.length > 60 ? npc.voice.substring(0, 60) + '…' : npc.voice}`);
+    }
+    if (npc.exampleOutput && fieldTagMatches('exampleOutput', npc.fieldTags, plannerTags)) {
+        parts.push(`Example: ${npc.exampleOutput.length > 80 ? npc.exampleOutput.substring(0, 80) + '…' : npc.exampleOutput}`);
+    }
+
+    return parts.length > 0 ? parts.join(' | ') : '';
+}
 
 function selectActiveNPCs(opts: {
     npcLedger: NPCEntry[];
@@ -227,6 +326,7 @@ export function assembleWorldBlocks(opts: {
     chapters?: ArchiveChapter[];
     sealedChapters?: ArchiveChapter[];
     divergenceRegister?: DivergenceRegister;
+    plannerEventTypes?: SceneEventType[];
     addTrace: (t: PayloadTrace) => void;
 }): WorldBlock[] {
     const {
@@ -245,6 +345,7 @@ export function assembleWorldBlocks(opts: {
         chapters,
         sealedChapters: sealedChaptersOverride,
         divergenceRegister,
+        plannerEventTypes,
         addTrace,
     } = opts;
 
@@ -392,21 +493,34 @@ export function assembleWorldBlocks(opts: {
 
         activeNPCs = capActiveNPCs(activeNPCs, onStageNpcIds);
         activeNPCs = mergeSemanticRecall(activeNPCs, npcStrategy?.semanticallyRecalledNpcIds, npcLedger);
-
         if (activeNPCs.length > 0) {
             const onStageSet = new Set(onStageNpcIds ?? []);
-            const npcLines = activeNPCs.map(npc => {
-                let line = minifyNPC(npc, onStageSet.size > 0 && !onStageSet.has(npc.id));
-                const directive = buildBehaviorDirective(npc);
-                if (directive) line += ` | ${directive}`;
+            const plannerTags = plannerEventTypes && plannerEventTypes.length > 0
+                ? new Set(plannerEventTypes)
+                : null;
+            const npcSegments: { npcId: string; content: string; tokens: number }[] = [];
+
+            for (const npc of activeNPCs) {
+                const offStage = onStageSet.size > 0 && !onStageSet.has(npc.id);
+
+                // Core tier — always injected.
+                const coreParts: string[] = [minifyNPC(npc, offStage)];
+                const coreDirective = buildCoreDirective(npc);
+                if (coreDirective) coreParts.push(coreDirective);
+                const coreLine = coreParts.join(' | ');
+
+                // Extended tier — scene-tagged.
+                const extParts: string[] = [];
+                const extDirective = buildExtendedDirective(npc, plannerTags);
+                if (extDirective) extParts.push(extDirective);
                 const drift = buildDriftAlert(npc);
-                if (drift) line += ` | ${drift}`;
-                if (chapters && chapters.length > 0) {
+                if (drift && fieldTagMatches('drift', npc.fieldTags, plannerTags)) extParts.push(drift);
+                if (chapters && chapters.length > 0 && fieldTagMatches('innerState', npc.fieldTags, plannerTags)) {
                     for (let ci = chapters.length - 1; ci >= 0; ci--) {
                         const ch = chapters[ci];
                         if (ch.npcInnerState && ch.npcInnerState[npc.name]) {
                             const innerNote = ch.npcInnerState[npc.name];
-                            line += ` | Inner: ${innerNote}`;
+                            extParts.push(`Inner: ${innerNote}`);
                             addTrace({
                                 source: `NPC Inner State: ${npc.name}`,
                                 classification: 'world_context',
@@ -419,8 +533,11 @@ export function assembleWorldBlocks(opts: {
                         }
                     }
                 }
-                return line;
-            }).join('\n');
+                const extLine = extParts.length > 0 ? extParts.join(' | ') : '';
+
+                const fullLine = extLine ? `${coreLine} | ${extLine}` : coreLine;
+                npcSegments.push({ npcId: npc.id, content: fullLine, tokens: countTokens(fullLine) });
+            }
 
             // On-stage NPC↔NPC relations as words (sparse, directed). Only edges between NPCs
             // both present this scene reach the LLM — the graph's total size never matters here.
@@ -441,8 +558,22 @@ export function assembleWorldBlocks(opts: {
                 ? `\n[ON-STAGE RELATIONS]\n${relationLines.join('\n')}`
                 : '';
 
-            const npcText = `[ACTIVE NPC CONTEXT]\n${npcLines}${relationBlock}\n[END NPC CONTEXT]`;
-            worldBlocks.push({ source: 'Active NPCs', content: npcText, tokens: countTokens(npcText), reason: `NPCs detected in context (${activeNPCs.length}, minified)`, npcIds: activeNPCs.map(n => n.id) });
+            const npcText = `[ACTIVE NPC CONTEXT]\n${npcSegments.map(s => s.content).join('\n')}${relationBlock}\n[END NPC CONTEXT]`;
+            // Each NPC is a segment so trimWorldBlocks can partially trim (drop
+            // the lowest-priority NPCs first) instead of all-or-nothing dropping
+            // the whole block. The rewrap fn rebuilds the block from kept segments.
+            const npcSegStrings = npcSegments.map(s => s.content);
+            const npcRewrap = (kept: string[]) =>
+                `[ACTIVE NPC CONTEXT]\n${kept.join('\n')}${relationBlock}\n[END NPC CONTEXT]`;
+            worldBlocks.push({
+                source: 'Active NPCs',
+                content: npcText,
+                tokens: countTokens(npcText),
+                reason: `NPCs detected in context (${activeNPCs.length}, tiered core+extended)`,
+                npcIds: activeNPCs.map(n => n.id),
+                segments: npcSegStrings,
+                rewrap: npcRewrap,
+            });
         }
     }
 

@@ -24,7 +24,31 @@ export function TokenGauge() {
         if (context.rulesRaw) parts.push(context.rulesRaw);
         if (context.starterActive && context.starter) parts.push(context.starter);
         if (context.continuePromptActive && context.continuePrompt) parts.push(context.continuePrompt);
-        if (context.characterProfileActive && context.characterProfile) parts.push(`[CHARACTER PROFILE]\n${context.characterProfile}`);
+        if (context.characterProfileActive && context.characterProfile) {
+            // Mirror the payload builder's structured injection: identity + active
+            // traits (core floor + extended). For the gauge we use all active traits
+            // since we don't have the planner's eventTypes here — the actual
+            // payload will be smaller after scene-tag filtering.
+            const p = context.characterProfile;
+            const lines: string[] = ['[CHARACTER PROFILE]'];
+            const idParts: string[] = [];
+            if (p.identity.name) idParts.push(p.identity.name);
+            if (p.identity.race) idParts.push(p.identity.race);
+            if (p.identity.class) idParts.push(p.identity.class);
+            if (p.identity.archetype) idParts.push(p.identity.archetype);
+            if (p.identity.level !== undefined) idParts.push(`Level ${p.identity.level}`);
+            if (idParts.length > 0) lines.push(idParts.join(' | '));
+            if (p.stats) {
+                const s = p.stats;
+                lines.push(`VIT ${s.VIT} | PWR ${s.PWR} | RES ${s.RES} | FOC ${s.FOC} | SPD ${s.SPD} | WIL ${s.WIL}`);
+            }
+            const active = (p.activeTraits ?? []).filter(t => !t.superseded);
+            for (const t of active) {
+                lines.push(`▸ [${t.category}] ${t.text} [imp:${t.importance}${t.eventTags.length > 0 ? ` tags:${t.eventTags.join(',')}` : ''}]`);
+            }
+            lines.push('[END CHARACTER PROFILE]');
+            parts.push(lines.join('\n'));
+        }
         if (context.inventoryActive && context.inventory) parts.push(`[PLAYER INVENTORY]\n${context.inventory}`);
         return parts.join('\n\n');
     }, [context.loreRaw, context.rulesRaw, context.starter, context.starterActive, context.continuePrompt, context.continuePromptActive, context.characterProfile, context.characterProfileActive, context.inventory, context.inventoryActive]);

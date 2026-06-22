@@ -156,7 +156,7 @@ export type GameContext = {
     continuePrompt: string;
     inventory: string;
     inventoryLastScene: string;
-    characterProfile: string;
+    characterProfile: CharacterProfileState;
     characterProfileLastScene: string;
     surpriseDC?: number;
     encounterDC?: number;
@@ -234,6 +234,66 @@ export type DivergenceCategory =
     | 'party_facts'
     | 'rules_lore'
     | 'misc';
+
+/**
+ * A single structured narrative fact about the player character.
+ * Replaces the legacy flat-string `characterProfile` blob.
+ *
+ * - `category` reuses DivergenceCategory (party_facts is the natural home for
+ *   most PC narrative state, but locations/promises_debts/world_state are valid
+ *   too — e.g., "Lives at Tellis Court" is `locations`, "Owes Garrick 200 gold"
+ *   is `promises_debts`).
+ * - `eventTags` drives scene-aware retrieval: the planner emits eventTypes per
+ *   turn; traits whose tags don't intersect the planner's set are dropped from
+ *   the extended tier. Core-tier traits (see CORE_FLOOR) bypass this filter.
+ * - `superseded: true` marks a trait that has been replaced by a newer one with
+ *   the same `subject` + `category`. The parser sets this instead of appending,
+ *   fixing the AVERIN "14 Halsen Court vs Tellis Court" append-only bug.
+ */
+export type CharacterTrait = {
+    id: string;
+    subject: string;             // PC name (or entity name for PC-adjacent traits)
+    category: DivergenceCategory; // which kind of fact this is
+    text: string;                // the narrative fact, e.g. "Lives at Tellis Court, Unit 4A"
+    importance: number;           // 1-10 narrative weight; drives retrieval scoring
+    eventTags: SceneEventType[];  // which scene types this trait is relevant to
+    sceneEstablished: string;     // sceneId where this trait was first recorded
+    superseded: boolean;           // true if a newer trait with same subject+category replaced this
+    source: 'llm' | 'manual' | 'seed';  // origin: parser / user edit / wizard seed
+};
+
+/**
+ * Core identity fields that are ALWAYS injected for the PC, regardless of
+ * scene tags. These live outside the trait list because they're structural
+ * (name/race/class don't change per scene and aren't subject to supersession).
+ */
+export type CharacterIdentity = {
+    name?: string;
+    race?: string;
+    class?: string;
+    archetype?: Archetype;
+    level?: number;
+};
+
+/**
+ * Structured replacement for the flat `characterProfile: string` field.
+ *
+ * - `identity` is always injected (Tier 1 core).
+ * - `activeTraits` are scored + scene-filtered + budget-capped at injection
+ *   time by `queryTraits` (the PC analogue of `queryFacts`).
+ * - `legacyNotes` is a frozen read-only blob from the old flat-string profile.
+ *   It is NEVER injected into the prompt — kept only so users don't lose
+ *   data on upgrade. The parser rebuilds `activeTraits` over a few turns.
+ */
+export type CharacterProfileState = {
+    identity: CharacterIdentity;
+    stats?: StatBlock;
+    activeTraits: CharacterTrait[];
+    legacyNotes?: string;
+};
+
+/** Number of PC traits always injected regardless of scene tags. */
+export const CORE_FLOOR_TRAITS = 5;
 
 export type DivergenceEntry = {
     id: string;
@@ -535,6 +595,14 @@ export type NPCEntry = {
     // Lazy-decay activity accumulator (Opus §2, WO-07). Default-absent = treated as { value: 0, tick: now }
     // on read via currentActivity(). Never persisted as a separate deepTier — membership is derived.
     agencyActivity?: { value: number; tick: number };
+    /**
+     * Scene-type tags per profile field, used for smart context injection.
+     * Key = field name (e.g. 'voice', 'combatTier'), value = SceneEventType[]
+     * indicating which scene types this field is relevant to. Fields not in
+     * the map (or NPCs without fieldTags) always inject — preserving today's
+     * behavior as the backward-compatible default.
+     */
+    fieldTags?: Record<string, SceneEventType[]>;
 };
 
 

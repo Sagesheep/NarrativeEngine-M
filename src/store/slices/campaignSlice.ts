@@ -45,7 +45,7 @@ export const defaultContext: GameContext = {
     starter: '',
     continuePrompt: '',
     inventory: '',
-    characterProfile: '',
+    characterProfile: { identity: {}, activeTraits: [] },
     surpriseDC: 95,
     encounterDC: 198,
     worldEventDC: 498,

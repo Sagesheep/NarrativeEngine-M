@@ -1,10 +1,12 @@
-import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveChapter, ArchiveIndexEntry, PinnedExcerpt } from '../../types';
+import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveChapter, ArchiveIndexEntry, PinnedExcerpt, SceneEventType } from '../../types';
+import { CORE_FLOOR_TRAITS } from '../../types';
 import type { OpenAIMessage } from '../llm/llmService';
 import { countTokens } from '../infrastructure';
 import { computeBudgets, type BudgetMap } from './payloadBudgeter';
 import { buildStablePreamble, buildDivergenceBlock } from './payloadStableContent';
 import { assembleWorldBlocks, trimWorldBlocks, type WorldBlock, type NpcStrategy } from './payloadWorldContext';
 import { fitHistory, buildPinnedMemoriesBlock, pinnedExcerptsTokenCost } from './payloadHistoryFitting';
+import { queryTraits, formatTraitsForContext } from '../campaign-state';
 
 export type { BudgetMap, WorldBlock, NpcStrategy };
 
@@ -28,6 +30,7 @@ export interface BuildPayloadOptions {
     archiveIndex?: ArchiveIndexEntry[];
     semanticallyRecalledNpcIds?: string[];
     pinnedExcerpts?: PinnedExcerpt[];
+    plannerEventTypes?: SceneEventType[];
 }
 
 export { pinnedExcerptsTokenCost };
@@ -52,6 +55,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         archiveIndex,
         semanticallyRecalledNpcIds,
         pinnedExcerpts,
+        plannerEventTypes,
     } = opts;
 
     const trace: PayloadTrace[] = [];
@@ -102,6 +106,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         deepContextSummary,
         chapters,
         divergenceRegister,
+        plannerEventTypes,
         addTrace,
     });
 
@@ -122,7 +127,27 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
 
     const volatileParts: string[] = [];
     if (retrievedRulesContent) volatileParts.push(retrievedRulesContent);
-    if (context.characterProfileActive && context.characterProfile) volatileParts.push(`[CHARACTER PROFILE]\n${context.characterProfile}`);
+    // PC profile: structured retrieval via queryTraits (scene-aware, budget-capped).
+    // Replaces the legacy wholesale `[CHARACTER PROFILE]\n${flat-string}` injection.
+    // Core floor (CORE_FLOOR_TRAITS=5) always injects; extended tier is filtered
+    // by planner eventTypes + entity match + token budget. legacyNotes is storage-
+    // only and never injected.
+    if (context.characterProfileActive && context.characterProfile) {
+        const profile = context.characterProfile;
+        if (profile.activeTraits && profile.activeTraits.length > 0 || profile.identity.name || profile.stats) {
+            const selected = queryTraits(
+                profile.activeTraits ?? [],
+                userMessage,
+                history,
+                npcLedger,
+                plannerEventTypes,
+                400,
+                CORE_FLOOR_TRAITS,
+            );
+            const profileText = formatTraitsForContext(profile, selected);
+            if (profileText) volatileParts.push(profileText);
+        }
+    }
     if (context.inventoryActive && context.inventory) volatileParts.push(`[PLAYER INVENTORY]\n${context.inventory}`);
     if (context.sceneNoteActive && context.sceneNote) volatileParts.push(`[SCENE NOTE: VOLATILE GUIDANCE]\n${context.sceneNote}`);
 

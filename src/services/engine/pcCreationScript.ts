@@ -1,4 +1,4 @@
-import type { CombatTier, Archetype, StatBlock } from '../../types';
+import type { CombatTier, Archetype, StatBlock, CharacterProfileState, CharacterTrait, SceneEventType, DivergenceCategory } from '../../types';
 
 // ─── Point-buy budget tables ──────────────────────────────────────────────────
 
@@ -115,8 +115,101 @@ export function getPCBudget(isOP: boolean): 'NORMAL' | 'OP' {
     return isOP ? 'OP' : 'NORMAL';
 }
 
-// ─── Build character profile text for [CHARACTER PROFILE] block ─────────────────
+// ─── Build structured character profile state for [CHARACTER PROFILE] block ──────
+//
+// Replaces buildCharacterProfileText. Returns a CharacterProfileState with:
+//   - identity (always injected, Tier 1 core)
+//   - stats (structured, projected from the allocation)
+//   - activeTraits (3-5 seed traits derived from concept/voice/drives, tagged
+//     with SceneEventType so the retrieval layer can scene-filter them)
+//
+// The legacy flat-string shape is gone — the parser and payload builder now
+// consume the structured form. See CharacterProfileState in types/index.ts.
 
+function seedTrait(
+    subject: string,
+    category: DivergenceCategory,
+    text: string,
+    importance: number,
+    eventTags: SceneEventType[],
+): CharacterTrait {
+    return {
+        id: `seed-${subject.toLowerCase()}-${category}-${Math.random().toString(36).slice(2, 8)}`,
+        subject,
+        category,
+        text,
+        importance,
+        eventTags,
+        sceneEstablished: 'pc-creation',
+        superseded: false,
+        source: 'seed',
+    };
+}
+
+export function buildCharacterProfileState(entry: {
+    name: string;
+    concept?: string;
+    playstyle?: string;
+    voice?: string;
+    drives?: string;
+    stats: StatBlock;
+    archetype: Archetype;
+    isOP: boolean;
+}): CharacterProfileState {
+    const traits: CharacterTrait[] = [];
+
+    if (entry.concept) {
+        traits.push(seedTrait(
+            entry.name,
+            'party_facts',
+            `Concept: ${entry.concept}`,
+            8,
+            ['relationship_shift', 'revelation', 'quest_milestone'],
+        ));
+    }
+    if (entry.voice) {
+        traits.push(seedTrait(
+            entry.name,
+            'party_facts',
+            `Voice: ${entry.voice}`,
+            5,
+            ['relationship_shift', 'other'],
+        ));
+    }
+    if (entry.drives) {
+        traits.push(seedTrait(
+            entry.name,
+            'promises_debts',
+            `Drives: ${entry.drives}`,
+            9,
+            ['promise', 'quest_milestone', 'relationship_shift'],
+        ));
+    }
+    // Archetype is always seeded — it's combat-relevant identity.
+    traits.push(seedTrait(
+        entry.name,
+        'party_facts',
+        `Archetype: ${entry.archetype}`,
+        7,
+        ['combat', 'discovery'],
+    ));
+
+    return {
+        identity: {
+            name: entry.name,
+            archetype: entry.archetype,
+            level: 1,
+        },
+        stats: entry.stats,
+        activeTraits: traits,
+    };
+}
+
+/**
+ * @deprecated Use buildCharacterProfileState instead. Retained only for
+ * backward-compatibility with any external callers; the structured form is
+ * canonical. Returns a flat-string projection of the structured state.
+ */
 export function buildCharacterProfileText(entry: {
     name: string;
     concept?: string;
@@ -127,14 +220,16 @@ export function buildCharacterProfileText(entry: {
     archetype: Archetype;
     isOP: boolean;
 }): string {
-    const lines: string[] = [
-        `**${entry.name}**`,
-        `Archetype: ${entry.archetype}`,
-        `VIT ${entry.stats.VIT} | PWR ${entry.stats.PWR} | RES ${entry.stats.RES} | FOC ${entry.stats.FOC} | SPD ${entry.stats.SPD} | WIL ${entry.stats.WIL}`,
-    ];
-    if (entry.concept) lines.push(`Concept: ${entry.concept}`);
-    if (entry.playstyle) lines.push(`Playstyle: ${entry.playstyle}`);
-    if (entry.voice) lines.push(`Voice: ${entry.voice}`);
-    if (entry.drives) lines.push(`Drives: ${entry.drives}`);
+    const state = buildCharacterProfileState(entry);
+    const lines: string[] = [];
+    if (state.identity.name) lines.push(`**${state.identity.name}**`);
+    if (state.identity.archetype) lines.push(`Archetype: ${state.identity.archetype}`);
+    if (state.stats) {
+        const s = state.stats;
+        lines.push(`VIT ${s.VIT} | PWR ${s.PWR} | RES ${s.RES} | FOC ${s.FOC} | SPD ${s.SPD} | WIL ${s.WIL}`);
+    }
+    for (const trait of state.activeTraits) {
+        lines.push(trait.text);
+    }
     return lines.join('\n');
 }

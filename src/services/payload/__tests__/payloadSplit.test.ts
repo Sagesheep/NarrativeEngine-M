@@ -43,7 +43,7 @@ const stubContext: GameContext = {
     continuePrompt: '',
     inventory: '',
     inventoryLastScene: '',
-    characterProfile: '',
+    characterProfile: { identity: {}, activeTraits: [] },
     characterProfileLastScene: '',
     starterActive: false,
     continuePromptActive: false,

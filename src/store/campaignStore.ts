@@ -85,6 +85,25 @@ export async function loadCampaignState(campaignId: string): Promise<CampaignSta
     if (!state) return null;
     if (state.context) {
         for (const key of AI_PLAYER_CONTEXT_KEYS) delete (state.context as any)[key];
+        // Migrate legacy flat-string characterProfile to structured CharacterProfileState.
+        // The old string is preserved verbatim as legacyNotes (storage-only, never
+        // injected). activeTraits starts empty and the parser rebuilds it over
+        // the next few turns. See AGENTS.md / CharacterProfileState type.
+        type MutableContext = Record<string, unknown>;
+        const ctx = state.context as MutableContext;
+        const cp = ctx.characterProfile;
+        if (typeof cp === 'string') {
+            ctx.characterProfile = {
+                identity: {},
+                activeTraits: [],
+                legacyNotes: cp || undefined,
+            };
+        } else if (cp && typeof cp === 'object') {
+            // Forward-compatible: ensure required fields exist for older struct saves.
+            const cpObj = cp as Record<string, unknown>;
+            if (!cpObj.identity) cpObj.identity = {};
+            if (!Array.isArray(cpObj.activeTraits)) cpObj.activeTraits = [];
+        }
     }
     // Existing campaigns saved with debug mode on still carry fat per-message
     // debugPayloads on disk; strip them on load so they never re-enter the

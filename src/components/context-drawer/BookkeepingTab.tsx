@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { RefreshCw, User } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { scanCharacterProfile } from '../../services/campaign-state';
-import { TemplateField } from './TemplateField';
+import { CharacterProfileEditor } from './CharacterProfileEditor';
 import { toast } from '../Toast';
 import type { LLMProvider } from '../../types';
 
@@ -36,14 +36,9 @@ export function BookkeepingTab() {
             </p>
 
             <div>
-                <TemplateField
-                    icon={<User size={13} />}
-                    label="Character Profile"
-                    color="text-ember"
-                    value={context.characterProfile}
-                    onChange={(v) => updateContext({ characterProfile: v })}
-                    placeholder={"Name: Eldon\nRace: Elf\nClass: Rogue\nLevel: 3\n\nAbilities:\n- Stealth\n- Backstab"}
-                    rows={6}
+                <CharacterProfileEditor
+                    profile={context.characterProfile}
+                    onChange={(next) => updateContext({ characterProfile: next })}
                     active={context.characterProfileActive}
                     onToggle={() => updateContext({ characterProfileActive: !context.characterProfileActive })}
                 />

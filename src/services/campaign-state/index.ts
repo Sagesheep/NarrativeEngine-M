@@ -27,7 +27,8 @@ export { runFactClustering, assignSubjectTokens, deriveSubjectTokenUpdates } fro
 export type { ClusteringCancelled, AssignSubjectTokensResult, SubjectTokenUpdate } from './factClusterer';
 export { runFactDedup } from './factDeduper';
 export type { DedupGroup, DedupCancelled, DedupResult } from './factDeduper';
-export { fetchFacts, extractContextEntities, queryFacts, formatFactsForContext } from './semanticMemory';
+export { fetchFacts, extractContextEntities, queryFacts, formatFactsForContext, queryTraits, formatTraitsForContext } from './semanticMemory';
+export type { SelectedTraits } from './semanticMemory';
 export { resolveTimeline, queryTimeline, formatResolvedForContext, getEventsByScene, getEventsByChapter, getScenesWithEvents, maxImportanceForScene } from './timelineResolver';
 export type { ResolvedTruth } from './timelineResolver';
 export { scanCharacterProfile } from './characterProfileParser';

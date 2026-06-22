@@ -1,4 +1,4 @@
-import type { LoreChunk, ArchiveScene } from '../../types';
+import type { LoreChunk, ArchiveScene, SceneEventType } from '../../types';
 import type { TurnCallbacks, TurnState, UtilityLLM } from './turnTypes';
 import { realUtilityLLM } from './utilityLLM';
 import { tierAllows } from './aiTier';
@@ -127,6 +127,7 @@ export async function gatherContext(
         archiveIndex: state.archiveIndex,
         semanticallyRecalledNpcIds,
         pinnedExcerpts: state.pinnedExcerpts,
+        plannerEventTypes: plannerResult?.filters?.eventTypes as SceneEventType[] | undefined,
     });
 
     return { relevantLore, relevantRules, sceneNumber, archiveRecall: finalArchiveRecall, semanticArchiveHits, semanticFactText, recommendedNPCNames, deepContextSummary, payloadResult };

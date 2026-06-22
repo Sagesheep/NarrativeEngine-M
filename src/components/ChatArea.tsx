@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
     Loader2,
-    ChevronDown, X
+    ChevronDown, ChevronUp, X
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -270,6 +270,23 @@ export function ChatArea() {
         return () => el.removeEventListener('scroll', handleScroll);
     }, []);
 
+    const scrollToPrevMessage = () => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+        const els = Array.from(container.querySelectorAll<HTMLElement>(':scope > [data-message-id]'));
+        if (!els.length) return;
+        const cTop = container.getBoundingClientRect().top;
+        const threshold = 4;
+        // step up to the message whose top sits just above the viewport top
+        let target: HTMLElement | null = null;
+        for (const el of els) {
+            if (el.getBoundingClientRect().top - cTop < -threshold) target = el;
+            else break;
+        }
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else container.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     const handleStop = () => {
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
@@ -381,7 +398,28 @@ export function ChatArea() {
 
             <PinnedMemoriesPanel open={pinnedPanelOpen} onClose={() => setPinnedPanelOpen(false)} />
 
-
+            {messages.length > 1 && (
+                <div className="relative z-40">
+                    <div className="absolute bottom-full right-3 mb-2 flex flex-col gap-2">
+                        <button
+                            onClick={scrollToPrevMessage}
+                            title="Jump to previous message"
+                            className="w-10 h-10 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"
+                        >
+                            <ChevronUp size={20} />
+                        </button>
+                        {showScrollFab && (
+                            <button
+                                onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                                title="Jump to latest message"
+                                className="w-10 h-10 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"
+                            >
+                                <ChevronDown size={20} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <TelemetryStrip phase={pipelinePhase} stats={streamingStats} loadingStatus={loadingStatus} />
 
@@ -402,11 +440,6 @@ export function ChatArea() {
                     />
                 }
             />
-
-            {showScrollFab && (
-                <button onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })} className="fixed bottom-[calc(140px+env(safe-area-inset-bottom))] right-4 z-50 w-10 h-10 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"><ChevronDown size={20} /></button>
-            )}
-
 
             <RenameNpcModal />
 

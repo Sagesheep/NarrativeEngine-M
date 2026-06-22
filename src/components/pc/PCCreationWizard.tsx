@@ -10,11 +10,11 @@ import {
     CREATION_QUESTIONS,
     getPCTier,
     getPCBudget,
-    buildCharacterProfileText,
+    buildCharacterProfileState,
     DEFAULT_STATS,
 } from '../../services/engine/pcCreationScript';
 import type { StatKey, CreationQuestion } from '../../services/engine/pcCreationScript';
-import type { StatBlock, Archetype, ChatMessage } from '../../types';
+import type { StatBlock, Archetype, ChatMessage, CharacterProfileState } from '../../types';
 import { generatePCProfile } from '../../services/npc/npcGeneration';
 import { WorldPrimerPanel } from './WorldPrimerPanel';
 
@@ -22,7 +22,7 @@ type WizardStep = 'questions' | 'stats' | 'review';
 
 export type PCCreationResult = {
     npcEntry: ReturnType<typeof generatePCProfile> extends Promise<infer T> ? T : never;
-    characterProfile: string;
+    characterProfile: CharacterProfileState;
 };
 
 type QuestionAnswers = Record<string, string>;
@@ -186,11 +186,23 @@ export function PCCreationWizard({ onComplete, onCancel }: {
                     archetype: selectedArchetype,
                     stats: overrides.stats,
                     condition: 'healthy' as const,
+                    fieldTags: {
+                        voice: ['relationship_shift', 'revelation', 'other'],
+                        hardBoundaries: ['relationship_shift', 'promise', 'betrayal'],
+                        softBoundaries: ['relationship_shift', 'betrayal'],
+                        behavioralTriggers: ['combat', 'relationship_shift', 'revelation'],
+                        exampleOutput: ['relationship_shift', 'other'],
+                        combatTier: ['combat'],
+                        archetype: ['combat', 'discovery'],
+                        stats: ['combat'],
+                        drift: ['relationship_shift', 'revelation'],
+                        innerState: ['relationship_shift', 'revelation', 'discovery'],
+                    } as Record<string, import('../../types').SceneEventType[]>,
                 };
                 addNPC(pcEntry);
             }
 
-            const profileText = buildCharacterProfileText({
+            const profileState = buildCharacterProfileState({
                 name: pcEntry.name,
                 concept: answers.concept,
                 playstyle: answers.playstyle,
@@ -201,7 +213,7 @@ export function PCCreationWizard({ onComplete, onCancel }: {
                 isOP,
             });
 
-            onComplete({ npcEntry: pcEntry, characterProfile: profileText });
+            onComplete({ npcEntry: pcEntry, characterProfile: profileState });
         } catch (err) {
             console.error('[PC Creation] Commit failed:', err);
         } finally {

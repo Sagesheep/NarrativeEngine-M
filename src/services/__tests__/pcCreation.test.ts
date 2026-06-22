@@ -10,6 +10,7 @@ import {
     getPCTier,
     getPCBudget,
     buildCharacterProfileText,
+    buildCharacterProfileState,
     DEFAULT_STATS,
 } from '../engine/pcCreationScript';
 import type { StatBlock } from '../../types';
@@ -134,8 +135,51 @@ describe('getPCTier / getPCBudget', () => {
     });
 });
 
-describe('buildCharacterProfileText', () => {
-    it('produces a profile string with name, archetype, and stats', () => {
+describe('buildCharacterProfileState', () => {
+    it('produces a structured profile with identity, stats, and seeded traits', () => {
+        const state = buildCharacterProfileState({
+            name: 'Test Hero',
+            concept: 'A wandering swordsman',
+            playstyle: 'Stand firm and protect allies (Bulwark)',
+            voice: 'Deep, measured',
+            drives: 'To find redemption',
+            stats: ARCHETYPE_PRESETS.bulwark,
+            archetype: 'bulwark',
+            isOP: false,
+        });
+        expect(state.identity.name).toBe('Test Hero');
+        expect(state.identity.archetype).toBe('bulwark');
+        expect(state.identity.level).toBe(1);
+        expect(state.stats).toEqual(ARCHETYPE_PRESETS.bulwark);
+        // Should have seeded traits for concept, voice, drives, archetype
+        expect(state.activeTraits.length).toBeGreaterThanOrEqual(3);
+        expect(state.activeTraits.some(t => t.text.includes('A wandering swordsman'))).toBe(true);
+        expect(state.activeTraits.some(t => t.text.includes('Deep, measured'))).toBe(true);
+        expect(state.activeTraits.some(t => t.text.includes('To find redemption'))).toBe(true);
+        // All traits should be non-superseded and seeded
+        expect(state.activeTraits.every(t => !t.superseded)).toBe(true);
+        expect(state.activeTraits.every(t => t.source === 'seed')).toBe(true);
+        // Traits should have event tags
+        expect(state.activeTraits.every(t => t.eventTags.length > 0)).toBe(true);
+    });
+
+    it('omits optional traits when fields are absent', () => {
+        const state = buildCharacterProfileState({
+            name: 'Minimal',
+            stats: DEFAULT_STATS,
+            archetype: 'assassin',
+            isOP: false,
+        });
+        expect(state.identity.name).toBe('Minimal');
+        expect(state.identity.archetype).toBe('assassin');
+        // Only the archetype trait is seeded (concept/voice/drives absent)
+        expect(state.activeTraits.length).toBe(1);
+        expect(state.activeTraits[0].text).toContain('assassin');
+    });
+});
+
+describe('buildCharacterProfileText (deprecated flat-string projection)', () => {
+    it('produces a flat-string projection of the structured state', () => {
         const text = buildCharacterProfileText({
             name: 'Test Hero',
             concept: 'A wandering swordsman',

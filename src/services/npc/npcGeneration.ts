@@ -1,4 +1,4 @@
-import type { LLMProvider, ChatMessage, NPCEntry, StatBlock, CombatTier, Archetype, PersonalityHex, HexAxis, NPCWants, RelationGraph } from '../../types';
+import type { LLMProvider, ChatMessage, NPCEntry, StatBlock, CombatTier, Archetype, PersonalityHex, HexAxis, NPCWants, RelationGraph, SceneEventType } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { uid } from '../../utils/uid';
 import { embedText, getCurrentModelId } from '../embedding';
@@ -25,6 +25,34 @@ import { COMBAT_TIER_ARCHETYPE_RUBRIC } from './npcDetector';
 import { getPCTier } from '../engine/pcCreationScript';
 
 const RETRY_SUFFIX = '\n\nIMPORTANT: Your previous response was not valid JSON. Respond with ONLY valid JSON. No markdown fences, no comments, no trailing commas, no extra text before or after the JSON.';
+
+/**
+ * Build default scene-type tags for an NPC's profile fields. Used by the smart
+ * context injection layer (payloadWorldContext.ts) to filter which NPC fields
+ * reach the GM prompt based on the planner's scene classification.
+ *
+ * Fields not listed here (or NPCs without fieldTags) always inject — backward
+ * compatible. The tags are deliberately broad: a field tagged [social] injects
+ * in any social-flavored scene, not just pure "relationship_shift" scenes.
+ */
+function buildDefaultFieldTags(npc: NPCEntry): Record<string, SceneEventType[]> {
+    const tags: Record<string, SceneEventType[]> = {
+        voice: ['relationship_shift', 'revelation', 'other'],
+        hardBoundaries: ['relationship_shift', 'promise', 'betrayal'],
+        softBoundaries: ['relationship_shift', 'betrayal'],
+        behavioralTriggers: ['combat', 'relationship_shift', 'revelation'],
+        exampleOutput: ['relationship_shift', 'other'],
+        drift: ['relationship_shift', 'revelation'],
+        innerState: ['relationship_shift', 'revelation', 'discovery'],
+    };
+    // Combat-specific fields only tagged if the NPC has them.
+    if (npc.combatTier || npc.archetype || npc.stats) {
+        tags.combatTier = ['combat'];
+        tags.archetype = ['combat', 'discovery'];
+        tags.stats = ['combat'];
+    }
+    return tags;
+}
 
 async function llmParseJson<T>(
     provider: LLMProvider,
@@ -370,6 +398,11 @@ export async function generateNPCProfile(
             newEntry.personalityHex = validatePersonalityHex(finalParsed.personalityHex);
             newEntry.region = typeof finalParsed.region === 'string' ? finalParsed.region.trim() : '';
             newEntry.populated = true;
+            // Scene-type tags per profile field for smart context injection.
+            // Untagged fields (or NPCs without fieldTags) always inject — this
+            // is the backward-compatible default. Tagged fields only inject when
+            // the planner's eventTypes intersect the field's tags.
+            newEntry.fieldTags = buildDefaultFieldTags(newEntry);
             // Phase-3: seed Goal records from the new medium/long wants (engine layer; hidden cols).
             newEntry.goalRecords = buildGoalsFromWants(newEntry.wants.medium, newEntry.wants.long, agencyTraits, 0);
 
