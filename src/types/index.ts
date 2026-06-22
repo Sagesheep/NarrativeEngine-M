@@ -595,6 +595,14 @@ export type NPCEntry = {
     // Lazy-decay activity accumulator (Opus §2, WO-07). Default-absent = treated as { value: 0, tick: now }
     // on read via currentActivity(). Never persisted as a separate deepTier — membership is derived.
     agencyActivity?: { value: number; tick: number };
+    // ---- NPC Generation Refit (Phase 1) — SOCIAL/disposition groups ----
+    // NOTE: these are SOCIAL/disposition archetype keys (e.g. 'scholar', 'brute', 'fool') from
+    // dispositionGroups.ts ENVELOPES. They are NOT the combat `archetype` field above
+    // (bulwark/assassin/caster/skirmisher/brute). Do not conflate the two.
+    // primaryGroup = what they are now (immutable after birth); secondaryGroup = trajectory
+    // (update()-able so player action can bend it). Optional → existing saves load unchanged.
+    primaryGroup?: string;
+    secondaryGroup?: string;
     /**
      * Scene-type tags per profile field, used for smart context injection.
      * Key = field name (e.g. 'voice', 'combatTier'), value = SceneEventType[]

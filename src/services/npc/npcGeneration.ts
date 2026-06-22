@@ -512,7 +512,10 @@ If ANY changes occurred, respond with:
 Each update MUST include "name" and only the fields that fundamentally changed. Allowed changes keys:
   status, disposition, goals, storyRelevance, personality (flavor text), voice, appearance,
   wants (medium/long text only — NEVER include "short"; short is engine-managed),
-  pcRelation, personalityHex, traits, region, faction, relations.
+  pcRelation, personalityHex, traits, region, faction, relations, secondaryGroup.
+  "secondaryGroup" is the NPC's SOCIAL/disposition trajectory archetype key (e.g. 'scholar',
+  'brute', 'fool') — NOT the combat "archetype". Only send when the NPC's growth trajectory
+  has genuinely shifted. "primaryGroup" is immutable and NEVER allowed here.
 DO NOT include attributes that stayed the same.
 
 **FORBIDDEN keys** (Phase-4 schema; sending these is a data-model error):
