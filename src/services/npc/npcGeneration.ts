@@ -10,6 +10,9 @@ import { affinityToPcRelation, relationBand, describeHex } from './agencyBands';
 import { RUNG_DEFAULT, RUNG_CEILING_DEFAULT, PC_RELATION_MIN, PC_RELATION_MAX, PC_RELATION_MAX_STEP } from './agencyConstants';
 import { hexDelta } from './agencyDrift';
 import { buildGoalsFromWants } from './agencyGoals';
+import { GROUP_KEYS } from './dispositionGroups';
+import { rollHex, pickGroups, drawConsistentTraits, rollLooksTier } from './hexRoll';
+import { buildVoiceDirective } from './hexVoiceGuide';
 import {
     extractJson,
     ANCHOR_BEFORE_INPUT,
@@ -242,70 +245,48 @@ export async function generateNPCProfile(
     existingLedger?: NPCEntry[],
     campaignId?: string,
     matureMode: boolean = false,
+    rng: () => number = Math.random,
 ): Promise<void> {
     try {
         console.log(`[NPC Generator] Initiating background profile generation for: ${npcName}`);
 
         const recentHistory = history.slice(-15).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
 
-        const systemPrompt = joinPromptSections(
-            `${TTRPG_PERSONA_GM_ASSISTANT} Your job is to generate a profile for a new character based on the recent chat history. If the character is barely mentioned, invent a plausible, tropes-appropriate profile that fits the current scene context.`,
+        // ---- NPC Generation Refit (Phase 1): propose → roll → render ----
+        // The model PROPOSES scene-appropriate abstract groups + 2 anchor traits (semantics);
+        // the engine ROLLS the hexagon inside the proposed envelope (variety + refusal to
+        // converge); the model RENDERS the fixed skeleton into world flavour. The model never
+        // emits the personality hexagon — hex comes from the ROLL (00_SPEC §4).
+        const proposal = await proposeGroupsAndTraits(provider, recentHistory, existingLedger, matureMode);
+        const validGroups = proposal.candidateGroups.filter(k => (GROUP_KEYS as readonly string[]).includes(k));
+        const candidateGroups = validGroups.length > 0 ? Array.from(new Set(validGroups)) : Array.from(GROUP_KEYS);
+        const anchorTraits = proposal.anchorTraits.filter(t => KNOWN_TRAITS.has(t)).slice(0, 2);
 
-            `OUTPUT FORMAT — respond with a JSON object matching this structure exactly:
-{
-  "name": "String (The primary name)",
-  "aliases": "String (Comma separated aliases or titles)",
-  "status": "String (Alive, Deceased, Missing, or Unknown)",
-  "faction": "String (The faction, group, or origin this NPC belongs to)",
-  "storyRelevance": "String (Why this NPC matters to the current story)",
-  "disposition": "String (current mood/attitude: Helpful, Hostile, Suspicious, etc)",
-  "goals": "String (Core motive)",
-  "voice": "String — describe HOW this NPC speaks: sentence length, vocabulary level, verbal quirks, catchphrases, accent notes. Be specific.",
-  "appearance": "String — physical description grounded in the RECENT CHAT HISTORY. Quote details mentioned in prose (hair color, clothing, distinguishing marks). If the chat history does not describe them, write a minimal trope-appropriate description and mark it as inferred with prefix '[inferred] '.",
-  "personality": "String — core personality traits in plain language. What drives them? How do they treat others? What do they fear?",
-  "exampleOutput": "String — one line of in-character dialogue that demonstrates their voice and personality. Include a brief action in brackets if needed.",
-  "drives": {
-    "coreWant": "String — one sentence: a deep character truth this NPC carries (NOT a goal). Example: 'to be seen as capable, not just loyal'",
-    "sessionWant": "String — one sentence: what this NPC is working toward in the current arc. Example: 'convince the party to take the northern route'",
-    "sceneWant": "String — one sentence: what this NPC wants from the immediate scene. Example: 'get the player to trust her enough to share information'"
-  },
-  "behavioralTriggers": [
-    { "keyword": "String — a word or phrase that, when it appears in player input or narrative, activates this trigger", "shift": "String — a PHYSICAL or VERBAL behavioral shift (NOT an emotion). Good: 'crosses arms, answers in single syllables'. Bad: 'becomes angry'." }
-  ],
-  "hardBoundaries": ["String — something this NPC will never do. Example: 'will not betray her sister'"],
-  "softBoundaries": ["String — something this NPC dislikes but may tolerate under pressure. Example: 'dislikes being excluded from plans'"],
-  "tier": "String — one of: 'recurring' (named character likely to return), 'oneshot' (named but scene-bound), 'walkon' (background, minor speaking role). Default 'oneshot' if uncertain.",
-  "combatTier": "String — one of: 'minion', 'grunt', 'elite', 'boss', 'legendary'. Only for NPCs who could plausibly fight. Omit if purely social/narrative.",
-  "archetype": "String — one of: 'bulwark', 'assassin', 'caster', 'skirmisher', 'brute'. Only for NPCs who could plausibly fight. Omit if purely social/narrative.",
-  "longWant": "String — ONE long-term life ambition driving this NPC across the whole campaign, grounded in their bio/faction. Archetypes: ascend to power, become the strongest, avenge/restore, transcend/transform.",
-  "traits": ["String — up to 5 personality traits, each chosen ONLY from the CONTROLLED TRAIT VOCABULARY below. Omit any that don't fit; never invent new ones."],
-  "personalityHex": {"drive":0,"diligence":0,"boldness":0,"warmth":0,"empathy":0,"composure":0},
-  "region": "String — the NPC's coarse home or current location if discernible from context (e.g. 'Ryuten', 'the academy'), else an empty string."
-}`,
+        // ENGINE ROLL (deterministic given rng; no model).
+        const { primary, secondary } = pickGroups(candidateGroups, rng);
+        const rolledHex = rollHex(primary, secondary, anchorTraits, rng);
+        const drawnTraits = drawConsistentTraits(rolledHex, anchorTraits, rng, matureMode);
+        const finalTraits = [...anchorTraits, ...drawnTraits].slice(0, 5);
+        const looksTier = rollLooksTier(rng);
+        const voiceDirective = buildVoiceDirective(rolledHex);
+        const hexBandLine = describeHex(rolledHex);
 
-            HEX_AXIS_LEGEND,
-            `CONTROLLED TRAIT VOCABULARY — the "traits" array may only contain words from this list: ${offeredTraitNames(matureMode).join(', ')}.`,
+        // RENDER CALL — pass the skeleton + band-words + looksTier + axis-keyed voice direction
+        // into the existing profile-render prompt. The model emits appearance/disposition/goals/
+        // voice/exampleOutput/storyRelevance/wants ONLY; never the hex or numeric axes.
+        const renderPrompt = buildRenderPrompt({
+            npcName,
+            recentHistory,
+            existingLedger,
+            matureMode,
+            primaryGroup: primary,
+            secondaryGroup: secondary,
+            hexBandLine,
+            looksTier,
+            voiceDirective,
+        });
 
-            COMBAT_TIER_ARCHETYPE_RUBRIC,
-
-            JSON_ONLY_FOOTER,
-            ANCHOR_BEFORE_INPUT,
-            INPUT_DELIMITER,
-        );
-
-        const reservedNames = (existingLedger ?? []).map(n => n.name?.trim()).filter(Boolean);
-        const reservedNamesSection = reservedNames.length > 0
-            ? `RESERVED NAMES — already used by existing characters. The profile's "name" and "aliases" must NOT collide with any of these (a shared family surname is acceptable only with an explicit in-story relation; never a first name): ${reservedNames.join(', ')}`
-            : '';
-
-        const fullPrompt = joinPromptSections(
-            systemPrompt,
-            `NPC NAME: "${npcName}"`,
-            reservedNamesSection,
-            `RECENT CHAT HISTORY:\n${recentHistory}`,
-        );
-
-        const parsed = await llmParseJson<Record<string, unknown>>(provider, fullPrompt, 'NPC Generator');
+        const parsed = await llmParseJson<Record<string, unknown>>(provider, renderPrompt, 'NPC Generator');
 
         if (parsed) {
             let finalParsed = parsed;
@@ -315,10 +296,7 @@ export async function generateNPCProfile(
             if (existingLedger && existingLedger.length > 0 && checkNameCollision(resolvedName, resolvedAliases, existingLedger)) {
                 console.warn(`[NPC Generator] Name collision detected: "${resolvedName}" already exists in ledger. Re-prompting for disambiguation.`);
                 const retryPrompt = joinPromptSections(
-                    systemPrompt,
-                    `NPC NAME: "${npcName}"`,
-                    reservedNamesSection,
-                    `RECENT CHAT HISTORY:\n${recentHistory}`,
+                    renderPrompt,
                     `Name "${resolvedName}" is already used by an existing NPC. Pick a different name (consider regional/family disambiguators) and re-emit the JSON.`,
                 );
                 const retryParsed = await llmParseJson<Record<string, unknown>>(provider, retryPrompt, 'NPC Generator (name retry)');
@@ -385,17 +363,21 @@ export async function generateNPCProfile(
             };
 
             // ---- NPC Agency Phase 2: come out already populated (wants / hexagon / traits / region) ----
-            const agencyTraits = validateTraits(finalParsed.traits, matureMode);
+            // Phase-1 refit: hex comes from the ROLL (rolledHex), NOT the model. Traits come from
+            // anchorTraits + engine-drawn consistent traits (finalTraits), NOT the model. The model's
+            // traits/personalityHex in `finalParsed` are ignored on the new path.
             const longWant = (typeof finalParsed.longWant === 'string' && finalParsed.longWant.trim())
                 ? finalParsed.longWant.trim()
                 : defaultLongWant(newEntry.faction);
-            newEntry.traits = agencyTraits;
+            newEntry.traits = finalTraits;
             newEntry.wants = {
-                short: drawShortWants({ matureMode, traits: agencyTraits }),
-                medium: drawMediumWants({ matureMode, traits: agencyTraits }),
+                short: drawShortWants({ matureMode, traits: finalTraits }),
+                medium: drawMediumWants({ matureMode, traits: finalTraits }),
                 long: longWant,
             };
-            newEntry.personalityHex = validatePersonalityHex(finalParsed.personalityHex);
+            newEntry.personalityHex = rolledHex;
+            newEntry.primaryGroup = primary;
+            newEntry.secondaryGroup = secondary;
             newEntry.region = typeof finalParsed.region === 'string' ? finalParsed.region.trim() : '';
             newEntry.populated = true;
             // Scene-type tags per profile field for smart context injection.
@@ -404,10 +386,10 @@ export async function generateNPCProfile(
             // the planner's eventTypes intersect the field's tags.
             newEntry.fieldTags = buildDefaultFieldTags(newEntry);
             // Phase-3: seed Goal records from the new medium/long wants (engine layer; hidden cols).
-            newEntry.goalRecords = buildGoalsFromWants(newEntry.wants.medium, newEntry.wants.long, agencyTraits, 0);
+            newEntry.goalRecords = buildGoalsFromWants(newEntry.wants.medium, newEntry.wants.long, finalTraits, 0);
 
             addNPCToStore(newEntry);
-            console.log(`[NPC Generator] Successfully generated and added profile for: ${newEntry.name} (tier=${newEntry.tier})`);
+            console.log(`[NPC Generator] Successfully generated and added profile for: ${newEntry.name} (tier=${newEntry.tier}, primaryGroup=${primary}, secondaryGroup=${secondary ?? 'none'})`);
 
             if (campaignId) {
                 embedAndStoreNPC(campaignId, newEntry).catch((e) => console.warn(`[NPC Generator] Embedding failed for ${newEntry.name}:`, e));
@@ -417,6 +399,146 @@ export async function generateNPCProfile(
     } catch (err) {
         console.error('[NPC Generator] Fatal error during generation:', err);
     }
+}
+
+// ── Phase-1 refit helpers: propose → roll → render ───────────────────────────────────────
+
+type ProposeResult = { candidateGroups: string[]; anchorTraits: string[] };
+
+/**
+ * Call A (PROPOSE) — cheap/util provider. The model proposes a world-appropriate set of abstract
+ * SOCIAL groups (keys from GROUP_KEYS) + up to 2 anchor traits (from the controlled vocab). Pure
+ * semantics — what the NPC is good at / what groups plausibly appear here. Validates/whitelelists
+ * both; on empty/garbage, falls back to all GROUP_KEYS + no anchors. Never throws; on any failure
+ * returns the safe fallback.
+ */
+async function proposeGroupsAndTraits(
+    provider: LLMProvider,
+    recentHistory: string,
+    existingLedger: NPCEntry[] | undefined,
+    matureMode: boolean,
+): Promise<ProposeResult> {
+    const fallback: ProposeResult = { candidateGroups: Array.from(GROUP_KEYS), anchorTraits: [] };
+    const rosterLine = existingLedger && existingLedger.length > 0
+        ? `EXISTING ROSTER (for contrast — propose groups that distinguish this NPC from these): ${existingLedger.map(n => n.name).join(', ')}`
+        : '';
+
+    const prompt = joinPromptSections(
+        `${TTRPG_PERSONA_GM_ASSISTANT} Your job is to propose a set of scene-appropriate SOCIAL archetype groups for a new NPC, plus 2 anchor personality traits. You are NOT writing the NPC's profile — only picking abstract groups + traits the engine will roll inside.`,
+        `SOCIAL ARCHETYPE GROUPS (pick 2–4 that plausibly appear in this scene; these are SETTING-AGNOSTIC personality templates, NOT combat roles): ${Array.from(GROUP_KEYS).join(', ')}.`,
+        `ANCHOR TRAITS (pick exactly 2 from this controlled vocabulary${matureMode ? ' (mature allowed)' : ' (mature tier NOT allowed)'}): ${offeredTraitNames(matureMode).join(', ')}.`,
+        `OUTPUT FORMAT — a single JSON object, no other text:
+{"candidateGroups": ["group1", "group2", ...], "anchorTraits": ["trait1", "trait2"]}`,
+        JSON_ONLY_FOOTER,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
+        rosterLine,
+        `[RECENT SCENE]\n${recentHistory}\n[END SCENE]`,
+    );
+
+    try {
+        const parsed = await llmParseJson<Record<string, unknown>>(provider, prompt, 'NPC Propose');
+        if (!parsed) return fallback;
+        const candidateGroups = Array.isArray(parsed.candidateGroups)
+            ? (parsed.candidateGroups as unknown[]).map(g => String(g).toLowerCase().trim()).filter(Boolean)
+            : [];
+        const anchorTraits = Array.isArray(parsed.anchorTraits)
+            ? (parsed.anchorTraits as unknown[]).map(g => String(g).toLowerCase().trim()).filter(Boolean)
+            : [];
+        return { candidateGroups, anchorTraits };
+    } catch (err) {
+        console.warn('[NPC Propose] Falling back to all GROUP_KEYS + no anchors:', err);
+        return fallback;
+    }
+}
+
+type RenderPromptOpts = {
+    npcName: string;
+    recentHistory: string;
+    existingLedger: NPCEntry[] | undefined;
+    matureMode: boolean;
+    primaryGroup: string;
+    secondaryGroup: string | undefined;
+    hexBandLine: string;
+    looksTier: 'attractive' | 'plain' | 'ugly';
+    voiceDirective: string;
+};
+
+/**
+ * Call B (RENDER) — build the profile-render prompt. The model renders the fixed skeleton into
+ * world flavour: appearance, disposition, goals, voice, exampleOutput, storyRelevance, wants. It
+ * NEVER emits `personalityHex` or numeric axes — the hex comes from the engine roll. The rolled
+ * hex band-words + looksTier + axis-keyed voice directive (WO-5) constrain voice/exampleOutput so
+ * they're a function of the numbers, not a generic default.
+ */
+function buildRenderPrompt(opts: RenderPromptOpts): string {
+    const { npcName, recentHistory, existingLedger, matureMode, primaryGroup, secondaryGroup, hexBandLine, looksTier, voiceDirective } = opts;
+
+    const systemPrompt = joinPromptSections(
+        `${TTRPG_PERSONA_GM_ASSISTANT} Your job is to RENDER a profile for a new character whose personality skeleton has ALREADY BEEN ROLLED by the engine. You receive the rolled personality (as band-words), the archetype groups, the looks tier, and per-axis voice direction. Express these as vivid world-appropriate prose. If the character is barely mentioned, invent a plausible profile that fits the scene context AND matches the rolled skeleton.`,
+        `ROLLED SKELETON (engine-authored — treat as fixed truth; do NOT contradict):
+- Primary social group: ${primaryGroup}
+- Secondary social group (trajectory): ${secondaryGroup ?? 'none'}
+- Personality (band-words): ${hexBandLine}
+- Looks tier: ${looksTier}`,
+
+        voiceDirective
+            ? `VOICE DIRECTION (axis extremes — the exampleOutput/voice MUST express these):
+${voiceDirective}`
+            : '',
+
+        `OUTPUT FORMAT — respond with a JSON object matching this structure exactly:
+{
+  "name": "String (The primary name)",
+  "aliases": "String (Comma separated aliases or titles)",
+  "status": "String (Alive, Deceased, Missing, or Unknown)",
+  "faction": "String (The faction, group, or origin this NPC belongs to)",
+  "storyRelevance": "String (Why this NPC matters to the current story)",
+  "disposition": "String (current mood/attitude: Helpful, Hostile, Suspicious, etc — MUST be consistent with the rolled personality band-words)",
+  "goals": "String (Core motive)",
+  "voice": "String — describe HOW this NPC speaks, DERIVED from the VOICE DIRECTION above. Sentence length, vocabulary level, verbal quirks, catchphrases, accent notes. Be specific.",
+  "appearance": "String — physical description grounded in the RECENT CHAT HISTORY and the rolled LOOKS TIER (${looksTier}). Quote details mentioned in prose (hair color, clothing, distinguishing marks). If the chat history does not describe them, write a minimal trope-appropriate description and mark it as inferred with prefix '[inferred] '.",
+  "personality": "String — core personality traits in plain language, CONSISTENT with the rolled band-words. What drives them? How do they treat others? What do they fear?",
+  "exampleOutput": "String — one line of in-character dialogue that DEMONSTRATES the VOICE DIRECTION (the axis extremes above). Include a brief action in brackets if needed.",
+  "drives": {
+    "coreWant": "String — one sentence: a deep character truth this NPC carries (NOT a goal). Example: 'to be seen as capable, not just loyal'",
+    "sessionWant": "String — one sentence: what this NPC is working toward in the current arc. Example: 'convince the party to take the northern route'",
+    "sceneWant": "String — one sentence: what this NPC wants from the immediate scene. Example: 'get the player to trust her enough to share information'"
+  },
+  "behavioralTriggers": [
+    { "keyword": "String — a word or phrase that, when it appears in player input or narrative, activates this trigger", "shift": "String — a PHYSICAL or VERBAL behavioral shift (NOT an emotion). Good: 'crosses arms, answers in single syllables'. Bad: 'becomes angry'." }
+  ],
+  "hardBoundaries": ["String — something this NPC will never do. Example: 'will not betray her sister'"],
+  "softBoundaries": ["String — something this NPC dislikes but may tolerate under pressure. Example: 'dislikes being excluded from plans'"],
+  "tier": "String — one of: 'recurring' (named character likely to return), 'oneshot' (named but scene-bound), 'walkon' (background, minor speaking role). Default 'oneshot' if uncertain.",
+  "combatTier": "String — one of: 'minion', 'grunt', 'elite', 'boss', 'legendary'. Only for NPCs who could plausibly fight. Omit if purely social/narrative.",
+  "archetype": "String — one of: 'bulwark', 'assassin', 'caster', 'skirmisher', 'brute'. Only for NPCs who could plausibly fight. Omit if purely social/narrative.",
+  "longWant": "String — ONE long-term life ambition driving this NPC across the whole campaign, grounded in their bio/faction. Archetypes: ascend to power, become the strongest, avenge/restore, transcend/transform.",
+  "region": "String — the NPC's coarse home or current location if discernible from context (e.g. 'Ryuten', 'the academy'), else an empty string."
+}
+
+IMPORTANT: Do NOT emit a "personalityHex" field, numeric axis values, or a "traits" array. The engine has already rolled the personality hexagon and chosen the traits; you only render flavour. Numeric personality output will be discarded.`,
+
+        `CONTROLLED TRAIT VOCABULARY — for reference only (the engine has already chosen the traits from this list): ${offeredTraitNames(matureMode).join(', ')}.`,
+
+        COMBAT_TIER_ARCHETYPE_RUBRIC,
+
+        JSON_ONLY_FOOTER,
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
+    );
+
+    const reservedNames = (existingLedger ?? []).map(n => n.name?.trim()).filter(Boolean);
+    const reservedNamesSection = reservedNames.length > 0
+        ? `RESERVED NAMES — already used by existing characters. The profile's "name" and "aliases" must NOT collide with any of these (a shared family surname is acceptable only with an explicit in-story relation; never a first name): ${reservedNames.join(', ')}`
+        : '';
+
+    return joinPromptSections(
+        systemPrompt,
+        `NPC NAME: "${npcName}"`,
+        reservedNamesSection,
+        `RECENT CHAT HISTORY:\n${recentHistory}`,
+    );
 }
 
 /**
