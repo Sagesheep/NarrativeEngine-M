@@ -1,5 +1,12 @@
+import type { HexAxis } from '../../types';
+
 export type PoolTier = 'default' | 'mature';
-export type TraitEntry  = { text: string; tier: PoolTier; hook: string };
+// NPC Generation Refit (Phase 1) — `axisMods` carries small per-axis nudges (±1, rarely ±2)
+// the engine applies AFTER the base roll and clamps at the hard ±3. This is the escape hatch
+// that lets a trait defy the group envelope (e.g. a 'brave'-tagged NPC whose boldness rolled
+// low lands "brave at heart, currently cowed"). FLASH authors the values (see
+// 02_FLASH_TABLES.md DELIVERABLE 2); existing entries keep text/tier/hook unchanged.
+export type TraitEntry  = { text: string; tier: PoolTier; hook: string; axisMods?: Partial<Record<HexAxis, number>> };
 export type WantEntry   = { text: string; tier: PoolTier; kind: 'short' | 'medium' };
 export type ActionEntry = { text: string; tier: PoolTier; context: 'peaceful' | 'dangerous' };
 
