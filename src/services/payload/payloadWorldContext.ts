@@ -2,8 +2,24 @@ import type { GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry,
 import { countTokens } from '../infrastructure';
 import { buildDriftAlert } from '../npc';
 import { relationBand, describeHex } from '../npc/agencyBands';
+import { buildReactionMenu, type ReactionContext } from '../npc/reactionMenu';
 import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
+
+/**
+ * Map the planner's scene-type tags to the reaction menu's peaceful/dangerous
+ * context split. Combat + the high-stakes scene types surface the danger pool;
+ * everything else gets the peaceful pool (the default — covers social scenes,
+ * travel, discovery, etc.). If the planner returned no tags, default peaceful.
+ */
+const DANGER_EVENT_TYPES: ReadonlySet<SceneEventType> = new Set([
+    'combat', 'betrayal', 'death',
+]);
+function reactionContextFor(plannerTags: Set<SceneEventType> | null): ReactionContext {
+    if (!plannerTags || plannerTags.size === 0) return 'peaceful';
+    for (const t of plannerTags) if (DANGER_EVENT_TYPES.has(t)) return 'dangerous';
+    return 'peaceful';
+}
 
 export function computeOpenThreads(chapters: ArchiveChapter[]): { text: string; chapterId: string }[] {
     const allUnresolved: { text: string; chapterId: string }[] = [];
@@ -131,8 +147,16 @@ function fieldTagMatches(
  * (wants.short[0] or drives fallback). This mirrors the most critical parts
  * of buildBehaviorDirective but drops voice, boundaries, triggers, example,
  * and drift — those move to the extended tier.
+ *
+ * Phase 2 §9.1 — the engine-built reaction menu is appended here (the primary
+ * behavioral signal). The engine already consumed personalityHex + pcRelation
+ * + traits + context to pick the reactions, so the menu is the cooked dish —
+ * the AI picks ONE from the list instead of interpreting raw ingredients.
+ * Rides inside the NPC budget slice (payloadBuilder two-phase trim), so it
+ * never competes against lore/archive. Skipped for legacy hex-less NPCs or
+ * when the menu is empty.
  */
-function buildCoreDirective(npc: NPCEntry): string {
+function buildCoreDirective(npc: NPCEntry, reactionCtx: ReactionContext): string {
     const parts: string[] = [];
 
     const affinityLabel = npc.pcRelation !== undefined
@@ -149,6 +173,20 @@ function buildCoreDirective(npc: NPCEntry): string {
     } else if (npc.drives?.sceneWant) {
         const sw = npc.drives.sceneWant;
         parts.push(`NOW: ${sw.length > 40 ? sw.substring(0, 40) + '…' : sw}`);
+    }
+
+    // Phase 2 §9.1 — engine-built reaction menu. The enforcement clause
+    // prevents the story AI from inventing a softer, out-of-character reaction
+    // (the sycophant-smoothing failure mode). The engine picks rank-1 + 2
+    // sampled alternatives from REACTION_VOCAB filtered by personality + traits
+    // + relationship + context — zero LLM cost. Skipped for legacy hex-less NPCs.
+    if (npc.personalityHex) {
+        const menu = buildReactionMenu(npc, reactionCtx);
+        if (menu.length > 0) {
+            parts.push(
+                `REACTIONS (choose ONE and play it — do NOT invent a softer reaction; prefer the less obvious when several fit): ${menu.join(' | ')}`
+            );
+        }
     }
 
     return parts.length > 0 ? `PLAY AS: ${parts.join(' | ')}` : '';
@@ -498,6 +536,7 @@ export function assembleWorldBlocks(opts: {
             const plannerTags = plannerEventTypes && plannerEventTypes.length > 0
                 ? new Set(plannerEventTypes)
                 : null;
+            const reactionCtx = reactionContextFor(plannerTags);
             const npcSegments: { npcId: string; content: string; tokens: number }[] = [];
 
             for (const npc of activeNPCs) {
@@ -505,7 +544,7 @@ export function assembleWorldBlocks(opts: {
 
                 // Core tier — always injected.
                 const coreParts: string[] = [minifyNPC(npc, offStage)];
-                const coreDirective = buildCoreDirective(npc);
+                const coreDirective = buildCoreDirective(npc, reactionCtx);
                 if (coreDirective) coreParts.push(coreDirective);
                 const coreLine = coreParts.join(' | ');
 

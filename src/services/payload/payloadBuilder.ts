@@ -113,9 +113,32 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     // Active-NPC ids selected for this turn's payload (Plan 05 swap signal).
     // Read pre-trim: if the block is later budget-trimmed we still report these as
     // "in payload", which only biases the swap toward 'flag' (never a blind swap).
-    const activeNpcIds = worldBlocks.find(b => b.source === 'Active NPCs')?.npcIds ?? [];
+    const npcBlockIndex = worldBlocks.findIndex(b => b.source === 'Active NPCs');
+    const activeNpcIds = npcBlockIndex >= 0 ? (worldBlocks[npcBlockIndex].npcIds ?? []) : [];
 
-    const { worldContent, currentWorldTokens } = trimWorldBlocks(worldBlocks, budgetMap.world, addTrace);
+    // ── Two-phase trim (Phase 2) ────────────────────────────────────────────
+    // NPCs get a guaranteed 5% floor (budgetMap.npc), decoupled from the world
+    // budget so lore/archive pressure can never starve the scene's actors. The
+    // NPC block is trimmed against its own slice first; any unused budget flows
+    // back to the world pool for the remaining world blocks (lore, archive, etc).
+    const npcBlock = npcBlockIndex >= 0 ? worldBlocks.splice(npcBlockIndex, 1)[0] : null;
+    const npcBudget = budgetMap.npc;
+
+    let npcContent = '';
+    let npcTokensUsed = 0;
+    if (npcBlock) {
+        const trimmed = trimWorldBlocks([npcBlock], npcBudget, addTrace);
+        npcContent = trimmed.worldContent;
+        npcTokensUsed = trimmed.currentWorldTokens;
+    }
+
+    // Remainder of the NPC slice returns to the world pool.
+    const worldBudgetWithRemainder = budgetMap.world + (npcBudget - npcTokensUsed);
+    const { worldContent, currentWorldTokens } = trimWorldBlocks(worldBlocks, worldBudgetWithRemainder, addTrace);
+
+    // NPCs pack first (they're the scene's actors), then the rest of the world.
+    const combinedWorldContent = [npcContent, worldContent].filter(Boolean).join('\n\n');
+    const combinedWorldTokens = npcTokensUsed + currentWorldTokens;
 
     let pinnedMemoriesContent = '';
     let pinnedMemoriesTokens = 0;
@@ -155,15 +178,15 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     const volatileTokens = countTokens(volatileContent);
     addTrace({ source: 'Profile/Inventory/SceneNote', classification: 'volatile_state', tokens: volatileTokens, reason: 'Player state + scene note', included: true, position: 'system_dynamic', preview: volatileContent });
 
-    const nonHistoryTokens = stableTokens + divergenceTokens + pinnedMemoriesTokens + currentWorldTokens + volatileTokens;
+    const nonHistoryTokens = stableTokens + divergenceTokens + pinnedMemoriesTokens + combinedWorldTokens + volatileTokens;
 
     // Observability: stable/summary/volatile budget buckets are advisory (only
-    // `world` and `rules` are enforced). If the enforced + unenforced sections
+    // `world`, `npc` and `rules` are enforced). If the enforced + unenforced sections
     // already exceed the limit, history is fully starved and the provider will
     // truncate — surface it instead of failing silently (AUDIT F6/F9).
     const nonHistoryPlusUser = nonHistoryTokens + countTokens(userMessage);
     if (nonHistoryPlusUser > limit) {
-        console.warn(`[Payload] non-history content ${nonHistoryPlusUser}t exceeds context limit ${limit}t (stable=${stableTokens} divergence=${divergenceTokens} world=${currentWorldTokens} volatile=${volatileTokens} pinned=${pinnedMemoriesTokens}) — history dropped, provider may truncate`);
+        console.warn(`[Payload] non-history content ${nonHistoryPlusUser}t exceeds context limit ${limit}t (stable=${stableTokens} divergence=${divergenceTokens} world=${combinedWorldTokens} volatile=${volatileTokens} pinned=${pinnedMemoriesTokens}) — history dropped, provider may truncate`);
     }
 
     const { fitted, historyUsed, historyBudget } = fitHistory(
@@ -199,7 +222,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         }
     }
 
-    const volatileBlock = [worldContent, volatileContent].filter(Boolean).join('\n\n');
+    const volatileBlock = [combinedWorldContent, volatileContent].filter(Boolean).join('\n\n');
     const finalUserContent = volatileBlock
         ? `${volatileBlock}\n\n---\n\n${userMessage}`
         : userMessage;

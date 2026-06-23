@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { buildDivergenceBlock } from '../payloadStableContent';
 import { assembleWorldBlocks } from '../payloadWorldContext';
+import { computeBudgets } from '../payloadBudgeter';
 import { EMPTY_REGISTER } from '../../campaign-state';
 import type { DivergenceRegister, DivergenceEntry, NPCEntry, GameContext, ChatMessage, PayloadTrace } from '../../../types';
 
@@ -189,6 +190,91 @@ describe('payloadSplit — T1', () => {
             expect(invocationBlock).not.toContain('onStageNpcIds');
             expect(invocationBlock).not.toContain('npcLedger');
             expect(invocationBlock).not.toContain('ledger');
+        });
+    });
+
+    // ── Phase 2: reaction menu wiring + NPC budget decoupling ──────────────
+    describe('Phase 2 — reaction menu reaches the payload', () => {
+        const hexNpc = makeNpc('npc_hex', 'Kakashi', {
+            personalityHex: { drive: 1, diligence: 2, boldness: 1, warmth: 2, empathy: 2, composure: 1 },
+            traits: ['loyal', 'protective', 'honorable'],
+            pcRelation: 2,
+            goals: 'protect his students',
+        });
+
+        it('buildCoreDirective emits the REACTIONS line for a hex-bearing NPC (peaceful)', () => {
+            const blocks = assembleWorldBlocks({
+                context: stubContext,
+                history: [{ id: 'm1', role: 'user', content: 'hey Kakashi', timestamp: 0 }] as ChatMessage[],
+                userMessage: 'hey Kakashi',
+                npcLedger: [hexNpc],
+                onStageNpcIds: ['npc_hex'],
+                addTrace: noTrace,
+            });
+
+            const npcBlock = blocks.find(b => b.source === 'Active NPCs');
+            expect(npcBlock).toBeDefined();
+            expect(npcBlock!.content).toContain('REACTIONS (choose ONE');
+            expect(npcBlock!.content).toContain('do NOT invent a softer reaction');
+        });
+
+        it('reaction menu is absent for a legacy hex-less NPC', () => {
+            const legacyNpc = makeNpc('npc_legacy', 'OldMan', { goals: 'sit by the road' });
+            const blocks = assembleWorldBlocks({
+                context: stubContext,
+                history: [{ id: 'm1', role: 'user', content: 'hey OldMan', timestamp: 0 }] as ChatMessage[],
+                userMessage: 'hey OldMan',
+                npcLedger: [legacyNpc],
+                onStageNpcIds: ['npc_legacy'],
+                addTrace: noTrace,
+            });
+
+            const npcBlock = blocks.find(b => b.source === 'Active NPCs');
+            expect(npcBlock).toBeDefined();
+            expect(npcBlock!.content).not.toContain('REACTIONS');
+        });
+
+        it('uses the dangerous context pool when planner tags a combat scene', () => {
+            const combatNpc = makeNpc('npc_fighter', 'Bram', {
+                personalityHex: { drive: 0, diligence: 0, boldness: 2, warmth: -1, empathy: -1, composure: -1 },
+                traits: ['impulsive', 'proud'],
+                pcRelation: 0,
+                goals: 'win',
+            });
+            const blocks = assembleWorldBlocks({
+                context: stubContext,
+                history: [{ id: 'm1', role: 'user', content: 'Bram attack!', timestamp: 0 }] as ChatMessage[],
+                userMessage: 'Bram attack!',
+                npcLedger: [combatNpc],
+                onStageNpcIds: ['npc_fighter'],
+                plannerEventTypes: ['combat'],
+                addTrace: noTrace,
+            });
+
+            const npcBlock = blocks.find(b => b.source === 'Active NPCs');
+            expect(npcBlock).toBeDefined();
+            // 'reckless charge' is in the dangerous context pool — should surface
+            // for a bold/impulsive NPC on a combat-tagged scene.
+            expect(npcBlock!.content).toContain('REACTIONS');
+        });
+    });
+
+    describe('Phase 2 — NPC budget decoupling (5% floor)', () => {
+        it('computeBudgets allocates a 5% npc slice', () => {
+            const budgets = computeBudgets(8192, false, 0.10);
+            expect(budgets.npc).toBeGreaterThan(0);
+            // 8192 limit - ~819 rules = ~7373 adjusted; 5% = ~368
+            expect(budgets.npc).toBeGreaterThanOrEqual(350);
+            expect(budgets.npc).toBeLessThanOrEqual(420);
+            // World budget should be smaller now (adjusted minus npc slice)
+            expect(budgets.world).toBeLessThan(4000);
+        });
+
+        it('computeBudgets scales the npc slice with context limit (200K → ~10K)', () => {
+            const budgets = computeBudgets(200_000, false, 0.10);
+            // 200K limit - 20K rules (10%) = 180K adjusted; 5% = 9000
+            expect(budgets.npc).toBeGreaterThanOrEqual(8999);
+            expect(budgets.npc).toBeLessThanOrEqual(11_000);
         });
     });
 });
