@@ -273,7 +273,9 @@ export function chunkLoreFile(markdown: string, category?: 'lore' | 'rule'): Lor
             } else if (ragHint?.mode === 'vector') {
                 activationModes = ['vector'];
             } else {
-                activationModes = ['vector'];
+                // No hint: default to BOTH semantic + keyword so the chunk can be
+                // pulled in by meaning-similarity OR an exact term match.
+                activationModes = ['vector', 'keyword'];
             }
 
             const autoCategory = classifyCategory(currentHeader, content, parentHeader);

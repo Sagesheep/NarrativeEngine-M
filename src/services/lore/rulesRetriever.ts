@@ -52,7 +52,7 @@ export function retrieveRelevantRules(
         if (includedSet.has(chunk.id)) continue;
 
         const cm = meta[chunk.id];
-        const modes = cm ? cm.activationModes : ['vector'];
+        const modes = cm ? cm.activationModes : ['vector', 'keyword'];
         const isKeywordMode = modes.includes('keyword');
         const isVectorMode = modes.includes('vector');
 
@@ -106,7 +106,7 @@ export function retrieveRelevantRules(
         const chunk = chunkById.get(id);
         if (!chunk) return false;
         const cm = meta[chunk.id];
-        const modes = cm ? cm.activationModes : ['vector'];
+        const modes = cm ? cm.activationModes : ['vector', 'keyword'];
         return modes.includes('vector');
     });
 

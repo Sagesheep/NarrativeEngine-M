@@ -380,6 +380,14 @@ export async function generateNPCProfile(
             newEntry.secondaryGroup = secondary;
             newEntry.region = typeof finalParsed.region === 'string' ? finalParsed.region.trim() : '';
             newEntry.populated = true;
+            // B2 — Generated NPCs are born populated:true but pcRelation was never homed at birth,
+            // and populateAgencyFields skips populated NPCs, so pcRelation stayed undefined forever
+            // and every NPC scored as a stranger in Phase 2's reaction menu. Home it now from the
+            // affinity band (same mapping populateAgencyFields uses). Guard with === undefined so an
+            // explicit value (e.g. set by a caller) is never clobbered.
+            if (newEntry.pcRelation === undefined) {
+                newEntry.pcRelation = affinityToPcRelation(newEntry.affinity ?? 50);
+            }
             // Scene-type tags per profile field for smart context injection.
             // Untagged fields (or NPCs without fieldTags) always inject — this
             // is the backward-compatible default. Tagged fields only inject when

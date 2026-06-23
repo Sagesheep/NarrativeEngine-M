@@ -16,6 +16,26 @@ export function deriveDefaultLoreMeta(chunk: LoreChunk): ('vector' | 'keyword' |
     return ['vector', 'keyword'];
 }
 
+/**
+ * Returns `['vector', 'keyword']` when `modes` is the legacy unhinted default of
+ * `['vector']`-only; otherwise returns `modes` unchanged.
+ *
+ * Older builds had the chunker emit vector-only as the no-hint default, so every
+ * imported chunk persisted a single 'vector' mode and never picked up keyword
+ * matching — the user had to toggle keyword on by hand. The intended default has
+ * always been both. This upgrades those stale chunks in place. Explicit
+ * `<!-- rag: vector -->` hints (ragMode === 'vector') and user-toggled chunks are
+ * left alone by the callers via their own guards.
+ */
+export function upgradeVectorOnlyDefault(
+    modes: ('vector' | 'keyword' | 'always')[] | undefined
+): ('vector' | 'keyword' | 'always')[] | undefined {
+    if (modes && modes.length === 1 && modes[0] === 'vector') {
+        return ['vector', 'keyword'];
+    }
+    return modes;
+}
+
 export async function indexLore(
     campaignId: string,
     chunks: LoreChunk[],

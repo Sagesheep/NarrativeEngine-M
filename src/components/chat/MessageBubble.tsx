@@ -3,6 +3,7 @@ import { Edit2, RotateCcw, Trash2, Loader2, Terminal, Zap, Check, X, Pin, PinOff
 import type { ChatMessage } from '../../types';
 import { EngineTraceView } from '../engine-trace/EngineTraceView';
 import { ContentWithChips } from './ContentWithChips';
+import { ToolCallChips } from './ToolCallChips';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from '../Toast';
@@ -22,6 +23,8 @@ type MessageBubbleProps = {
     showReasoning: boolean;
     debugMode: boolean;
     onTagDivergence?: (msg: ChatMessage) => void;
+    /** Result of this message's tool_call, resolved from the matching `tool` role message. */
+    toolResult?: string;
 };
 
 type ImageAttachmentProps = {
@@ -122,7 +125,8 @@ export const MessageBubble = memo(function MessageBubble({
     onDelete,
     showReasoning,
     debugMode,
-    onTagDivergence
+    onTagDivergence,
+    toolResult
 }: MessageBubbleProps) {
     const markdownContent = typeof msg.displayContent === 'string' ? msg.displayContent : (typeof msg.content === 'string' ? msg.content : '');
     let thinkingBlock = '';
@@ -403,6 +407,8 @@ export const MessageBubble = memo(function MessageBubble({
                             </span>
                             <span className="text-[9px] text-text-dim">{new Date(msg.timestamp).toLocaleTimeString()}</span>
                         </div>
+
+                        <ToolCallChips toolCalls={msg.tool_calls} toolResult={toolResult} />
 
                         <div
                             className={`gm-prose prose-sm leading-relaxed overflow-hidden`}

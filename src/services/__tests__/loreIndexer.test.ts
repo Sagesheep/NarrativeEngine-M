@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { indexLore, deriveDefaultLoreMeta } from '../lore/loreIndexer';
+import { indexLore, deriveDefaultLoreMeta, upgradeVectorOnlyDefault } from '../lore/loreIndexer';
 import type { LoreChunk } from '../../types';
 
 vi.mock('../storage/embeddingStorage', () => ({
@@ -62,6 +62,31 @@ describe('deriveDefaultLoreMeta', () => {
     it('defaults to [vector, keyword] when no hints', () => {
         const chunk = makeChunk('test', { priority: 5 });
         expect(deriveDefaultLoreMeta(chunk)).toEqual(['vector', 'keyword']);
+    });
+});
+
+describe('upgradeVectorOnlyDefault', () => {
+    it('upgrades legacy [vector]-only to [vector, keyword]', () => {
+        expect(upgradeVectorOnlyDefault(['vector'])).toEqual(['vector', 'keyword']);
+    });
+
+    it('leaves [vector, keyword] unchanged', () => {
+        const modes: ('vector' | 'keyword' | 'always')[] = ['vector', 'keyword'];
+        expect(upgradeVectorOnlyDefault(modes)).toBe(modes);
+    });
+
+    it('leaves [keyword]-only unchanged', () => {
+        const modes: ('vector' | 'keyword' | 'always')[] = ['keyword'];
+        expect(upgradeVectorOnlyDefault(modes)).toBe(modes);
+    });
+
+    it('leaves [always] unchanged', () => {
+        const modes: ('vector' | 'keyword' | 'always')[] = ['always'];
+        expect(upgradeVectorOnlyDefault(modes)).toBe(modes);
+    });
+
+    it('passes undefined through (caller derives default)', () => {
+        expect(upgradeVectorOnlyDefault(undefined)).toBeUndefined();
     });
 });
 

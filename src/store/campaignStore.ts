@@ -1,6 +1,8 @@
 import { get, set, del } from 'idb-keyval';
-import type { Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, ArchiveChapter, SemanticFact, TimelineEvent, EntityEntry, DivergenceRegister, PinnedExcerpt, NPCPressure } from '../types';
+import type { Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, ArchiveChapter, SemanticFact, TimelineEvent, EntityEntry, DivergenceRegister, PinnedExcerpt, NPCPressure, RuleChunkMeta } from '../types';
 import { imageStorage } from '../services/storage/imageStorage';
+import { upgradeVectorOnlyDefault } from '../services/lore/loreIndexer';
+import { affinityToPcRelation } from '../services/npc/agencyBands';
 
 export type CampaignState = {
     context: GameContext;
@@ -104,6 +106,18 @@ export async function loadCampaignState(campaignId: string): Promise<CampaignSta
             if (!cpObj.identity) cpObj.identity = {};
             if (!Array.isArray(cpObj.activeTraits)) cpObj.activeTraits = [];
         }
+
+        // Migrate legacy vector-only rule meta to vector+keyword (matches the lore
+        // chunk migration in getLoreChunks). Explicit `<!-- rag: vector -->` rules
+        // re-assert vector-only on the next RulesManager parse via deriveDefaultMeta.
+        const rulesMeta = (ctx.rulesChunkMeta ?? null) as Record<string, RuleChunkMeta> | null;
+        if (rulesMeta) {
+            for (const id of Object.keys(rulesMeta)) {
+                const m = rulesMeta[id];
+                const upgraded = upgradeVectorOnlyDefault(m?.activationModes);
+                if (m && upgraded !== m.activationModes) m.activationModes = upgraded!;
+            }
+        }
     }
     // Existing campaigns saved with debug mode on still carry fat per-message
     // debugPayloads on disk; strip them on load so they never re-enter the
@@ -118,8 +132,25 @@ export async function saveLoreChunks(campaignId: string, chunks: LoreChunk[]): P
 }
 
 export async function getLoreChunks(campaignId: string): Promise<LoreChunk[]> {
-    const chunks = await get(`lore_${campaignId}`);
-    return chunks || [];
+    const chunks: LoreChunk[] | undefined = await get(`lore_${campaignId}`);
+    if (!chunks || chunks.length === 0) return chunks || [];
+
+    // Migrate legacy unhinted vector-only chunks (the old chunker default) to
+    // vector+keyword, so existing campaigns get keyword matching without a
+    // manual per-chunk toggle. Leave user-edited modes and explicit
+    // `<!-- rag: vector -->` hints (ragMode === 'vector') untouched.
+    let mutated = false;
+    for (const chunk of chunks) {
+        if (chunk.modesUserEdited || chunk.ragMode === 'vector') continue;
+        const upgraded = upgradeVectorOnlyDefault(chunk.activationModes);
+        if (upgraded !== chunk.activationModes) {
+            chunk.activationModes = upgraded;
+            mutated = true;
+        }
+    }
+    if (mutated) await set(`lore_${campaignId}`, chunks);
+
+    return chunks;
 }
 
 // ─── NPC Ledger ───
@@ -130,7 +161,24 @@ export async function saveNPCLedger(campaignId: string, npcs: NPCEntry[]): Promi
 
 export async function getNPCLedger(campaignId: string): Promise<NPCEntry[]> {
     const npcs = await get(`npcs_${campaignId}`);
-    return npcs || [];
+    if (!npcs || npcs.length === 0) return npcs || [];
+
+    // B2 — lazy migration for existing saves: home pcRelation for any NPC where it's still
+    // undefined. populateAgencyFields only runs on UN-populated NPCs, and generated NPCs were
+    // born populated:true with pcRelation unset, so legacy NPCs read "[Aff: Neutral]" forever
+    // and Phase 2's reaction-menu relationship scoring never saw real drift. Home them here on
+    // load regardless of `populated`, mirroring the birth-block fix. Skip PCs (matches
+    // populateAgencyFields' !n.isPC filter). Never clobber an explicit value, never touch affinity.
+    let mutated = false;
+    for (const n of npcs) {
+        if (!n.isPC && n.pcRelation === undefined) {
+            n.pcRelation = affinityToPcRelation(n.affinity ?? 50);
+            mutated = true;
+        }
+    }
+    if (mutated) await set(`npcs_${campaignId}`, npcs);
+
+    return npcs;
 }
 
 // ─── NPC Pressure ───

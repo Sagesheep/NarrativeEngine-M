@@ -78,7 +78,8 @@ function deriveDefaultMeta(chunk: LoreChunk, existingMeta?: RuleChunkMeta): Rule
         defaultModes = [chunk.ragMode];
     } else {
         const isAlwaysCategory = chunk.alwaysInclude || chunk.priority >= 9;
-        defaultModes = isAlwaysCategory ? ['always'] : ['vector'];
+        // No hint: default to BOTH semantic + keyword (matches lore default).
+        defaultModes = isAlwaysCategory ? ['always'] : ['vector', 'keyword'];
     }
 
     if (existingMeta) {

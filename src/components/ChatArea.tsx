@@ -309,6 +309,16 @@ export function ChatArea() {
 
     const visibleMessages = useMemo(() => messages.filter(msg => msg.role !== 'tool').slice(-visibleCount), [messages, visibleCount]);
 
+    // Map tool_call_id -> result content, sourced from the (filtered-out) `tool` role
+    // messages, so each assistant bubble can surface what its tool call returned.
+    const toolResultById = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const m of messages) {
+            if (m.role === 'tool' && m.tool_call_id) map.set(m.tool_call_id, m.content);
+        }
+        return map;
+    }, [messages]);
+
     return (
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative md:pb-0">
             {context.sceneNoteActive && (
@@ -384,6 +394,7 @@ export function ChatArea() {
                         onDelete={stableDeleteMessage}
                         showReasoning={settings.showReasoning ?? false}
                         debugMode={settings.debugMode ?? false}
+                        toolResult={msg.tool_calls?.[0] ? toolResultById.get(msg.tool_calls[0].id) : undefined}
                     />
                 ))}
 
