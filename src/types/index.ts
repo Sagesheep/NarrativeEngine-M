@@ -604,6 +604,12 @@ export type NPCEntry = {
     // Lazy-decay activity accumulator (Opus §2, WO-07). Default-absent = treated as { value: 0, tick: now }
     // on read via currentActivity(). Never persisted as a separate deepTier — membership is derived.
     agencyActivity?: { value: number; tick: number };
+    // ---- NPC Inner Repression (peaceful social masking) ----
+    // Count of times this NPC has swallowed a hostile/self-interested reaction instead of
+    // expressing it. Pure engine-managed gauge: raises the hide-DC (masking gets harder as it
+    // climbs) until a forced break discharges it back toward 0 (catharsis). Never sent to the
+    // LLM. Default-absent = 0. See services/npc/reactionRepression.ts.
+    repressionPressure?: number;
     // ---- NPC Generation Refit (Phase 1) — SOCIAL/disposition groups ----
     // NOTE: these are SOCIAL/disposition archetype keys (e.g. 'scholar', 'brute', 'fool') from
     // dispositionGroups.ts ENVELOPES. They are NOT the combat `archetype` field above

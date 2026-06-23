@@ -1,6 +1,7 @@
 import type { NPCEntry, HexAxis } from '../../types';
 import { relationBand, describeHex, formatHexShift, formatRungShift } from './agencyBands';
 import { buildReactionMenu, type ReactionContext } from './reactionMenu';
+import { applyRepressionToMenu } from './reactionRepression';
 
 function affinityDescriptor(v: number): string {
     if (v <= 15) return 'Nemesis — actively hostile';
@@ -85,7 +86,13 @@ export function buildBehaviorDirective(npc: NPCEntry, opts: BehaviorDirectiveOpt
         const context = opts.context ?? 'peaceful';
         const rng = opts.rng ?? Math.random;
         const matureMode = opts.matureMode ?? false;
-        const menu = buildReactionMenu(npc, context, rng, matureMode);
+        const rawMenu = buildReactionMenu(npc, context, rng, matureMode);
+        // Inner repression (peaceful only): if the NPC's top impulse is a hostile/self-interested
+        // one, the engine rolls whether they hide it and rewrites that entry into a leak/mask
+        // token. The `event` (pressure delta / catharsis) is intentionally discarded here —
+        // payload assembly can re-run, so booking happens once-per-turn elsewhere, not in this
+        // read path. See reactionRepression.ts.
+        const { menu } = applyRepressionToMenu(rawMenu, npc, context, rng);
         if (menu.length > 0) {
             // NOTE: fallback switch point — if playtest shows the AI still always grabs the
             // gentlest, replace the menu with a single engine-picked reaction (rank-1 or

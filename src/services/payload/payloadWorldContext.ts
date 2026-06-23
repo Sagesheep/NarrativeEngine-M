@@ -3,6 +3,7 @@ import { countTokens } from '../infrastructure';
 import { buildDriftAlert } from '../npc';
 import { relationBand, describeHex } from '../npc/agencyBands';
 import { buildReactionMenu, type ReactionContext } from '../npc/reactionMenu';
+import { applyRepressionToMenu } from '../npc/reactionRepression';
 import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
 
@@ -181,7 +182,10 @@ function buildCoreDirective(npc: NPCEntry, reactionCtx: ReactionContext): string
     // sampled alternatives from REACTION_VOCAB filtered by personality + traits
     // + relationship + context — zero LLM cost. Skipped for legacy hex-less NPCs.
     if (npc.personalityHex) {
-        const menu = buildReactionMenu(npc, reactionCtx);
+        const rawMenu = buildReactionMenu(npc, reactionCtx);
+        // Inner repression (peaceful only) — rewrites a hostile top impulse into a leak/mask
+        // token. Event discarded here (read path); booked once-per-turn elsewhere.
+        const { menu } = applyRepressionToMenu(rawMenu, npc, reactionCtx);
         if (menu.length > 0) {
             parts.push(
                 `REACTIONS (choose ONE and play it — do NOT invent a softer reaction; prefer the less obvious when several fit): ${menu.join(' | ')}`
