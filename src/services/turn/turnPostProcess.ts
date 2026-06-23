@@ -935,7 +935,7 @@ function runTimeskipPath(
 // arcSurfaceLine into context.arcDigest (mirror the agencyDigest fold at ~629).
 // Pure dice + deterministic scan; ZERO LLM. The ONLY deliberate cost is the gated
 // spawn at the seal seam (handleSealChapter).
-function runArcTick(
+export function runArcTick(
     state: TurnState,
     callbacks: TurnCallbacks,
     displayInput: string,
@@ -1039,10 +1039,10 @@ function runArcTick(
     // Fold the surface lines into context.arcDigest for the next GM call (+0, mirrors
     // the agencyDigest fold at ~629).
     if (digestLines.length > 0) {
-        const existing = state.context.arcDigest ?? '';
-        const newDigest = digestLines.join('\n');
-        const combined = existing ? existing + '\n' + newDigest : newDigest;
-        callbacks.updateContext({ arcDigest: combined });
+        // Rebuild fresh from THIS tick's surface lines — never concat the prior digest
+        // (stale rung lines were piling up across ticks). Dedupe as a safety net.
+        const fresh = Array.from(new Set(digestLines)).join('\n');
+        callbacks.updateContext({ arcDigest: fresh });
     }
 
     // Write avoidance facts to divergenceRegister (mergeSealEntries appends, same as
