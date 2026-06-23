@@ -239,6 +239,11 @@ export async function handlePostTurn(
 
     queueNPCValidation(state, callbacks, extractedNames, npcLedger, lastAssistantContent, activeCampaignId);
 
+    // B3 — a PC built in chat never flips characterProfileActive (only the PC Creation
+    // Wizard did, in ChatArea.tsx). Auto-enable the moment a campaign has an isPC NPC,
+    // and seed identity from it. See autoEnableCharacterProfile for the full contract.
+    autoEnableCharacterProfile(state, callbacks, npcLedger);
+
     runBookkeepingScans(state, callbacks, appendedSceneId);
 
     runNPCPressureScan(state, callbacks, npcLedger, displayInput, lastAssistantContent);
@@ -447,6 +452,37 @@ function queueNPCValidation(
             }
         }).catch((e) => console.warn('[TurnPostProcess] NPC-Validate queue push failed:', e));
     }
+}
+
+// B3 — Auto-enable characterProfileActive for chat-made PCs. The flag was flipped true
+// ONLY by the PC Creation Wizard (ChatArea.tsx), so PCs built conversationally never
+// engaged the structured-profile subsystem (scan, payload injection, TokenGauge). This
+// fires at a turn-pipeline seam with npcLedger in scope, before runBookkeepingScans so
+// the scan can fire the same turn. Idempotent: once the gate at ~:464 is true, this is a
+// no-op. Never clobbers an existing identity field (|| / ?? guards) — a profile the scan
+// already built must survive. Only name and combat archetype are mappable from NPCEntry
+// (isPC at types:562, archetype at :564; race/class/level are NOT on the entry); the rest
+// is left for scanCharacterProfile, which preserves identity and enriches it.
+export function autoEnableCharacterProfile(
+    state: TurnState,
+    callbacks: TurnCallbacks,
+    npcLedger: NPCEntry[],
+): void {
+    if (state.context.characterProfileActive) return;
+    const pc = npcLedger.find(n => n.isPC);
+    if (!pc) return;
+    const profile = state.context.characterProfile ?? { identity: {}, activeTraits: [] };
+    const identity = profile.identity ?? {};
+    const seededIdentity = {
+        ...identity,
+        name: identity.name || pc.name,
+        archetype: identity.archetype ?? pc.archetype,
+    };
+    callbacks.updateContext({
+        characterProfileActive: true,
+        characterProfile: { ...profile, identity: seededIdentity },
+    });
+    console.log(`[B3] Auto-enabled characterProfileActive; seeded identity.name from PC "${pc.name}"`);
 }
 
 function runBookkeepingScans(
