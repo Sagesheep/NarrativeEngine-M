@@ -10,6 +10,30 @@ export type TraitEntry  = { text: string; tier: PoolTier; hook: string; axisMods
 export type WantEntry   = { text: string; tier: PoolTier; kind: 'short' | 'medium' };
 export type ActionEntry = { text: string; tier: PoolTier; context: 'peaceful' | 'dangerous' };
 
+// ---- NPC Generation Refit (Phase 2) — engine-built reaction menu (§9.1) ----
+// `REACTION_VOCAB` is the authored table of short behavioural *moves* the story AI must pick
+// from. GLM ships ~3 stubs so the build is green before FLASH 3.5 authors the full ~24–32
+// entries (see 05_PHASE2_BUILD.md §B). Scoring/gating/sampling lives in reactionMenu.ts; the
+// directive surfaces the result with a load-bearing enforcement clause
+// (npcBehaviorDirective.ts). Gates reuse the trait-hook vocabulary so a loyal NPC can never
+// be offered a jealousy/betrayal move (gate + low score = double exclusion).
+export type ReactionGate  = {
+    requireTraitAny?: string[];        // unconditional: NPC must have ≥1 (e.g. cruelty needs a cruel trait)
+    forbidTraitAny?: string[];         // unconditional: NPC must have none (rare — use sparingly)
+    forbidTraitWhenClose?: string[];   // RELATIONSHIP-scoped: block if NPC has any AND pcRelation >= RELATION_CLOSE
+};
+export type ReactionEntry = {
+    text: string;                                   // the move, e.g. 'proud, understated approval'
+    context: 'peaceful' | 'dangerous';              // reuse the ActionEntry context split
+    tier: 'default' | 'mature';
+    axisWeights: Partial<Record<HexAxis, number>>;  // PERSONALITY fit — dotted against NPC hex
+    relationWeight?: number;                        // RELATIONSHIP fit — multiplied by pcRelation (-3..+3).
+                                                    //   negative = surfaces at low/neutral trust, fades when liked
+                                                    //   (betrayal/self-interest); positive = needs warmth (loyal support)
+    traitKeys?: string[];                           // NPC has any → score bonus (bias, NOT a requirement)
+    gate?: ReactionGate;
+};
+
 export const TRAIT_VOCAB: readonly TraitEntry[] = Object.freeze([
     { text: 'faithful', tier: 'default', hook: 'gate: blocks non-spouse romance targeting them', axisMods: { diligence: 1 } },
     { text: 'promiscuous', tier: 'default', hook: 'heat-bias: raises intimacy heat', axisMods: { warmth: 1, composure: -1 } },
@@ -181,3 +205,107 @@ export const ACTION_POOL: readonly ActionEntry[] = Object.freeze([
 export const TRAIT_NAMES: readonly string[] = Object.freeze(TRAIT_VOCAB.map(t => t.text));
 export const SHORT_WANTS: readonly WantEntry[] = Object.freeze(WANT_POOL.filter(w => w.kind === 'short'));
 export const MEDIUM_WANTS: readonly WantEntry[] = Object.freeze(WANT_POOL.filter(w => w.kind === 'medium'));
+
+// Phase 2 §9.1 — Authored vocab (29 entries total, split across peaceful/dangerous).
+// Covers the full spectrum including relationship-driven and personality-driven moves.
+export const REACTION_VOCAB: readonly ReactionEntry[] = Object.freeze([
+    // --- peaceful context ---
+    { text: 'proud, understated approval', context: 'peaceful', tier: 'default',
+      axisWeights: { warmth: 1, composure: 1 }, relationWeight: 1, traitKeys: ['protective', 'loyal'] },
+
+    { text: 'withdraw and go quiet', context: 'peaceful', tier: 'default',
+      axisWeights: { warmth: -1, boldness: -1 } },
+
+    // relationship-driven ugly: surfaces for a neutral/new NPC, fades when liked, blocked for a close loyal ally
+    { text: 'quietly sell you out', context: 'peaceful', tier: 'default',
+      axisWeights: { empathy: -1 }, relationWeight: -2,
+      traitKeys: ['scheming', 'mercenary', 'ambitious'], gate: { forbidTraitWhenClose: ['loyal'] } },
+
+    // personality-driven ugly: trait-gated, relationship-independent
+    { text: 'cruel taunt / twist the knife', context: 'peaceful', tier: 'mature',
+      axisWeights: { empathy: -2, warmth: -1 }, gate: { requireTraitAny: ['sadistic'] } },
+
+    { text: 'warm, encouraging praise', context: 'peaceful', tier: 'default',
+      axisWeights: { warmth: 2, empathy: 1 }, relationWeight: 1, traitKeys: ['generous', 'romantic', 'loyal'] },
+
+    { text: 'share a closely guarded secret', context: 'peaceful', tier: 'default',
+      axisWeights: { warmth: 1, composure: -1 }, relationWeight: 2, traitKeys: ['secretive', 'loyal'],
+      gate: { forbidTraitAny: ['mistrustful'] } },
+
+    { text: 'demand immediate compensation / haggle', context: 'peaceful', tier: 'default',
+      axisWeights: { drive: 1, empathy: -1 }, relationWeight: -1,
+      traitKeys: ['mercenary', 'opportunistic'], gate: { forbidTraitWhenClose: ['loyal'] } },
+
+    { text: 'suspicious interrogation / question motives', context: 'peaceful', tier: 'default',
+      axisWeights: { composure: -1, warmth: -1 }, relationWeight: -1, traitKeys: ['paranoid', 'mistrustful'] },
+
+    { text: 'mocking laughter / sarcastic remark', context: 'peaceful', tier: 'default',
+      axisWeights: { warmth: -1, empathy: -1 }, traitKeys: ['jealous', 'competitive'] },
+
+    { text: 'defiantly reject advice / double down', context: 'peaceful', tier: 'default',
+      axisWeights: { boldness: 1, composure: -1 }, traitKeys: ['defiant', 'stubborn'] },
+
+    { text: 'manipulative guilt-trip', context: 'peaceful', tier: 'mature',
+      axisWeights: { empathy: -2, composure: 1 }, relationWeight: -2,
+      traitKeys: ['manipulative', 'scheming', 'corrupt'], gate: { forbidTraitWhenClose: ['loyal'] } },
+
+    { text: 'sadistic mockery / enjoy their discomfort', context: 'peaceful', tier: 'mature',
+      axisWeights: { empathy: -2, composure: 1 }, gate: { requireTraitAny: ['sadistic', 'depraved'] } },
+
+    { text: 'offer a generous gift / share resources', context: 'peaceful', tier: 'default',
+      axisWeights: { warmth: 2, empathy: 2 }, relationWeight: 2, traitKeys: ['generous'] },
+
+    { text: 'obsessive study / lose themselves in detail', context: 'peaceful', tier: 'default',
+      axisWeights: { drive: 1, diligence: 2 }, traitKeys: ['obsessive', 'curious'] },
+
+    { text: 'jealous sabotage', context: 'peaceful', tier: 'default',
+      axisWeights: { empathy: -1, warmth: -1, diligence: -1 },
+      traitKeys: ['jealous', 'vengeful'], gate: { forbidTraitAny: ['honorable'], forbidTraitWhenClose: ['loyal'] } },
+
+    // --- dangerous context ---
+    { text: 'reckless charge', context: 'dangerous', tier: 'default',
+      axisWeights: { boldness: 2, composure: -1 }, traitKeys: ['impulsive', 'proud'] },
+
+    { text: 'freeze / panic', context: 'dangerous', tier: 'default',
+      axisWeights: { boldness: -2, composure: -2 }, traitKeys: ['cowardly'] },
+
+    { text: 'quietly slip away / save own skin', context: 'dangerous', tier: 'default',
+      axisWeights: { boldness: -2, empathy: -1 }, relationWeight: -2,
+      traitKeys: ['cowardly', 'mercenary'], gate: { forbidTraitWhenClose: ['loyal'] } },
+
+    { text: 'hold the line / stand firm', context: 'dangerous', tier: 'default',
+      axisWeights: { composure: 2, boldness: 1 }, relationWeight: 1, traitKeys: ['stubborn', 'oath-bound'] },
+
+    { text: 'shield the player / take the hit', context: 'dangerous', tier: 'default',
+      axisWeights: { warmth: 1, empathy: 2, boldness: 1 }, relationWeight: 2, traitKeys: ['protective', 'loyal'] },
+
+    { text: 'ruthless strike / eliminate the threat instantly', context: 'dangerous', tier: 'mature',
+      axisWeights: { empathy: -2, diligence: 1 }, gate: { requireTraitAny: ['ruthless', 'bloodthirsty'] } },
+
+    { text: 'sadistic mutilation / lingering strike', context: 'dangerous', tier: 'mature',
+      axisWeights: { empathy: -2, composure: -1 }, gate: { requireTraitAny: ['sadistic', 'bloodthirsty'] } },
+
+    { text: 'hysterical laughter / blood-crazed frenzy', context: 'dangerous', tier: 'mature',
+      axisWeights: { composure: -2, empathy: -2 }, gate: { requireTraitAny: ['bloodthirsty', 'fanatical'] } },
+
+    { text: 'blame-shift / point fingers at player', context: 'dangerous', tier: 'default',
+      axisWeights: { composure: -1, empathy: -1 }, relationWeight: -2,
+      traitKeys: ['paranoid', 'jealous', 'cowardly'], gate: { forbidTraitWhenClose: ['loyal', 'honorable'] } },
+
+    { text: 'devoted sacrifice / fight to the death', context: 'dangerous', tier: 'default',
+      axisWeights: { boldness: 2, diligence: 1 }, relationWeight: 3, traitKeys: ['loyal', 'fanatical'] },
+
+    { text: 'opportunistic side-switch / surrender', context: 'dangerous', tier: 'default',
+      axisWeights: { boldness: -1, empathy: -1 }, relationWeight: -3,
+      traitKeys: ['opportunistic', 'mercenary', 'treacherous'], gate: { forbidTraitWhenClose: ['loyal'] } },
+
+    { text: 'paranoid accusation / prepare for double-cross', context: 'dangerous', tier: 'default',
+      axisWeights: { composure: -2, warmth: -1 }, relationWeight: -1, traitKeys: ['paranoid', 'mistrustful'] },
+
+    { text: 'pragmatic retreat / call for tactical fallback', context: 'dangerous', tier: 'default',
+      axisWeights: { composure: 2, boldness: -1 }, traitKeys: ['pragmatic', 'nomadic'] },
+
+    { text: 'extortionist leverage / demand help or perish', context: 'dangerous', tier: 'mature',
+      axisWeights: { empathy: -2, drive: 1 }, relationWeight: -2,
+      traitKeys: ['extortionist', 'ruthless', 'scheming'], gate: { forbidTraitWhenClose: ['loyal'] } }
+]);
