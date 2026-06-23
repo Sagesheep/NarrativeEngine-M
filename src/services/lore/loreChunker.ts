@@ -125,10 +125,31 @@ function assignPriorityForRules(category: LoreCategory, alwaysInclude: boolean):
     }
 }
 
-function classifyCategory(header: string, content: string, parentHeader?: string): LoreCategory {
+export function classifyCategory(header: string, content: string, parentHeader?: string): LoreCategory {
     const h = (header || '').toUpperCase();
     const p = (parentHeader || '').toUpperCase();
     const c = (content || '');
+
+    // B7 — [CHUNK: TYPE -- Name] — the TYPE token is authoritative; map it first.
+    // The ad-hoc substring checks below missed headers like `[CHUNK: OVERVIEW -- Spirit Cards]`
+    // (no `WORLD OVERVIEW` substring) and dumped ~40% of chunks into misc. Parse the type
+    // token out of the marker and map known types to categories before any other check.
+    const typeMatch = /\[CHUNK:\s*([A-Z_]+)/i.exec(header || '');
+    if (typeMatch) {
+        const t = typeMatch[1].toUpperCase();
+        const TYPE_MAP: Record<string, LoreCategory> = {
+            OVERVIEW: 'world_overview', WORLD: 'world_overview',
+            FACTION: 'faction', ORGANIZATION: 'faction',
+            HERO: 'character', CHARACTER: 'character', NPC: 'character',
+            LOCATION: 'location', CITY: 'location', REGION: 'location',
+            EVENT: 'event', TIMELINE: 'event',
+            RELATIONSHIP: 'relationship',
+            POWER: 'power_system', MAGIC: 'power_system',
+            ECONOMY: 'economy', CULTURE: 'culture', RELIGION: 'culture',
+            RULES: 'rules', MECHANIC: 'rules',
+        };
+        if (TYPE_MAP[t]) return TYPE_MAP[t];
+    }
 
     if (h.includes('[CHUNK: HERO') || p.includes('CHARACTER') || h.includes('CHARACTER —')) return 'character';
     if (h.includes('[CHUNK: FACTION') || h.includes('[CHUNK: ORGANIZATION') || p.includes('FACTION')) return 'faction';
