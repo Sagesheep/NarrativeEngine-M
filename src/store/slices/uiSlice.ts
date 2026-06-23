@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { PayloadTrace, PipelinePhase, StreamingStats } from '../../types';
+import type { ManualRollMode, PayloadTrace, PipelinePhase, StreamingStats } from '../../types';
 
 export type ReindexState = {
     active: boolean;
@@ -28,6 +28,9 @@ export type UISlice = {
     deepArmed: boolean;
     setDeepArmed: (val: boolean) => void;
     toggleDeepArmed: () => void;
+    // Player-called dice ("dice me"): the armed MODE, resolved at send time. null = not armed.
+    armedRoll: ManualRollMode | null;
+    setArmedRoll: (mode: ManualRollMode | null) => void;
     embeddingsReindexing: ReindexState;
     setEmbeddingsReindexing: (state: ReindexState) => void;
 };
@@ -51,6 +54,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     deepArmed: false,
     setDeepArmed: (val) => set({ deepArmed: val }),
     toggleDeepArmed: () => set((s) => ({ deepArmed: !s.deepArmed })),
+    armedRoll: null,
+    setArmedRoll: (mode) => set({ armedRoll: mode }),
     embeddingsReindexing: { active: false, total: 0, done: 0, reason: null },
     setEmbeddingsReindexing: (state) => set({ embeddingsReindexing: state }),
 });

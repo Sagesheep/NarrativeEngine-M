@@ -1,11 +1,17 @@
 import { useEffect, useState, useRef } from 'react';
-import { LogOut, ScanSearch, BookCheck, Pin, Replace, MoreVertical, Save, Archive, UserPlus, Loader2 } from 'lucide-react';
+import { LogOut, ScanSearch, BookCheck, Pin, Replace, MoreVertical, Save, Archive, UserPlus, Loader2, Dices } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { addNpcFromSelection } from '../services/npc';
-import type { AiTier } from '../types';
+import type { AiTier, ManualRollMode } from '../types';
 
 const TIER_CYCLE: Record<AiTier, AiTier> = { lite: 'pro', pro: 'max', max: 'lite' };
+
+const DICE_LABELS: Record<ManualRollMode, string> = {
+    '1d20': 'Roll (1d20)',
+    adv: 'Advantage (2d20 ↑)',
+    disadv: 'Disadvantage (2d20 ↓)',
+};
 
 import { TokenGauge } from './TokenGauge';
 import { saveCampaignState, saveDivergenceRegister } from '../store/campaignStore';
@@ -31,6 +37,8 @@ export function Header() {
         setActiveCampaign,
         deepArmed,
         toggleDeepArmed,
+        armedRoll,
+        setArmedRoll,
         settings,
         updateSettings,
         openLoreCheck,
@@ -42,6 +50,8 @@ export function Header() {
         setActiveCampaign: s.setActiveCampaign,
         deepArmed: s.deepArmed,
         toggleDeepArmed: s.toggleDeepArmed,
+        armedRoll: s.armedRoll,
+        setArmedRoll: s.setArmedRoll,
         settings: s.settings,
         updateSettings: s.updateSettings,
         openLoreCheck: s.openLoreCheck,
@@ -56,6 +66,8 @@ export function Header() {
     const [npcAdding, setNpcAdding] = useState(false);
     const [overflowOpen, setOverflowOpen] = useState(false);
     const overflowRef = useRef<HTMLDivElement>(null);
+    const [diceOpen, setDiceOpen] = useState(false);
+    const diceRef = useRef<HTMLDivElement>(null);
 
     const captureFromBubble = (selector: string): SelectionSnapshot | null => {
         const sel = window.getSelection();
@@ -105,6 +117,17 @@ export function Header() {
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
     }, [overflowOpen]);
+
+    useEffect(() => {
+        if (!diceOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (diceRef.current && !diceRef.current.contains(e.target as Node)) {
+                setDiceOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [diceOpen]);
 
     const handleLoreCheck = (e: React.MouseEvent | React.TouchEvent) => {
         e.preventDefault();
@@ -207,6 +230,55 @@ export function Header() {
             </div>
 
             <div className="flex items-center gap-1">
+                <div className="relative" ref={diceRef}>
+                    <button
+                        onClick={() => setDiceOpen(v => !v)}
+                        className={`transition-colors p-1 touch-btn ${
+                            armedRoll
+                                ? 'text-amber-400 animate-pulse'
+                                : 'text-text-dim hover:text-terminal'
+                        }`}
+                        title={armedRoll
+                            ? `Dice armed (${DICE_LABELS[armedRoll]}) — send to roll`
+                            : 'Dice me — arm a roll, send to resolve'}
+                        aria-label="Dice me"
+                    >
+                        <Dices size={16} />
+                    </button>
+                    {diceOpen && (
+                        <div className="absolute left-0 top-full mt-1 z-50 bg-surface border border-border rounded-md shadow-lg py-1 min-w-[10rem]">
+                            <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-dim">
+                                Roll on next send
+                            </div>
+                            {(['1d20', 'adv', 'disadv'] as const).map(mode => (
+                                <button
+                                    key={mode}
+                                    onClick={() => {
+                                        setArmedRoll(armedRoll === mode ? null : mode);
+                                        setDiceOpen(false);
+                                    }}
+                                    className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${
+                                        armedRoll === mode
+                                            ? 'text-amber-400'
+                                            : 'text-text hover:text-terminal hover:bg-base'
+                                    }`}
+                                >
+                                    {DICE_LABELS[mode]}
+                                    {armedRoll === mode && <span className="float-right">✓</span>}
+                                </button>
+                            ))}
+                            {armedRoll && (
+                                <button
+                                    onClick={() => { setArmedRoll(null); setDiceOpen(false); }}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-text-dim hover:text-ember transition-colors border-t border-border mt-1 pt-1.5"
+                                >
+                                    Disarm
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
+
                 <button
                     onMouseDown={handlePinSelection}
                     onTouchStart={handlePinSelection}

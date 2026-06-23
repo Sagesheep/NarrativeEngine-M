@@ -17,6 +17,7 @@ import type {
     PayloadTrace,
     PinnedExcerpt,
     ThinkingEffort,
+    ManualRollMode,
 } from '../../types';
 import type { LLMCallPriority } from '../../utils/llmCall';
 
@@ -102,4 +103,7 @@ export type TurnState = {
     onStageNpcIds?: string[];
     npcPressure?: Record<string, NPCPressure>;
     pinnedExcerpts?: PinnedExcerpt[];
+    // Player-called dice ("dice me"): armed mode resolved at send time. Replaces the auto
+    // pool menu for this turn and is asserted as fact. null/undefined = normal turn.
+    armedRoll?: ManualRollMode | null;
 };

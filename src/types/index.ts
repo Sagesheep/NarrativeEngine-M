@@ -110,6 +110,17 @@ export type DiceConfig = {
     crit: number;        // e.g. 20 (20 is crit)
 };
 
+/**
+ * Player-called "dice me" roll modes (header dice button). The player arms a MODE;
+ * the actual roll is resolved at send time (turnOrchestrator) so the outcome stays
+ * hidden until they commit — genuine commit-then-resolve uncertainty. All three
+ * reduce to a single d20 face value fed to `mapTier`:
+ * - '1d20'   → one die
+ * - 'adv'    → 2d20, keep the higher
+ * - 'disadv' → 2d20, keep the lower
+ */
+export type ManualRollMode = '1d20' | 'adv' | 'disadv';
+
 export type SurpriseConfig = {
     initialDC: number;
     dcReduction: number;

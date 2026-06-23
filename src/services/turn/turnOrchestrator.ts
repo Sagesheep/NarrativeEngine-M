@@ -4,7 +4,7 @@ import { tierAllows } from './aiTier';
 import { uid } from '../../utils/uid';
 import { sendMessage } from '../chatEngine';
 import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from '../payload';
-import { rollEngines, rollDiceFairness, rollCharacterIntroEngine } from '../engine';
+import { rollEngines, rollDiceFairness, rollCharacterIntroEngine, resolveManualRoll } from '../engine';
 import { toast } from '../../components/Toast';
 import { sanitizePayloadForApi } from '../llm/payloadSanitizer';
 import { gatherContext } from './turnContext';
@@ -26,17 +26,33 @@ export async function runTurn(
 
     callbacks.setPipelinePhase?.('rolling-dice');
     let finalInput = input;
+    let displayInputFinal = displayInput;
     const engineResult = rollEngines(context);
     finalInput += engineResult.appendToInput;
     callbacks.updateContext(engineResult.updatedDCs);
-    finalInput += rollDiceFairness(context);
+
+    // Player-called dice ("dice me"). When the player armed a roll, resolve REAL dice now
+    // (hidden until this commit), assert the tier as FACT, and SUPPRESS the auto pool menu +
+    // dice tool for this turn so the model gets exactly one signal it cannot cherry-pick.
+    const armed = state.armedRoll;
+    if (armed) {
+        const r = resolveManualRoll(armed, context.diceConfig);
+        const rollsLabel = r.rolls.length > 1 ? ` (rolled ${r.rolls.join(', ')})` : '';
+        finalInput +=
+            `\n[RESOLVED ROLL — ${r.detail}: ${r.faceValue}${rollsLabel} → ${r.tier}. ` +
+            `This HAPPENED. Narrate the consequence as fact; do NOT soften, re-roll, or treat it as optional.]`;
+        // Player-facing reveal — shows on their own turn bubble.
+        displayInputFinal += `\n\n🎲 ${r.detail} → ${r.tier} (${r.faceValue})`;
+    } else {
+        finalInput += rollDiceFairness(context);
+    }
 
     const userMsgId = uid();
     callbacks.addMessage({
         id: userMsgId,
         role: 'user',
         content: finalInput,
-        displayContent: displayInput,
+        displayContent: displayInputFinal,
         timestamp: Date.now()
     });
     callbacks.setStreaming(true);
@@ -109,7 +125,9 @@ export async function runTurn(
         const allowTools = toolCallCount < 2 && apiRetryCount < 2;
         const requestPayload = sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName);
 
-        const allowDiceTool = context.diceFairnessActive === false;
+        // Suppress the dice tool when the player armed a manual roll — the resolved fact is
+        // already in the payload; offering the tool too would let the model double-roll.
+        const allowDiceTool = context.diceFairnessActive === false && !armed;
         const tools = allowTools ? getToolDefinitions({ allowDiceTool }) : undefined;
 
         const activePreset = settings.presets.find(p => p.id === settings.activePresetId);

@@ -50,6 +50,8 @@ export function ChatArea() {
         setTimeline,
         deepArmed,
         setDeepArmed,
+        armedRoll,
+        setArmedRoll,
         setDivergenceRegister,
         updateMessageDivergence,
         pinnedExcerpts,
@@ -82,6 +84,8 @@ export function ChatArea() {
         setTimeline: s.setTimeline,
         deepArmed: s.deepArmed,
         setDeepArmed: s.setDeepArmed,
+        armedRoll: s.armedRoll,
+        setArmedRoll: s.setArmedRoll,
         setDivergenceRegister: s.setDivergenceRegister,
         updateMessageDivergence: s.updateMessageDivergence,
         pinnedExcerpts: s.pinnedExcerpts,
@@ -121,6 +125,10 @@ export function ChatArea() {
 
         const useDeepScan = deepArmed && !!settings.enableDeepArchiveSearch;
         setDeepArmed(false);
+
+        // Consume the armed dice mode (cleared whether or not a roll was set this turn).
+        const useArmedRoll = armedRoll;
+        setArmedRoll(null);
 
         if (!overrideText) {
             setInput('');
@@ -171,6 +179,7 @@ export function ChatArea() {
             pinnedChapterIds: useAppStore.getState().pinnedChapterIds,
             clearPinnedChapters: () => useAppStore.getState().clearPinnedChapters(),
             deepContextSearch: useDeepScan,
+            armedRoll: useArmedRoll,
             divergenceRegister: useAppStore.getState().divergenceRegister,
             onStageNpcIds: useAppStore.getState().onStageNpcIds,
             pinnedExcerpts: useAppStore.getState().pinnedExcerpts,
