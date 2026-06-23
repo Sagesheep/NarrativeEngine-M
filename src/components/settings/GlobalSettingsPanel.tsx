@@ -39,6 +39,24 @@ export function GlobalSettingsPanel() {
             <div className="bg-void p-4 border border-border rounded">
                 <div className="flex items-center justify-between">
                     <div>
+                        <label className="block text-[11px] text-amber-400 uppercase tracking-wider font-bold mb-1">Mature Mode</label>
+                        <p className="text-[10px] text-text-dim">
+                            Unlocks mature-tier NPC traits, wants &amp; reactions (darker, adult themes).
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => updateSettings({ matureMode: !settings.matureMode })}
+                        className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.matureMode ? 'bg-amber-400' : 'bg-border'}`}
+                        aria-label="Toggle Mature Mode"
+                    >
+                        <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.matureMode ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                    </button>
+                </div>
+            </div>
+
+            <div className="bg-void p-4 border border-border rounded">
+                <div className="flex items-center justify-between">
+                    <div>
                         <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Auto-Trim</label>
                         <p className="text-[10px] text-text-dim">
                             Trim history at {Math.round((settings.condenseAggressiveness === 'aggressive' ? 50 : settings.condenseAggressiveness === 'quality' ? 90 : 75))}% limit
