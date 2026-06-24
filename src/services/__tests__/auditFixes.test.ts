@@ -221,8 +221,8 @@ describe('F13: filterRecallByPerception preserves scenes with empty npcsWitnesse
         expect(recallBlock).toBeDefined();
         // Scene 001 (empty array) and Scene 002 (undefined) should be preserved
         // Scene 003 should be filtered out because npc_other is not onstage/active
-        expect(recallBlock!.content).toContain('SCENE #001');
-        expect(recallBlock!.content).toContain('SCENE #002');
-        expect(recallBlock!.content).not.toContain('SCENE #003');
+        expect(recallBlock!.content).toContain('PC solo scene with empty array');   // scene 001 kept
+        expect(recallBlock!.content).toContain('PC solo scene with undefined');      // scene 002 kept
+        expect(recallBlock!.content).not.toContain('NPC scene with different NPC');  // scene 003 filtered out
     });
 });

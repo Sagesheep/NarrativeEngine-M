@@ -18,6 +18,24 @@ interface UseMessageEditorDeps {
     onAfterRegenerate: (text: string) => void;
 }
 
+/** Find the sceneId for a message by scanning forward to the nearest
+ *  scene-marker system message. Returns null if none (turn not yet archived). */
+export function findSceneIdForMessage(messages: ChatMessage[], messageId: string): string | null {
+    const idx = messages.findIndex(m => m.id === messageId);
+    if (idx === -1) return null;
+    for (let i = idx; i < messages.length; i++) {
+        const m = messages[i];
+        if (m.role === 'system' && m.name === 'scene-marker' && typeof m.content === 'string') {
+            const match = m.content.match(/Scene\s+(\d+)/i);
+            if (match) return match[1].padStart(3, '0');
+        }
+        // Stop if we hit the NEXT turn's user message before any marker — means
+        // this turn was never archived (e.g. mid-stream). Don't borrow a later id.
+        if (i > idx && m.role === 'user') return null;
+    }
+    return null;
+}
+
 export function useMessageEditor(deps: UseMessageEditorDeps) {
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
@@ -74,6 +92,50 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         }
     }, []);
 
+    const handleDeleteOutput = useCallback(async (id: string) => {
+        const deps = depsRef.current;
+        const sceneId = findSceneIdForMessage(deps.messages, id);
+
+        // Remove the GM/user bubble + its trailing scene-marker from chat.
+        const idx = deps.messages.findIndex(m => m.id === id);
+        const markerId = idx !== -1
+            ? deps.messages.slice(idx).find(m => m.role === 'system' && m.name === 'scene-marker')?.id
+            : undefined;
+        useAppStore.getState().deleteMessage(id);
+        if (markerId) useAppStore.getState().deleteMessage(markerId);
+
+        if (!sceneId || !deps.activeCampaignId) return;
+        try {
+            await api.backup.create(deps.activeCampaignId, { trigger: 'pre-scene-delete', isAuto: true }).catch(() => {});
+            await api.archive.deleteScene(deps.activeCampaignId, sceneId);
+            const [freshIndex, freshTimeline, updatedChapters] = await Promise.all([
+                api.archive.getIndex(deps.activeCampaignId),
+                api.timeline.get(deps.activeCampaignId),
+                api.chapters.list(deps.activeCampaignId).catch(() => []),
+            ]);
+            deps.setArchiveIndex(freshIndex);
+            deps.setTimeline(freshTimeline);
+            deps.setChapters(updatedChapters);
+            console.log(`[Archive] Surgically deleted scene #${sceneId}`);
+        } catch {
+            toast.warning('Archive scene delete failed');
+        }
+    }, []);
+
+    const syncEditedSceneText = useCallback(async (messageId: string, newAssistant: string) => {
+        const deps = depsRef.current;
+        if (!deps.activeCampaignId) return;
+        const sceneId = findSceneIdForMessage(deps.messages, messageId);
+        if (!sceneId) return;
+        try {
+            await api.archive.updateSceneAssistant(deps.activeCampaignId, sceneId, newAssistant);
+            const freshIndex = await api.archive.getIndex(deps.activeCampaignId);
+            deps.setArchiveIndex(freshIndex);
+        } catch {
+            toast.warning('Archive scene update failed');
+        }
+    }, []);
+
     const handleEditSubmit = useCallback((id: string, newContent: string) => {
         const deps = depsRef.current;
         const msg = deps.messages.find(m => m.id === id);
@@ -89,8 +151,9 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         } else {
             useAppStore.getState().updateMessageContent(msg.id, newContent.trim());
             setEditingMessageId(null);
+            syncEditedSceneText(msg.id, newContent.trim());
         }
-    }, [rollbackArchiveFrom]);
+    }, [rollbackArchiveFrom, syncEditedSceneText]);
 
     const handleRegenerate = useCallback((id: string) => {
         const deps = depsRef.current;
@@ -114,6 +177,7 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         cancelEditing,
         handleEditSubmit,
         handleRegenerate,
+        handleDeleteOutput,
         rollbackArchiveFrom,
     };
 }

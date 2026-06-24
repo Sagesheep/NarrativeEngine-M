@@ -99,6 +99,25 @@ export const offlineStorage = {
             return archiveStorage.deleteFrom(cid, fromSceneId);
         },
 
+        async deleteScene(cid: string, sceneId: string) {
+            const res = await archiveStorage.deleteScene(cid, sceneId);
+            if (res.ok) {
+                await embeddingStorage.deleteByTypeAndId(cid, 'scene', sceneId).catch(() => {});
+            }
+            return res;
+        },
+
+        async updateSceneAssistant(cid: string, sceneId: string, assistantContent: string) {
+            const res = await archiveStorage.updateSceneAssistant(cid, sceneId, assistantContent);
+            if (res.ok) {
+                import('../embedding').then(async ({ embedText, getCurrentModelId }) => {
+                    const vec = await embedText(`${res.userContent}\n${assistantContent}`);
+                    if (vec) embeddingStorage.store(cid, sceneId, Array.from(vec), 'scene', getCurrentModelId());
+                }).catch(() => {});
+            }
+            return res;
+        },
+
         async clear(cid: string) {
             return archiveStorage.clear(cid);
         },

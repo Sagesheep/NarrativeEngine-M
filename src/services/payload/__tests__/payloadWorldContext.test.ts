@@ -77,7 +77,7 @@ describe('assembleWorldBlocks — witness tag in scene headers', () => {
         });
 
         const content = blocks.find(b => b.source === 'Archive Recall')!.content;
-        expect(content).toContain('[SCENE #014 | Witnessed by: Aldric, Brenna');
+        expect(content).toContain('[PAST SCENE | Witnessed by: Aldric, Brenna');
         expect(content).toContain('NPCs not listed were NOT present');
     });
 
@@ -98,7 +98,7 @@ describe('assembleWorldBlocks — witness tag in scene headers', () => {
         });
 
         const content = blocks[0].content;
-        expect(content).toContain('[SCENE #015]');
+        expect(content).toContain('[PAST SCENE]');
         expect(content).not.toContain('Witnessed by');
     });
 
@@ -119,7 +119,7 @@ describe('assembleWorldBlocks — witness tag in scene headers', () => {
         });
 
         const content = blocks[0].content;
-        expect(content).toContain('[SCENE #016]');
+        expect(content).toContain('[PAST SCENE]');
         expect(content).not.toContain('Witnessed by');
     });
 

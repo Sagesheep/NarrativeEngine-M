@@ -20,6 +20,12 @@ export const api = {
         async deleteFrom(campaignId: string, sceneId: string): Promise<void> {
             await offlineStorage.archive.deleteFrom(campaignId, sceneId);
         },
+        async deleteScene(campaignId: string, sceneId: string): Promise<void> {
+            await offlineStorage.archive.deleteScene(campaignId, sceneId);
+        },
+        async updateSceneAssistant(campaignId: string, sceneId: string, assistantContent: string): Promise<void> {
+            await offlineStorage.archive.updateSceneAssistant(campaignId, sceneId, assistantContent);
+        },
         async clear(campaignId: string): Promise<void> {
             await offlineStorage.archive.clear(campaignId);
         },

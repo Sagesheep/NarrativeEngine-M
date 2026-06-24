@@ -37,7 +37,6 @@ export function ChatArea() {
         setCondensed,
         resetCondenser,
         activeCampaignId,
-        deleteMessage,
         deleteMessagesFrom,
         getActiveStoryEndpoint,
         getActiveSummarizerEndpoint,
@@ -71,7 +70,6 @@ export function ChatArea() {
         setCondensed: s.setCondensed,
         resetCondenser: s.resetCondenser,
         activeCampaignId: s.activeCampaignId,
-        deleteMessage: s.deleteMessage,
         deleteMessagesFrom: s.deleteMessagesFrom,
         getActiveStoryEndpoint: s.getActiveStoryEndpoint,
         getActiveSummarizerEndpoint: s.getActiveSummarizerEndpoint,
@@ -219,6 +217,7 @@ export function ChatArea() {
         cancelEditing,
         handleEditSubmit,
         handleRegenerate,
+        handleDeleteOutput,
     } = useMessageEditor({
         messages,
         activeCampaignId,
@@ -314,7 +313,7 @@ export function ChatArea() {
         }
     };
 
-    const stableDeleteMessage = useCallback((id: string) => deleteMessage(id), [deleteMessage]);
+    const stableDeleteMessage = useCallback((id: string) => handleDeleteOutput(id), [handleDeleteOutput]);
 
     const visibleMessages = useMemo(() => messages.filter(msg => msg.role !== 'tool').slice(-visibleCount), [messages, visibleCount]);
 

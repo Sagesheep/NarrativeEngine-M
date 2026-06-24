@@ -432,12 +432,12 @@ export function assembleWorldBlocks(opts: {
                 if (idxEntry?.npcsWitnessed && idxEntry.npcsWitnessed.length > 0) {
                     const witnessNames = idxEntry.npcsWitnessed.map((id: string) => npcNameById.get(id)).filter((n: string | undefined): n is string => !!n);
                     if (witnessNames.length > 0) {
-                        header = `[SCENE #${s.sceneId} | Witnessed by: ${witnessNames.join(', ')} — NPCs not listed were NOT present and do NOT know these events]`;
+                        header = `[PAST SCENE | Witnessed by: ${witnessNames.join(', ')} — NPCs not listed were NOT present and do NOT know these events]`;
                     } else {
-                        header = `[SCENE #${s.sceneId}]`;
+                        header = `[PAST SCENE]`;
                     }
                 } else {
-                    header = `[SCENE #${s.sceneId}]`;
+                    header = `[PAST SCENE]`;
                 }
                 const lines = [header];
                 if (idxEntry?.events && idxEntry.events.length > 0) {
