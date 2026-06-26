@@ -74,6 +74,17 @@ describe('ContentWithChips', () => {
         expect(container.textContent).toBe('The contact, Kael Druen, waited.');
     });
 
+    it('restores bold names nested inside an italic block (no NUL corruption)', () => {
+        const content =
+            'The Mason — [**Claud**], or [**Sofia**] — note. *Track 1. The Mason — [**Claud**], or [**Sofia**]’s, or [**Cleo**]’s — done.*';
+        const { container } = render(<ContentWithChips content={content} />);
+        // The italic-nested names must survive as real bold, not raw NUL sentinels.
+        expect(container.textContent).not.toContain(String.fromCharCode(0));
+        const names = Array.from(container.querySelectorAll('strong')).map((s) => s.textContent);
+        expect(names).toContain('Cleo');
+        expect(container.querySelector('em')).not.toBeNull();
+    });
+
     it('still renders a colon-bearing tag as a chip even without a known keyword', () => {
         const { container } = render(<ContentWithChips content="[SYSTEM: NPC_ENTRY - Vance]" />);
         expect(container.querySelector('strong')).toBeNull();
