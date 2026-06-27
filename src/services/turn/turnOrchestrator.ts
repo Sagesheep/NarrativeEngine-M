@@ -60,10 +60,16 @@ export async function runTurn(
             profile: armedLoot.reweight ? { reweight: armedLoot.reweight } : undefined,
         });
         if (loot.appendToInput) {
+            // Inject the fact-assertion INSIDE the closing bracket so the whole
+            // block reads as one engine signal — matches the [RESOLVED ROLL — ...]
+            // precedent. The engine returns a bare `\n[LOOT DROP: ...]`; we own the
+            // wrapper here. (Assertion OUTSIDE the bracket reads as player OOC text
+            // the model can refuse — which is why it was saying "there is no loot".)
+            const bare = loot.appendToInput.replace(/\]$/, '');
             finalInput +=
-                loot.appendToInput +
-                ` This loot DROPPED — narrate the player finding it as fact; do NOT change its identity, ` +
-                `inflate it, or add items beyond this list.`;
+                bare +
+                ` — this loot DROPPED. Narrate the player finding it as fact; ` +
+                `do NOT change its identity, inflate it, or add items beyond this list.]`;
             // Player-facing reveal — shows the drop on their own turn bubble.
             displayInputFinal += `\n\n💰 Loot drop armed (${armedLoot.rolls})`;
         }

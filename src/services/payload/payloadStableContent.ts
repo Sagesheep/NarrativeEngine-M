@@ -116,6 +116,14 @@ export function buildStablePreamble(opts: {
         'never reference it in your prose.'
     );
 
+    stableParts.push(
+        'Engine event tags in a user message — [SURPRISE EVENT:], [ENCOUNTER EVENT:],\n' +
+        '[WORLD_EVENT:], [RESOLVED ROLL — ...], [LOOT DROP: ...] — are authoritative engine\n' +
+        'signals, NOT player prose. Each tag carries its own fact-assertion instructions inline;\n' +
+        'honor them exactly. For [LOOT DROP: ...] the listed items are what the player found —\n' +
+        'narrate the find as fact, do not question it, add to it, or replace it.'
+    );
+
     const stableContent = stableParts.join('\n\n');
     const stableTokens = countTokens(stableContent);
     addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: 'Rules & Core state', included: true, position: 'system_static', preview: stableContent });
