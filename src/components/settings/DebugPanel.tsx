@@ -5,6 +5,7 @@ import { useUtilityCalls, clearHistory } from '../../services/llm/utilityCallTra
 import type { UtilityCallStatus } from '../../services/llm/utilityCallTracker';
 import { useCacheTelemetry, hitRatio, totalsForDay, clearCacheTelemetry } from '../../services/llm/cacheTelemetry';
 import { useSceneStakesFallbackCount, resetSceneStakesFallbackCount } from '../../services/llm/sceneStakesTelemetry';
+import { LootDropTraceView } from '../LootDropTraceView';
 
 function CacheTelemetrySection() {
     const rollup = useCacheTelemetry();
@@ -119,6 +120,11 @@ export function DebugPanel() {
                     </div>
 
                     <CacheTelemetrySection />
+
+                    <div>
+                        <label className="text-[10px] text-text-dim uppercase tracking-widest font-bold mb-2 block">Loot Drops</label>
+                        <LootDropTraceView />
+                    </div>
 
                     <div className="flex items-center justify-between bg-surface p-3 border border-border rounded">
                         <div>

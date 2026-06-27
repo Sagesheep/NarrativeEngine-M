@@ -1,6 +1,7 @@
 import { ScrollText, Settings2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { PayloadTraceView } from '../PayloadTraceView';
+import { LootDropTraceView } from '../LootDropTraceView';
 import { SceneNoteEditor } from '../SceneNoteEditor';
 import { TokenCounter } from './TokenCounter';
 import { countTokens } from '../../services/infrastructure';
@@ -67,7 +68,10 @@ export function RulesTab({ onOpenManager }: { onOpenManager?: () => void }) {
                         <div className="w-1.5 h-1.5 rounded-full bg-terminal animate-pulse" />
                         Diagnostics
                     </div>
-                    <PayloadTraceView />
+                    <div className="space-y-3">
+                        <PayloadTraceView />
+                        <LootDropTraceView compact />
+                    </div>
                 </div>
             )}
         </div>

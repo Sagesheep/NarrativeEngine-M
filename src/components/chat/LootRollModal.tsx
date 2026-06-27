@@ -53,14 +53,16 @@ export function LootRollModal() {
 
     const confirm = () => {
         // Build reweight for the root node: unchecked options → weight 0.
-        // All-checked (the default) needs no reweight — pass undefined so the
-        // walker uses the tree's authored weights as-is.
+        // An option is "off" ONLY when explicitly `checked[opt] === false` — the
+        // empty-default state (`checked = {}`) means "all on" (see `isChecked`
+        // below), so it must NOT produce a reweight. Reading `!checked[opt]`
+        // here would treat `undefined` as off and zero EVERY option on the first
+        // send, arming a "kill everything" reweight and yielding 0 items.
         let reweight: Record<string, Record<string, number>> | undefined;
-        if (rootPick && options.some(opt => !checked[opt])) {
+        const unchecked = options.filter(opt => checked[opt] === false);
+        if (rootPick && unchecked.length > 0) {
             const zeroed: Record<string, number> = {};
-            for (const opt of options) {
-                if (!checked[opt]) zeroed[opt] = 0;
-            }
+            for (const opt of unchecked) zeroed[opt] = 0;
             reweight = { [lootTree!.root]: zeroed };
         }
         armLoot({ rolls, reweight });

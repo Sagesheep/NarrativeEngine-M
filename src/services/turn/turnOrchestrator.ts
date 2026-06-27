@@ -5,6 +5,7 @@ import { uid } from '../../utils/uid';
 import { sendMessage } from '../chatEngine';
 import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from '../payload';
 import { rollEngines, rollDiceFairness, rollCharacterIntroEngine, resolveManualRoll, resolveLootDrop } from '../engine';
+import { recordLootDrop } from '../engine/lootDropTelemetry';
 import { toast } from '../../components/Toast';
 import { sanitizePayloadForApi } from '../llm/payloadSanitizer';
 import { gatherContext } from './turnContext';
@@ -13,7 +14,7 @@ import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool 
 import { extractAndStripSceneStakes, classifySceneStakes } from './sceneStakesTag';
 
 import type { OpenAIMessage } from '../llm/llmService';
-import type { PayloadTrace } from '../../types';
+import type { PayloadTrace, ResolveLootOpts } from '../../types';
 import { buildAssistantToolCallMessage, buildToolResultMessage } from '../../types/llmMessages';
 
 export async function runTurn(
@@ -55,10 +56,14 @@ export async function runTurn(
     // captured value. The engine is pure: dice + JSON, zero LLM at runtime.
     const armedLoot = state.armedLoot;
     if (armedLoot && context.lootTree) {
-        const loot = resolveLootDrop(context.lootTree, {
+        const lootOpts: ResolveLootOpts = {
             rolls: armedLoot.rolls,
             profile: armedLoot.reweight ? { reweight: armedLoot.reweight } : undefined,
-        });
+        };
+        const loot = resolveLootDrop(context.lootTree, lootOpts);
+        // Record for the debug surfaces (DebugPanel + context-bank diagnostics).
+        // Telemetry is fire-and-forget; never throws into the turn pipeline.
+        try { recordLootDrop(loot, lootOpts); } catch (e) { console.warn('[LootEngine] telemetry failed:', e); }
         if (loot.appendToInput) {
             // Inject the fact-assertion INSIDE the closing bracket so the whole
             // block reads as one engine signal — matches the [RESOLVED ROLL — ...]

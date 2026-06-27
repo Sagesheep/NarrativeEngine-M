@@ -326,4 +326,32 @@ describe('Loot Engine Walker (resolveLootDrop)', () => {
         expect(res.appendToInput).not.toContain('You found');
         expect(res.appendToInput).not.toContain('power');
     });
+
+    // ── Modal reweight regression (WO-05 bug: empty-default shipped all-zero reweight) ──
+    // The pre-roll modal arms `reweight` ONLY for options the user explicitly
+    // unchecked. A reweight that zeroes every root option must yield 0 items
+    // (the walker's "no eligible options — stop" path) — this locks that path
+    // so a future modal regression that re-zeroes everything is loud, not silent.
+    it('should yield 0 items when the root pick is reweighted to all-zero', () => {
+        const profile = { reweight: { categoryPick: { scroll: 0, ingots: 0, 'magic-item': 0 } } };
+        const rng = mulberry32(42);
+        const res = resolveLootDrop(testTree, { profile, rng, rolls: 5 });
+
+        expect(res.items).toHaveLength(0);
+        expect(res.appendToInput).toBe('');
+        // Every roll hit the no-eligible-options stop.
+        expect(res.trace.filter(t => t.includes('no eligible options')).length).toBe(5);
+    });
+
+    // And the inverse: NO reweight (the all-checked default) must produce one
+    // item per roll, each independently re-rolling the category pick first.
+    it('should produce one item per roll and re-roll the root category each time when no reweight is applied', () => {
+        const rng = mulberry32(7);
+        const res = resolveLootDrop(testTree, { rng, rolls: 4 });
+
+        expect(res.items).toHaveLength(4);
+        expect(res.appendToInput).toMatch(/^\n\[LOOT DROP: .+\]$/);
+        // Each of the 4 rolls logs a categoryPick decision.
+        expect(res.trace.filter(t => t.startsWith('categoryPick/pick[category]→')).length).toBe(4);
+    });
 });
