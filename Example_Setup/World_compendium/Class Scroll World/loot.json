@@ -6,12 +6,12 @@
       "axis": "category",
       "weights": {
         "scroll": 60,
-        "ingots": 30,
+        "iron-bits": 30,
         "magic-item": 10
       },
       "branches": {
         "scroll": "scrollRecipe",
-        "ingots": "currencyRecipe",
+        "iron-bits": "currencyRecipe",
         "magic-item": "gearRecipe"
       }
     },
@@ -20,12 +20,12 @@
       "axis": "rarityClass",
       "weights": {
         "plain": 80,
-        "aspect": 18,
+        "rare": 18,
         "unique": 2
       },
       "branches": {
         "plain": "scrollPlainDomainPick",
-        "aspect": "scrollAspectDomainPick",
+        "rare": "scrollRareDomainPick",
         "unique": "scrollUniqueDomainPick"
       }
     },
@@ -56,7 +56,7 @@
       "kind": "compose",
       "template": "{job}"
     },
-    "scrollAspectDomainPick": {
+    "scrollRareDomainPick": {
       "kind": "pick",
       "axis": "domain",
       "weights": {
@@ -64,28 +64,24 @@
         "nonCombat": 50
       },
       "branches": {
-        "combat": "scrollAspectDraw",
-        "nonCombat": "scrollAspectDraw"
+        "combat": "scrollRareDraw",
+        "nonCombat": "scrollRareDraw"
       }
     },
-    "scrollAspectDraw": {
+    "scrollRareDraw": {
       "kind": "draw",
       "draws": [
         {
-          "pool": "jobList",
+          "pool": "rareJobList",
           "as": "job",
           "filterBy": "domain"
-        },
-        {
-          "pool": "aspectPool",
-          "as": "aspect"
         }
       ],
-      "next": "scrollAspectCompose"
+      "next": "scrollRareCompose"
     },
-    "scrollAspectCompose": {
+    "scrollRareCompose": {
       "kind": "compose",
-      "template": "{job} of the {aspect}"
+      "template": "{job}"
     },
     "scrollUniqueDomainPick": {
       "kind": "pick",
@@ -116,14 +112,14 @@
     },
     "currencyRecipe": {
       "kind": "amount",
-      "unit": "ingots",
+      "unit": "ironBits",
       "min": 1,
       "max": 30,
       "next": "currencyCompose"
     },
     "currencyCompose": {
       "kind": "compose",
-      "template": "{ingots} ingots"
+      "template": "{ironBits} iron bits"
     },
     "gearRecipe": {
       "kind": "draw",
@@ -148,9 +144,7 @@
         { "text": "Archer" },
         { "text": "Bowman" },
         { "text": "Crossbowman" },
-        { "text": "Sentry" },
         { "text": "Guard" },
-        { "text": "Watchman" },
         { "text": "Shieldbearer" },
         { "text": "Footman" },
         { "text": "Foot-soldier" },
@@ -161,21 +155,11 @@
         { "text": "Axeman" },
         { "text": "Macebearer" },
         { "text": "Pikeman" },
-        { "text": "Lancer" },
         { "text": "Skirmisher" },
         { "text": "Defender" },
         { "text": "Guardian" },
-        { "text": "Vanguard" },
-        { "text": "Scout" },
-        { "text": "Raider" },
         { "text": "Outrider" },
-        { "text": "Peltast" },
-        { "text": "Hoplite" },
-        { "text": "Halberdier" },
-        { "text": "Legionary" },
-        { "text": "Pugilist" },
         { "text": "Marauder" },
-        { "text": "Bodyguard" },
         { "text": "Yeoman" },
         { "text": "Charger" },
         { "text": "Guerilla" },
@@ -188,17 +172,8 @@
       ],
       "nonCombat": [
         { "text": "Cook" },
-        { "text": "Healer" },
         { "text": "Dishwasher" },
         { "text": "Farmer" },
-        { "text": "Smith" },
-        { "text": "Scribe" },
-        { "text": "Merchant" },
-        { "text": "Herbalist" },
-        { "text": "Tailor" },
-        { "text": "Fisherman" },
-        { "text": "Miner" },
-        { "text": "Carpenter" },
         { "text": "Peasant" },
         { "text": "Laborer" },
         { "text": "Clerk" },
@@ -207,6 +182,42 @@
         { "text": "Cobbler" },
         { "text": "Mason" },
         { "text": "Baker" },
+        { "text": "Butler" },
+        { "text": "Maid" },
+        { "text": "Woodcutter" },
+        { "text": "Thatcher" },
+        { "text": "Bookbinder" },
+        { "text": "Cartographer" },
+        { "text": "Glassblower" },
+        { "text": "Sculptor" }
+      ]
+    },
+    "rareJobList": {
+      "combat": [
+        { "text": "Sentry" },
+        { "text": "Watchman" },
+        { "text": "Halberdier" },
+        { "text": "Legionary" },
+        { "text": "Pugilist" },
+        { "text": "Lancer" },
+        { "text": "Scout" },
+        { "text": "Raider" },
+        { "text": "Vanguard" },
+        { "text": "Bodyguard" },
+        { "text": "Duelist" },
+        { "text": "Peltast" },
+        { "text": "Hoplite" }
+      ],
+      "nonCombat": [
+        { "text": "Healer" },
+        { "text": "Smith" },
+        { "text": "Scribe" },
+        { "text": "Merchant" },
+        { "text": "Herbalist" },
+        { "text": "Tailor" },
+        { "text": "Fisherman" },
+        { "text": "Miner" },
+        { "text": "Carpenter" },
         { "text": "Brewer" },
         { "text": "Cooper" },
         { "text": "Tanner" },
@@ -216,65 +227,13 @@
         { "text": "Butcher" },
         { "text": "Grocer" },
         { "text": "Innkeeper" },
-        { "text": "Butler" },
-        { "text": "Maid" },
         { "text": "Gardener" },
-        { "text": "Woodcutter" },
-        { "text": "Thatcher" },
         { "text": "Miller" },
         { "text": "Barker" },
         { "text": "Dyer" },
-        { "text": "Chandler" },
-        { "text": "Bookbinder" },
-        { "text": "Cartographer" },
-        { "text": "Glassblower" },
-        { "text": "Sculptor" }
+        { "text": "Chandler" }
       ]
     },
-    "aspectPool": [
-      { "text": "Void" },
-      { "text": "Wind" },
-      { "text": "Duck" },
-      { "text": "Cactus" },
-      { "text": "Flame" },
-      { "text": "Stone" },
-      { "text": "Tide" },
-      { "text": "Mirror" },
-      { "text": "Shadow" },
-      { "text": "Frost" },
-      { "text": "Lightning" },
-      { "text": "Rust" },
-      { "text": "Smoke" },
-      { "text": "Wolf" },
-      { "text": "Coral" },
-      { "text": "Ledger" },
-      { "text": "Silence" },
-      { "text": "Hunger" },
-      { "text": "Bramble" },
-      { "text": "Echo" },
-      { "text": "Forge" },
-      { "text": "Loom" },
-      { "text": "Ash" },
-      { "text": "Clay" },
-      { "text": "Dust" },
-      { "text": "Glass" },
-      { "text": "Bone" },
-      { "text": "Feather" },
-      { "text": "Spore" },
-      { "text": "Yeast" },
-      { "text": "Thorn" },
-      { "text": "Decay" },
-      { "text": "Bloom" },
-      { "text": "Mist" },
-      { "text": "Salt" },
-      { "text": "Iron" },
-      { "text": "Gold" },
-      { "text": "Storm" },
-      { "text": "Paper" },
-      { "text": "Ink" },
-      { "text": "Garlic" },
-      { "text": "Copper" }
-    ],
     "uniqueList": {
       "combat": [
         { "text": "Swordmaster" },
@@ -298,7 +257,6 @@
         { "text": "Saboteur" },
         { "text": "Flagellant" },
         { "text": "Manhunter" },
-        { "text": "Duelist" },
         { "text": "Revenant" },
         { "text": "Juggernaut" },
         { "text": "Oathbreaker" },
