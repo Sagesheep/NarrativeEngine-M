@@ -16,6 +16,83 @@ const STORY_CHUNK_EXTEND_THRESHOLD_MS = 30000;
 
 export type OpenAIMessage = LLMChatMessage;
 
+/**
+ * Native story turn over CapacitorHttp (bypasses WebView CORS). Non-streaming: the
+ * full response is buffered, so the story arrives as a single chunk. Used when
+ * streaming is disabled AND as the transparent fallback when a native streaming
+ * fetch is CORS-blocked (e.g. NVIDIA NIM). Owns its own utilityCallTracker entry.
+ */
+async function nativeNonStreamStory(
+    provider: LLMProvider,
+    messages: OpenAIMessage[],
+    format: ReturnType<typeof getApiFormat>,
+    headers: Record<string, string>,
+    tools: unknown[] | undefined,
+    sampling: SamplingConfig | undefined,
+    onChunk: (text: string) => void,
+    onDone: (text: string, toolCall?: { id: string; name: string; arguments: string }, reasoningContent?: string) => void,
+    onError: (err: string) => void,
+): Promise<void> {
+    // Fallback path may arrive with a streaming URL in scope — recompute non-stream
+    // (critical for Gemini: :generateContent, not :streamGenerateContent).
+    let nativeUrl = getChatUrl(provider, { stream: false });
+    if (format === 'gemini' && provider.apiKey) {
+        const sep = nativeUrl.includes('?') ? '&' : '?';
+        nativeUrl = `${nativeUrl}${sep}key=${provider.apiKey}`;
+    }
+    const nativeCall = startUtilityCall(
+        'story-generation',
+        provider.modelName || provider.endpoint,
+        STORY_INITIAL_TIMEOUT_MS,
+    );
+    const nativeStartedAt = Date.now();
+    let settled = false;
+    console.info(`[story-gen] start (native non-stream) model=${provider.modelName || provider.endpoint} format=${format} messages=${messages.length} tools=${tools ? (tools as unknown[]).length : 0} timeoutMs=${STORY_INITIAL_TIMEOUT_MS}`);
+    // CapacitorHttp can't be aborted mid-flight, so the deadline is informational here.
+    nativeCall.deadlinePromise.then(() => {
+        if (settled) return;
+        console.warn(`[story-gen] deadline reached after ${Date.now() - nativeStartedAt}ms (native non-stream — request cannot be cancelled, still waiting on response)`);
+    });
+    try {
+        const nativePayload = buildChatBody(provider, messages, { stream: false, tools, sampling });
+        const nativeRes = await CapacitorHttp.post({
+            url: nativeUrl,
+            headers,
+            data: nativePayload,
+            readTimeout: 600000,
+            connectTimeout: 15000,
+        });
+        if (nativeRes.status < 200 || nativeRes.status >= 300) {
+            settled = true;
+            nativeCall.settleError('error', `API error ${nativeRes.status}`);
+            console.warn(`[story-gen] http error ${nativeRes.status} after ${Date.now() - nativeStartedAt}ms (native non-stream)`);
+            onError(`API error ${nativeRes.status}: ${JSON.stringify(nativeRes.data)}`);
+            return;
+        }
+        const nativeText = extractContent(nativeRes.data, provider);
+        recordCacheUsage(STORY_LABEL, (nativeRes.data as { usage?: LLMUsage })?.usage);
+        const nativeReasoning = (nativeRes.data as OpenAICompletionResponse)?.choices?.[0]?.message?.reasoning_content as string | undefined;
+        settled = true;
+        nativeCall.settleSuccess({ chars: nativeText.length, durationMs: Date.now() - nativeStartedAt, streaming: false, native: true });
+        console.info(`[story-gen] done (native non-stream) chars=${nativeText.length} durationMs=${Date.now() - nativeStartedAt}`);
+        onChunk(nativeText);
+        onDone(nativeText, undefined, nativeReasoning || undefined);
+    } catch (e) {
+        if (!settled) {
+            settled = true;
+            nativeCall.settleError(isAbortError(e) ? 'aborted' : 'error', e instanceof Error ? e.message : undefined);
+        }
+        if (isAbortError(e)) {
+            console.warn('[story-gen] aborted (native non-stream)');
+            onError('__ABORT__');
+            return;
+        }
+        const msg = e instanceof Error ? e.message : 'Unknown network error';
+        console.warn(`[story-gen] native non-stream error: ${msg}`);
+        onError(msg);
+    }
+}
+
 export async function sendMessage(
     provider: LLMProvider,
     messages: OpenAIMessage[],
@@ -42,45 +119,7 @@ export async function sendMessage(
     try {
         // On native with streaming OFF: use CapacitorHttp to bypass WebView CORS restrictions.
         if (Capacitor.isNativePlatform() && !useStreaming) {
-            let nativeUrl = url;
-            if (format === 'gemini' && provider.apiKey) {
-                const sep = nativeUrl.includes('?') ? '&' : '?';
-                nativeUrl = `${nativeUrl}${sep}key=${provider.apiKey}`;
-            }
-            const nativeCall = startUtilityCall(
-                'story-generation',
-                provider.modelName || provider.endpoint,
-                STORY_INITIAL_TIMEOUT_MS,
-            );
-            tracker = nativeCall;
-            const nativeStartedAt = Date.now();
-            console.info(`[story-gen] start (native non-stream) model=${provider.modelName || provider.endpoint} format=${format} messages=${messages.length} tools=${tools ? (tools as unknown[]).length : 0} timeoutMs=${STORY_INITIAL_TIMEOUT_MS}`);
-            // CapacitorHttp can't be aborted mid-flight, so the deadline is informational here.
-            nativeCall.deadlinePromise.then(() => {
-                if (trackerSettled) return;
-                console.warn(`[story-gen] deadline reached after ${Date.now() - nativeStartedAt}ms (native non-stream — request cannot be cancelled, still waiting on response)`);
-            });
-            const nativePayload = buildChatBody(provider, messages, { stream: false, tools, sampling });
-            const nativeRes = await CapacitorHttp.post({
-                url: nativeUrl,
-                headers,
-                data: nativePayload,
-                readTimeout: 600000,
-                connectTimeout: 15000,
-            });
-            if (nativeRes.status < 200 || nativeRes.status >= 300) {
-                settleTrackerError('error', `API error ${nativeRes.status}`);
-                console.warn(`[story-gen] http error ${nativeRes.status} after ${Date.now() - nativeStartedAt}ms (native non-stream)`);
-                onError(`API error ${nativeRes.status}: ${JSON.stringify(nativeRes.data)}`);
-                return;
-            }
-            const nativeText = extractContent(nativeRes.data, provider);
-            recordCacheUsage(STORY_LABEL, (nativeRes.data as { usage?: LLMUsage })?.usage);
-            const nativeReasoning = (nativeRes.data as OpenAICompletionResponse)?.choices?.[0]?.message?.reasoning_content as string | undefined;
-            if (!trackerSettled) { trackerSettled = true; nativeCall.settleSuccess({ chars: nativeText.length, durationMs: Date.now() - nativeStartedAt, streaming: false, native: true }); }
-            console.info(`[story-gen] done (native non-stream) chars=${nativeText.length} durationMs=${Date.now() - nativeStartedAt}`);
-            onChunk(nativeText);
-            onDone(nativeText, undefined, nativeReasoning || undefined);
+            await nativeNonStreamStory(provider, messages, format, headers, tools, sampling, onChunk, onDone, onError);
             return;
         }
 
@@ -121,12 +160,29 @@ export async function sendMessage(
             fetchUrl = `${fetchUrl}${sep}key=${provider.apiKey}`;
         }
 
-        const res = await fetch(fetchUrl, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload),
-            signal: controller.signal
-        });
+        let res: Response;
+        try {
+            res = await fetch(fetchUrl, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(payload),
+                signal: controller.signal
+            });
+        } catch (fetchErr) {
+            // Android WebView fetch to a no-CORS provider (e.g. NVIDIA NIM) rejects with a
+            // TypeError before any response. Recover by re-running this turn over the native
+            // HTTP transport (CapacitorHttp), which is not subject to WebView CORS. Streaming
+            // providers never reach here — their fetch succeeds. Trade-off: this turn arrives
+            // as one blob. A genuine network outage falls through the same path and surfaces
+            // its real error from the non-stream attempt.
+            if (Capacitor.isNativePlatform() && !isAbortError(fetchErr)) {
+                console.warn(`[story-gen] streaming fetch failed on native (${fetchErr instanceof Error ? fetchErr.message : 'unknown'}); falling back to CapacitorHttp non-stream`);
+                settleTrackerError('error', 'stream-fallback');
+                await nativeNonStreamStory(provider, messages, format, headers, tools, sampling, onChunk, onDone, onError);
+                return;
+            }
+            throw fetchErr;
+        }
 
         if (!res.ok) {
             const errBody = await res.text();

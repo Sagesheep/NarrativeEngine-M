@@ -210,7 +210,7 @@ export function ProvidersPanel() {
                                 <div className="flex items-center justify-between gap-3 py-2">
                                     <label className="text-[11px] text-text-dim uppercase tracking-wider truncate">Enable Streaming</label>
                                     <button
-                                        onClick={() => handleFieldChange('streamingEnabled', config.streamingEnabled !== false)}
+                                        onClick={() => handleFieldChange('streamingEnabled', config.streamingEnabled === false)}
                                         className={`relative w-11 h-6 shrink-0 rounded-full transition-colors ${config.streamingEnabled !== false ? 'bg-terminal/60' : 'bg-border'}`}
                                         title={config.streamingEnabled !== false ? 'Streaming on — click to disable' : 'Streaming off — click to enable'}
                                     >
