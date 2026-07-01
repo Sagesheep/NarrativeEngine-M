@@ -346,6 +346,31 @@
   }
 }
 
+/* `top` offset for absolutely-positioned corner buttons (e.g. CampaignHub's
+   settings/import buttons) that sit outside any safe-top-padded container
+   and would otherwise render under the status bar on taller-inset devices. */
+.safe-top-abs {
+  top: calc(1rem + env(safe-area-inset-top, 0px));
+}
+
+@media (min-width: 640px) {
+  .safe-top-abs {
+    top: calc(2rem + env(safe-area-inset-top, 0px));
+  }
+}
+
+@media (max-width: 767px) {
+  .safe-top-abs {
+    top: calc(1rem + env(safe-area-inset-top, 0px) / var(--ui-scale, 1));
+  }
+}
+
+@media (min-width: 640px) and (max-width: 767px) {
+  .safe-top-abs {
+    top: calc(2rem + env(safe-area-inset-top, 0px) / var(--ui-scale, 1));
+  }
+}
+
 /* ── Bottom Sheet ── */
 .bottom-sheet-backdrop {
   position: fixed;

@@ -292,7 +292,7 @@ export function CampaignHub() {
             {/* Settings button */}
             <button
                 onClick={() => useAppStore.getState().toggleSettings()}
-                className="absolute top-4 right-4 sm:top-8 sm:right-8 p-3 text-text-dim hover:text-terminal transition-colors bg-surface border border-border rounded-full hover:border-terminal z-50"
+                className="absolute safe-top-abs right-4 sm:right-8 p-3 text-text-dim hover:text-terminal transition-colors bg-surface border border-border rounded-full hover:border-terminal z-50"
                 title="Global Settings"
             >
                 <Settings size={20} />
@@ -302,7 +302,7 @@ export function CampaignHub() {
             <button
                 onClick={() => importInputRef.current?.click()}
                 disabled={isImporting}
-                className="absolute top-4 left-4 sm:top-8 sm:left-8 p-3 text-text-dim hover:text-terminal transition-colors bg-surface border border-border rounded-full hover:border-terminal z-50 disabled:opacity-40"
+                className="absolute safe-top-abs left-4 sm:left-8 p-3 text-text-dim hover:text-terminal transition-colors bg-surface border border-border rounded-full hover:border-terminal z-50 disabled:opacity-40"
                 title="Import Campaign"
             >
                 {isImporting ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
