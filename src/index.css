@@ -80,6 +80,16 @@
     --app-vh: calc(1vh / var(--ui-scale, 1));
     --app-vw: calc(1vw / var(--ui-scale, 1));
     --app-dvh: calc(1dvh / var(--ui-scale, 1));
+
+    /* Safe-area insets. On Android the WebView's env(safe-area-inset-*) only
+       reflects the display CUTOUT, never the status/navigation bars, and on some
+       OEM WebViews it reports 0 outright — so an edge-to-edge Capacitor app that
+       relies on env() alone renders under the status bar (reported on Pixel 9a).
+       MainActivity reads the real WindowInsets natively and injects them as
+       --android-safe-*; we take max() so whichever source is populated wins
+       (env() on iOS / Samsung, the native var on Pixels/older WebViews). */
+    --safe-top-inset: max(env(safe-area-inset-top, 0px), var(--android-safe-top, 0px));
+    --safe-bottom-inset: max(env(safe-area-inset-bottom, 0px), var(--android-safe-bottom, 0px));
   }
 
   body {
@@ -330,19 +340,19 @@
 
 /* ── Safe Areas ── */
 .safe-top {
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: var(--safe-top-inset);
 }
 
 @media (max-width: 767px) {
   .safe-top {
-    padding-top: calc(env(safe-area-inset-top, 0px) / var(--ui-scale, 1));
+    padding-top: calc(var(--safe-top-inset) / var(--ui-scale, 1));
   }
   .safe-bottom {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) / var(--ui-scale, 1));
+    padding-bottom: calc(var(--safe-bottom-inset) / var(--ui-scale, 1));
   }
   /* Lifts the chat input bar above the fixed MobileNavBar */
   .nav-input-clearance {
-    padding-bottom: calc(44px + env(safe-area-inset-bottom, 0px) / var(--ui-scale, 1));
+    padding-bottom: calc(44px + var(--safe-bottom-inset) / var(--ui-scale, 1));
   }
 }
 
@@ -350,24 +360,24 @@
    settings/import buttons) that sit outside any safe-top-padded container
    and would otherwise render under the status bar on taller-inset devices. */
 .safe-top-abs {
-  top: calc(1rem + env(safe-area-inset-top, 0px));
+  top: calc(1rem + var(--safe-top-inset));
 }
 
 @media (min-width: 640px) {
   .safe-top-abs {
-    top: calc(2rem + env(safe-area-inset-top, 0px));
+    top: calc(2rem + var(--safe-top-inset));
   }
 }
 
 @media (max-width: 767px) {
   .safe-top-abs {
-    top: calc(1rem + env(safe-area-inset-top, 0px) / var(--ui-scale, 1));
+    top: calc(1rem + var(--safe-top-inset) / var(--ui-scale, 1));
   }
 }
 
 @media (min-width: 640px) and (max-width: 767px) {
   .safe-top-abs {
-    top: calc(2rem + env(safe-area-inset-top, 0px) / var(--ui-scale, 1));
+    top: calc(2rem + var(--safe-top-inset) / var(--ui-scale, 1));
   }
 }
 
@@ -400,8 +410,8 @@
      viewport instead of being shrunk to ui-scale% and pinned to the bottom
      (which left a dead gap up top). Mirrors #root's height compensation. */
   height: calc(100dvh / var(--ui-scale, 1));
-  padding-top: calc(env(safe-area-inset-top, 0px) / var(--ui-scale, 1));
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) / var(--ui-scale, 1));
+  padding-top: calc(var(--safe-top-inset) / var(--ui-scale, 1));
+  padding-bottom: calc(var(--safe-bottom-inset) / var(--ui-scale, 1));
   transform: translateY(100%);
   transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
   display: flex;
@@ -444,12 +454,26 @@
 .mobile-page-header {
   display: flex;
   align-items: center;
-  height: 56px;
+  min-height: 56px;
   padding: 0 16px;
+  /* Bake the status-bar inset into the header itself. As an unlayered rule this
+     outranks Tailwind's utilities layer (py-3) and the earlier .safe-top helper,
+     both of which the `padding` shorthand above would otherwise reset to 0 —
+     leaving the back button/title drawn under the status bar on taller-inset
+     devices (reported on Pixel 9a). min-height lets the inset grow the bar
+     instead of squeezing the 48px content. */
+  padding-top: var(--safe-top-inset);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-void);
   flex-shrink: 0;
   gap: 12px;
+}
+
+@media (max-width: 767px) {
+  .mobile-page-header {
+    /* Counter the html { zoom: var(--ui-scale) } so the inset stays true-size. */
+    padding-top: calc(var(--safe-top-inset) / var(--ui-scale, 1));
+  }
 }
 
 .mobile-page-header .back-btn {
@@ -485,8 +509,8 @@
   border-top: 1px solid var(--color-border);
   border-radius: 0;
   display: flex;
-  min-height: calc(44px + env(safe-area-inset-bottom, 0px) / var(--ui-scale, 1));
-  padding: 0 12px calc(env(safe-area-inset-bottom, 0px) / var(--ui-scale, 1)) 12px;
+  min-height: calc(44px + var(--safe-bottom-inset) / var(--ui-scale, 1));
+  padding: 0 12px calc(var(--safe-bottom-inset) / var(--ui-scale, 1)) 12px;
   align-items: center;
   box-shadow: 0 -1px 12px rgba(0, 0, 0, 0.08);
 }
@@ -556,7 +580,7 @@
 
   /* Add bottom padding for content behind the floating nav bar */
   .nav-clearance {
-    padding-bottom: calc(64px + (env(safe-area-inset-bottom, 0px) / var(--ui-scale, 1)));
+    padding-bottom: calc(64px + (var(--safe-bottom-inset) / var(--ui-scale, 1)));
   }
 
   /* Tap feedback for buttons */
@@ -571,7 +595,7 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(64px + var(--safe-bottom-inset));
   }
 }
 
