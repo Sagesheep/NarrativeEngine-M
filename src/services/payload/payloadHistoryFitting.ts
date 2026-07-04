@@ -43,7 +43,16 @@ export function fitHistory(
         const msg = candidateMessages[i];
 
         if (msg.role === 'tool') continue;
-        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) continue;
+        // An assistant message with tool_calls but NO content is a pure tool-call
+        // envelope — skip it (its matching tool result is skipped on the line above).
+        // BUT: when the GM emits story text TOGETHER WITH an update_scene_notebook
+        // tool call, the assistant message has BOTH content and tool_calls. The
+        // trailing tool-role message is skipped above, so we must drop tool_calls
+        // here too — otherwise the API sees a dangling tool_call with no matching
+        // tool result. Keeping the content preserves the story in fitted history.
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+            if (!msg.content || (typeof msg.content === 'string' && !msg.content.trim())) continue;
+        }
         if (msg.name === 'scene-marker') continue;
 
         let content = msg.content ?? null;

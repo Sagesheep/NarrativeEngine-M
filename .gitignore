@@ -46,3 +46,17 @@ opencode.json
 # Internal planning / work-order docs (kept local, not version-controlled)
 Upgrade/
 
+# Environment variables (sensitive API keys, etc.)
+.env
+.env.local
+.env.*.local
+
+# Testing and coverage
+coverage/
+
+# Build caches and system files
+.vite
+.eslintcache
+*.tsbuildinfo
+Thumbs.db
+

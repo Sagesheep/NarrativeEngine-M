@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, memo } from 'react';
-import { Edit2, RotateCcw, Trash2, Loader2, Terminal, Zap, Check, X, Pin, PinOff, ImagePlus, AlertCircle, XCircle } from 'lucide-react';
+import { Edit2, RotateCcw, Trash2, Loader2, Terminal, Zap, Check, X, Pin, PinOff, ImagePlus, AlertCircle, XCircle, Volume2, Square, RotateCw, Play, Pause } from 'lucide-react';
 import type { ChatMessage } from '../../types';
 import { EngineTraceView } from '../engine-trace/EngineTraceView';
 import { ContentWithChips } from './ContentWithChips';
@@ -9,6 +9,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { toast } from '../Toast';
 import { illustrateMessage } from '../../services/image';
 import { imageStorage } from '../../services/storage/imageStorage';
+import { proseForTTS, chunkSentencesForTTS } from '../../services/tts/proseStripper';
+import { speakChunks, speechSupported, type SpeakHandle } from '../../services/tts/speech';
 
 type MessageBubbleProps = {
     msg: ChatMessage;
@@ -113,6 +115,46 @@ function ImageAttachment({ msg }: ImageAttachmentProps) {
     return null;
 }
 
+/**
+ * Clickable sentence list for TTS playback navigation.
+ * Each sentence is clickable (jumps playback to that chunk). The active sentence
+ * is highlighted; past sentences are dimmed. No word-level highlight — walking
+ * UX is audio-first, screen is glanced at most.
+ */
+function SentenceList({
+    sentences,
+    activeIdx,
+    finished,
+    onSentenceClick,
+}: {
+    sentences: string[];
+    activeIdx: number;
+    finished?: boolean;
+    onSentenceClick?: (sentenceIndex: number) => void;
+}) {
+    return (
+        <div className={`text-[11px] leading-relaxed ${finished ? 'text-text-dim/50' : 'text-text-primary'}`}>
+            {sentences.map((sent, si) => {
+                const isPast = activeIdx >= 0 && si < activeIdx;
+                const isActive = si === activeIdx && !finished;
+                return (
+                    <span
+                        key={si}
+                        onClick={() => onSentenceClick?.(si)}
+                        className={[
+                            'cursor-pointer rounded px-0.5 transition-colors hover:bg-ice/20 hover:text-ice',
+                            isPast || finished ? 'text-text-dim/40' : '',
+                            isActive ? 'text-ice font-bold' : '',
+                        ].join(' ')}
+                    >
+                        {sent}{' '}
+                    </span>
+                );
+            })}
+        </div>
+    );
+}
+
 export const MessageBubble = memo(function MessageBubble({
     msg,
     isStreaming,
@@ -133,6 +175,7 @@ export const MessageBubble = memo(function MessageBubble({
     const thinkMatch = markdownContent.match(/<think>([\s\S]*?)<\/think>/i);
     const cleanContent = thinkMatch ? markdownContent.replace(/<think>[\s\S]*?<\/think>/gi, '').trim() : markdownContent;
     if (thinkMatch) thinkingBlock = thinkMatch[1].trim();
+    else if (msg.reasoning_content) thinkingBlock = msg.reasoning_content.trim();
 
     const parsedArgs = (msg as { parsedArgs?: { summary?: unknown } }).parsedArgs;
     const hasSummary = !!(parsedArgs?.summary && Array.isArray(parsedArgs.summary));
@@ -143,6 +186,106 @@ export const MessageBubble = memo(function MessageBubble({
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const bubbleRef = useRef<HTMLDivElement>(null);
     const actionsDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // ── TTS playback (Web Speech API) — chunked + click-to-jump + controllable ──
+    const ttsEnabled = useAppStore(s => s.settings.ttsEnabled);
+    const ttsRate = useAppStore(s => s.settings.ttsRate ?? 1);
+    const [ttsPlaying, setTtsPlaying] = useState(false);
+    const [ttsPaused, setTtsPaused] = useState(false);
+    const [ttsFinished, setTtsFinished] = useState(false);
+    const [activeSentenceIdx, setActiveSentenceIdx] = useState(-1);
+    const [totalChunks, setTotalChunks] = useState(0);
+    const speakHandleRef = useRef<SpeakHandle | null>(null);
+    const initialSkipRef = useRef<number | null>(null);
+    const rateRef = useRef(ttsRate);
+    useEffect(() => { rateRef.current = ttsRate; }, [ttsRate]);
+
+    const canSpeak = msg.role === 'assistant'
+        && !isEditing
+        && !!ttsEnabled
+        && speechSupported()
+        && !!markdownContent.trim();
+
+    const stopPlayback = () => {
+        if (speakHandleRef.current) {
+            speakHandleRef.current.stop();
+            speakHandleRef.current = null;
+        }
+        setTtsPlaying(false);
+        setTtsPaused(false);
+        setTtsFinished(false);
+        setActiveSentenceIdx(-1);
+    };
+
+    const handleSpeak = () => {
+        // If currently playing, stop (toggle behaviour — matches mainApp).
+        if (ttsPlaying) {
+            stopPlayback();
+            return;
+        }
+        const clean = proseForTTS(markdownContent);
+        if (!clean) return;
+        const chunks = chunkSentencesForTTS(clean);
+        if (!chunks.length) return;
+
+        setTotalChunks(chunks.length);
+        setTtsPaused(false);
+        setTtsFinished(false);
+        setActiveSentenceIdx(-1);
+
+        const startAt = initialSkipRef.current ?? 0;
+        initialSkipRef.current = null;
+
+        const handle = speakChunks(
+            chunks,
+            { rate: rateRef.current, startAt },
+            {
+                onChunkStart: (idx) => setActiveSentenceIdx(idx),
+                onFinish: () => {
+                    speakHandleRef.current = null;
+                    setTtsPlaying(false);
+                    setTtsFinished(true);
+                    setActiveSentenceIdx(-1);
+                },
+                onError: (err) => {
+                    speakHandleRef.current = null;
+                    setTtsPlaying(false);
+                    toast.warning(`Read aloud failed: ${err}`);
+                },
+            },
+        );
+        speakHandleRef.current = handle;
+        setTtsPlaying(true);
+    };
+
+    const handlePauseResume = () => {
+        const h = speakHandleRef.current;
+        if (!h) return;
+        if (ttsPaused) {
+            h.resume();
+            setTtsPaused(false);
+        } else {
+            h.pause();
+            setTtsPaused(true);
+        }
+    };
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (speakHandleRef.current) {
+                speakHandleRef.current.stop();
+                speakHandleRef.current = null;
+            }
+        };
+    }, []);
+
+    const handleSpeedChange = (delta: number) => {
+        const newRate = Math.min(2, Math.max(0.5, Math.round((rateRef.current + delta) * 10) / 10));
+        useAppStore.getState().updateSettings({ ttsRate: newRate });
+    };
+
+    const sentences = canSpeak && (ttsPlaying || ttsFinished) ? chunkSentencesForTTS(proseForTTS(markdownContent)) : [];
 
     const fullMessagePin = useAppStore(useShallow(s => s.pinnedExcerpts.find(p => p.isFullMessage && p.sourceMessageId === msg.id)));
     const hasPinBadge = useAppStore(useShallow(s => s.pinnedExcerpts.some(p => p.sourceMessageId === msg.id)));
@@ -315,6 +458,24 @@ export const MessageBubble = memo(function MessageBubble({
                                 <ImagePlus size={10} />
                             </button>
                         )}
+                        {canSpeak && (
+                            <button
+                                title={ttsPlaying ? 'Stop' : ttsFinished ? 'Replay' : 'Read aloud'}
+                                onClick={handleSpeak}
+                                className={`p-1 bg-void-lighter rounded transition-colors ${ttsPlaying ? 'text-ice' : 'text-text-dim hover:text-ice'}`}
+                            >
+                                {ttsPlaying ? <Square size={10} /> : ttsFinished ? <RotateCw size={10} /> : <Volume2 size={10} />}
+                            </button>
+                        )}
+                        {canSpeak && ttsPlaying && (
+                            <button
+                                title={ttsPaused ? 'Resume' : 'Pause'}
+                                onClick={handlePauseResume}
+                                className="p-1 bg-void-lighter rounded text-text-dim hover:text-ice"
+                            >
+                                {ttsPaused ? <Play size={10} /> : <Pause size={10} />}
+                            </button>
+                        )}
                         {msg.role === 'assistant' && onTagDivergence && (
                             <button
                                 title="Tag as Divergence"
@@ -427,6 +588,70 @@ export const MessageBubble = memo(function MessageBubble({
                             )}
                             <ContentWithChips content={cleanContent} streaming={isStreaming && isLastMessage} />
                         </div>
+
+                        {canSpeak && (ttsPlaying || ttsFinished) && (
+                            <div className="mt-2 mb-1 rounded border border-ice/30 bg-ice/5 max-h-[140px] overflow-y-auto relative">
+                                <div className="sticky top-0 z-10 bg-void-darker/95 backdrop-blur-sm border-b border-ice/20 px-2 py-1 flex items-center gap-1 justify-between flex-wrap">
+                                    <span className="flex items-center gap-1.5 text-[9px] text-ice/70 uppercase tracking-widest shrink-0">
+                                        {ttsFinished ? <RotateCw size={9} /> : ttsPaused ? <Pause size={9} /> : <Volume2 size={9} />}
+                                        {ttsFinished ? 'Finished' : ttsPaused ? 'Paused' : 'Reading'}
+                                    </span>
+                                    {totalChunks > 0 && (
+                                        <span className="text-[9px] text-text-dim/60 normal-case tracking-normal shrink-0 mr-1">
+                                            ▶ {ttsFinished ? totalChunks : (activeSentenceIdx >= 0 ? activeSentenceIdx + 1 : 0)}/{totalChunks}
+                                        </span>
+                                    )}
+                                    <div className="flex items-center gap-1 ml-auto">
+                                        {ttsPlaying && (
+                                            <button title={ttsPaused ? 'Resume' : 'Pause'} onClick={handlePauseResume} className="text-text-dim hover:text-ice px-1 py-0.5 rounded flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider">
+                                                {ttsPaused ? <><Play size={9} /> Resume</> : <><Pause size={9} /> Pause</>}
+                                            </button>
+                                        )}
+                                        <div className="w-px h-3 bg-border/40 mx-0.5" />
+                                        <button title="Slower" onClick={() => handleSpeedChange(-0.1)} className="text-text-dim hover:text-ice px-1 py-0.5 rounded text-[9px] font-bold">
+                                            ½×
+                                        </button>
+                                        <span className="text-[9px] text-text-dim font-mono w-8 text-center">{(rateRef.current).toFixed(1)}×</span>
+                                        <button title="Faster" onClick={() => handleSpeedChange(0.1)} className="text-text-dim hover:text-ice px-1 py-0.5 rounded text-[9px] font-bold">
+                                            2×
+                                        </button>
+                                        {ttsFinished && (
+                                            <>
+                                                <div className="w-px h-3 bg-border/40 mx-0.5" />
+                                                <button title="Replay" onClick={handleSpeak} className="text-ice hover:text-ice px-1 py-0.5 rounded flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider">
+                                                    <Play size={9} /> Replay
+                                                </button>
+                                            </>
+                                        )}
+                                        <div className="w-px h-3 bg-border/40 mx-0.5" />
+                                        <button title="Stop" onClick={stopPlayback} className="text-text-dim hover:text-red-400 px-1 py-0.5 rounded flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider">
+                                            <Trash2 size={9} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="px-2 py-1.5">
+                                    <SentenceList
+                                        sentences={sentences}
+                                        activeIdx={activeSentenceIdx}
+                                        finished={ttsFinished}
+                                        onSentenceClick={(si) => {
+                                            if (ttsPlaying) {
+                                                // Jump mid-playback: stop and restart from this chunk.
+                                                if (speakHandleRef.current) {
+                                                    speakHandleRef.current.stop();
+                                                    speakHandleRef.current = null;
+                                                }
+                                                initialSkipRef.current = si;
+                                                handleSpeak();
+                                            } else {
+                                                initialSkipRef.current = si;
+                                                handleSpeak();
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                         {hasSummary && (
                             <div className="mt-4 bg-terminal/5 border border-terminal/20 rounded p-3 relative overflow-hidden group/summary animate-in fade-in zoom-in duration-300">

@@ -15,6 +15,7 @@ import { ToastContainer } from './components/Toast';
 import { MobileNavBar } from './components/MobileNavBar';
 import { useRulesIndexer } from './hooks/useRulesIndexer';
 import { useLoreIndexer } from './hooks/useLoreIndexer';
+import { initVoices } from './services/tts/speech';
 import {
     loadCampaignState, getLoreChunks, getNPCLedger, loadArchiveIndex,
   loadChapters, loadSemanticFacts, loadDivergenceRegister,
@@ -32,6 +33,7 @@ export default function App() {
 
   useEffect(() => {
     loadSettings();
+    initVoices();
   }, [loadSettings]);
 
   useEffect(() => {

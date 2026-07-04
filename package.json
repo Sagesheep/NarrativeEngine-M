@@ -19,6 +19,7 @@
     "eval:build:high-prefix": "node scripts/build-eval-fixtures.mjs highPrefix"
   },
   "dependencies": {
+    "@capacitor-community/text-to-speech": "^8.0.2",
     "@capacitor/android": "^8.1.0",
     "@capacitor/cli": "^8.1.0",
     "@capacitor/core": "^8.1.0",

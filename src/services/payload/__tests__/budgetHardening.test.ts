@@ -48,6 +48,49 @@ describe('fitHistory budget clamp (AUDIT F6)', () => {
     });
 });
 
+describe('fitHistory — assistant message with tool_calls + story content', () => {
+    // Regression: when the GM emits story text TOGETHER WITH an update_scene_notebook
+    // tool call, the assistant message is persisted with BOTH content and tool_calls.
+    // fitHistory previously skipped ANY assistant message carrying tool_calls, so the
+    // story output never reached fitted history on subsequent turns.
+    it('keeps the story content of an assistant message that also carries tool_calls', () => {
+        const history: ChatMessage[] = [
+            { id: 'u1', role: 'user', content: 'I enter the tavern.', timestamp: 0 },
+            {
+                id: 'a1', role: 'assistant', content: 'The barkeep glances up and slides a mug your way.',
+                tool_calls: [{ id: 'tc1', type: 'function', function: { name: 'update_scene_notebook', arguments: '{"actions":[{"op":"add","text":"mug"}]}' } }],
+                timestamp: 1,
+            },
+            { id: 't1', role: 'tool', content: 'ok', name: 'update_scene_notebook', tool_call_id: 'tc1', timestamp: 2 },
+        ];
+        const { fitted } = fitHistory(history, undefined, 'current turn', 0, 8192);
+        const assistant = fitted.find(m => m.role === 'assistant');
+        expect(assistant).toBeDefined();
+        expect(assistant?.content).toContain('The barkeep glances up');
+        // tool_calls must be stripped — the matching tool result is skipped, so a
+        // dangling tool_call would make the provider reject the request.
+        expect((assistant as { tool_calls?: unknown }).tool_calls).toBeUndefined();
+    });
+
+    it('still skips a pure tool-call envelope with no story content', () => {
+        const history: ChatMessage[] = [
+            { id: 'u1', role: 'user', content: 'I roll stealth.', timestamp: 0 },
+            {
+                id: 'a1', role: 'assistant', content: '',
+                tool_calls: [{ id: 'tc1', type: 'function', function: { name: 'roll_dice', arguments: '{"dice":"1d20"}' } }],
+                timestamp: 1,
+            },
+            { id: 't1', role: 'tool', content: 'nat 20', name: 'roll_dice', tool_call_id: 'tc1', timestamp: 2 },
+            { id: 'a2', role: 'assistant', content: 'You slip past unseen.', timestamp: 3 },
+        ];
+        const { fitted } = fitHistory(history, undefined, 'current turn', 0, 8192);
+        // Pure envelope (a1) is skipped; a2's story is kept.
+        const assistants = fitted.filter(m => m.role === 'assistant');
+        expect(assistants).toHaveLength(1);
+        expect(assistants[0].content).toContain('You slip past unseen');
+    });
+});
+
 describe('divergence register cap (AUDIT F6)', () => {
     const entry = (chapterId: string, n: number): DivergenceEntry => ({
         id: `${chapterId}-${n}`,

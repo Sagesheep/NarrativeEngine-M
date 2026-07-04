@@ -91,6 +91,8 @@ export type AppSettings = {
     imageStylePrompt?: string;       // prepended to every image generation prompt (e.g. "oil painting, fantasy art, dark atmosphere")
     imageNegativePrompt?: string;    // negative prompt for models that support it
     imageTagRewriteEnabled?: boolean; // default false; when true, scene prose is rewritten to comma tags via the aux model before image gen (WO-05)
+    ttsEnabled?: boolean;             // default false; master toggle for read-aloud (Web Speech API)
+    ttsRate?: number;                 // default 1; playback rate 0.5–2
     providers: LLMProvider[];
     activeProviderId?: string;
     endpoint?: string;

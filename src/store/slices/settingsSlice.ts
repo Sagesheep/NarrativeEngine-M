@@ -128,6 +128,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
                         uiScale: migrated.uiScale ?? 1.0,
                         debugMode: migrated.debugMode ?? false,
                         showReasoning: migrated.showReasoning ?? true,
+                        ttsEnabled: migrated.ttsEnabled ?? false,
+                        ttsRate: migrated.ttsRate ?? 1,
                     },
                     settingsLoaded: true,
                 });

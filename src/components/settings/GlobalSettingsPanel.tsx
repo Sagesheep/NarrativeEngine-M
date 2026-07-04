@@ -57,6 +57,49 @@ export function GlobalSettingsPanel() {
             <div className="bg-void p-4 border border-border rounded">
                 <div className="flex items-center justify-between">
                     <div>
+                        <label className="block text-[11px] text-ice uppercase tracking-wider font-bold mb-1">Read Aloud (TTS)</label>
+                        <p className="text-[10px] text-text-dim">
+                            Speaker button on GM messages reads reply aloud. Uses your device's built-in voice (offline, no download).
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => updateSettings({ ttsEnabled: !settings.ttsEnabled })}
+                        className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.ttsEnabled ? 'bg-ice' : 'bg-border'}`}
+                        aria-label="Toggle Read Aloud"
+                    >
+                        <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.ttsEnabled ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                    </button>
+                </div>
+
+                {settings.ttsEnabled && (
+                    <div className="mt-4 pt-4 border-t border-border/60">
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="block text-[10px] text-text-dim uppercase tracking-widest">Playback Speed</label>
+                            <span className="text-ice font-bold font-mono bg-ice/10 px-2 py-0.5 rounded text-xs">
+                                {(settings.ttsRate ?? 1).toFixed(2)}×
+                            </span>
+                        </div>
+                        <input
+                            type="range"
+                            min={0.5}
+                            max={2}
+                            step={0.05}
+                            value={settings.ttsRate ?? 1}
+                            onChange={(e) => updateSettings({ ttsRate: parseFloat(e.target.value) })}
+                            className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-ice"
+                        />
+                        <div className="flex justify-between text-[9px] text-text-dim mt-1">
+                            <span>0.5× slow</span>
+                            <span>2× fast</span>
+                        </div>
+                        <p className="text-[9px] text-text-dim mt-2 italic">Voice quality depends on your Android's TTS engine. For a better voice, install "Speech Services & Voices" from the Play Store and download a natural English voice.</p>
+                    </div>
+                )}
+            </div>
+
+            <div className="bg-void p-4 border border-border rounded">
+                <div className="flex items-center justify-between">
+                    <div>
                         <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Auto-Trim</label>
                         <p className="text-[10px] text-text-dim">
                             Trim history at {Math.round((settings.condenseAggressiveness === 'aggressive' ? 50 : settings.condenseAggressiveness === 'quality' ? 90 : 75))}% limit

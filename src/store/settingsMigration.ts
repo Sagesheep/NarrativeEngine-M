@@ -43,6 +43,8 @@ export const defaultSettings: AppSettings = {
     verboseUtilityLogging: false,
     aiTier: 'pro' as const,
     matureMode: false,
+    ttsEnabled: false,
+    ttsRate: 1,
 };
 
 function normalizeProviderConfig(config: any): LLMProvider | null {
@@ -209,6 +211,8 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         imageStylePrompt: (raw.imageStylePrompt as string) ?? '',
         imageNegativePrompt: (raw.imageNegativePrompt as string) ?? '',
         imageTagRewriteEnabled: (raw.imageTagRewriteEnabled as boolean) ?? false,
+        ttsEnabled: (raw.ttsEnabled as boolean) ?? false,
+        ttsRate: (raw.ttsRate as number) ?? 1,
     };
 }
 
