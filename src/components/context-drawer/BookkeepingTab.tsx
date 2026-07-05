@@ -40,7 +40,10 @@ export function BookkeepingTab() {
                     profile={context.characterProfile}
                     onChange={(next) => updateContext({ characterProfile: next })}
                     active={context.characterProfileActive}
-                    onToggle={() => updateContext({ characterProfileActive: !context.characterProfileActive })}
+                    onToggle={() => updateContext({
+                        characterProfileActive: !context.characterProfileActive,
+                        characterProfileUserDisabled: context.characterProfileActive,
+                    })}
                 />
                 <div className="mt-2 flex justify-end">
                     <button

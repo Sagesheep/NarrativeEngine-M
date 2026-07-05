@@ -138,6 +138,13 @@ export async function loadCampaignState(campaignId: string): Promise<CampaignSta
             if (!Array.isArray(cpObj.activeTraits)) cpObj.activeTraits = [];
         }
 
+        // Forward-compat: older saves predate characterProfileUserDisabled.
+        // Default to false so legacy campaigns keep the existing auto-enable behavior
+        // (the user never explicitly disabled it). See autoEnableCharacterProfile.
+        if ((ctx as Record<string, unknown>).characterProfileUserDisabled === undefined) {
+            (ctx as Record<string, unknown>).characterProfileUserDisabled = false;
+        }
+
         // Migrate legacy vector-only rule meta to vector+keyword (matches the lore
         // chunk migration in getLoreChunks). Explicit `<!-- rag: vector -->` rules
         // re-assert vector-only on the next RulesManager parse via deriveDefaultMeta.

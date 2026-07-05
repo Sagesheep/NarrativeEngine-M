@@ -469,6 +469,7 @@ export function autoEnableCharacterProfile(
     npcLedger: NPCEntry[],
 ): void {
     if (state.context.characterProfileActive) return;
+    if (state.context.characterProfileUserDisabled) return;
     const pc = npcLedger.find(n => n.isPC);
     if (!pc) return;
     const profile = state.context.characterProfile ?? { identity: {}, activeTraits: [] };

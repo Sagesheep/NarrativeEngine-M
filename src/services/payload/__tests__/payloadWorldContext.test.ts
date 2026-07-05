@@ -44,6 +44,7 @@ const stubContext: GameContext = {
     continuePromptActive: false,
     inventoryActive: false,
     characterProfileActive: false,
+    characterProfileUserDisabled: false,
     surpriseEngineActive: false,
     encounterEngineActive: false,
     worldEngineActive: false,

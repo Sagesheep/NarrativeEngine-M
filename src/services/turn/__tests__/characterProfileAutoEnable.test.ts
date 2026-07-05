@@ -21,6 +21,7 @@ function makeState(over: Partial<TurnState> = {}): TurnState {
         settings: { aiTier: 'pro', contextLimit: 8192, rulesBudgetPct: 0.10, utilityTimeoutSeconds: 45 } as AppSettings,
         context: {
             characterProfileActive: false,
+            characterProfileUserDisabled: false,
             characterProfile: { identity: {}, activeTraits: [] } as CharacterProfileState,
         } as unknown as GameContext,
         messages: [],
@@ -164,5 +165,22 @@ describe('B3 — autoEnableCharacterProfile for chat-made PCs', () => {
         expect(patch.characterProfileActive).toBe(true);
         expect(patch.characterProfile.identity.name).toBe('Kael');
         expect(patch.characterProfile.activeTraits).toEqual([]);
+    });
+
+    it('respects characterProfileUserDisabled and does not flip active even with a PC present', () => {
+        const pc = makeNPC({ id: 'pc1', name: 'Kael', isPC: true });
+        const state = makeState({
+            npcLedger: [pc],
+            context: {
+                characterProfileActive: false,
+                characterProfileUserDisabled: true,
+                characterProfile: { identity: {}, activeTraits: [] } as CharacterProfileState,
+            } as unknown as GameContext,
+        });
+        const cb = makeCallbacks();
+
+        autoEnableCharacterProfile(state, cb, state.npcLedger);
+
+        expect(cb.updateContext).not.toHaveBeenCalled();
     });
 });

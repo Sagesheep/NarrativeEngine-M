@@ -22,6 +22,7 @@ const baseContext: GameContext = {
     continuePromptActive: false,
     inventoryActive: false,
     characterProfileActive: false,
+    characterProfileUserDisabled: false,
     surpriseEngineActive: true,
     encounterEngineActive: true,
     worldEngineActive: true,
