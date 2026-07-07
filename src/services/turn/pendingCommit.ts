@@ -7,11 +7,13 @@ import { tierAllows } from './aiTier';
 import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from '../payload';
 import { toast } from '../../components/Toast';
 import { useAppStore } from '../../store/useAppStore';
+import { uid } from '../../utils/uid';
 
 // ── In-memory snapshot ─────────────────────────────────────────────────
 // Lost on crash — that's OK. Relaunch reconciliation rebuilds from the live
 // store (no "next turn's messages" exist after a crash, so live == snapshot).
 interface PendingTurnSnapshot {
+    snapshotId: string;                 // uid() — matched by ChatMessage.precontext.capturedPayloadRef
     turnState: TurnState;               // ORIGINAL reference — do NOT rebuild from live
     messages: ChatMessage[];              // messages at swipe-1 completion time (frozen)
     cachedPayload: OpenAIMessage[];      // for swipes 2–5 (sanitizePayloadForApi(false))
@@ -28,6 +30,7 @@ export function capturePendingTurnSnapshot(
     displayInput: string,
 ): void {
     pendingSnapshot = {
+        snapshotId: uid(),
         turnState: state,
         messages: [...state.getMessages()],
         cachedPayload: [...cachedPayload],
@@ -35,6 +38,10 @@ export function capturePendingTurnSnapshot(
         activeCampaignId: state.activeCampaignId ?? '',
         npcLedger: state.npcLedger,
     };
+}
+
+export function getActiveSnapshotId(): string | null {
+    return pendingSnapshot?.snapshotId ?? null;
 }
 
 export function clearPendingTurnSnapshot(): void {
@@ -49,6 +56,38 @@ export function getCachedSwipePayload(): OpenAIMessage[] | null {
     return pendingSnapshot?.cachedPayload ?? null;
 }
 
+// Smart Retry v1: patch the user-message slot in the cached payload (soft-edit).
+// Preserves engine appendages by splicing only the player-authored prefix —
+// the caller passes the new FULL prompt text and the engine-tag patterns are
+// applied here. This mutates the in-memory singleton directly; if no snapshot
+// is active, the call is a no-op (the caller should fall back to full rewind).
+export function patchCachedUserPrompt(newPromptText: string): void {
+    if (!pendingSnapshot) return;
+    const payload = pendingSnapshot.cachedPayload;
+    let lastUserIdx = -1;
+    for (let i = payload.length - 1; i >= 0; i--) {
+        if (payload[i].role === 'user') { lastUserIdx = i; break; }
+    }
+    if (lastUserIdx === -1) return;
+    const original = payload[lastUserIdx].content;
+    if (typeof original !== 'string') return;
+
+    // Engine tag patterns — must match the orchestrator's append points.
+    const patterns: RegExp[] = [
+        /\n\[RESOLVED ROLL — /,
+        /\n\[LOOT DROP: /,
+        /\n\[DICE FAIRNESS/i,
+        /\n\[CHARACTER INTRO/i,
+    ];
+    let splitIdx = original.length;
+    for (const pat of patterns) {
+        const m = original.match(pat);
+        if (m && m.index !== undefined && m.index < splitIdx) splitIdx = m.index;
+    }
+    const engineSuffix = original.slice(splitIdx);
+    payload[lastUserIdx] = { ...payload[lastUserIdx], content: newPromptText.trim() + engineSuffix };
+}
+
 // ── Find the latest GM message with a pending commit ───────────────────
 export function findPendingCommitMessage(messages: ChatMessage[]): ChatMessage | null {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -56,6 +95,19 @@ export function findPendingCommitMessage(messages: ChatMessage[]): ChatMessage |
         if (m.role === 'assistant' && m.pendingCommit) return m;
         // Only scan the tail — the pending message is always the latest GM bubble
         // (no scene-marker follows it because handlePostTurn was deferred).
+        if (m.role === 'system' && m.name === 'scene-marker') break;
+    }
+    return null;
+}
+
+// Smart Retry v1: find the latest assistant message marked retryable (the story
+// AI was aborted or failed final retry). Like findPendingCommitMessage but for
+// the pre-commit failure state. Used by delete/regenerate handlers to clear
+// the orphaned precontext + the in-memory snapshot when the turn is discarded.
+export function findRetryableMessage(messages: ChatMessage[]): ChatMessage | null {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.role === 'assistant' && m.retryable) return m;
         if (m.role === 'system' && m.name === 'scene-marker') break;
     }
     return null;
@@ -189,7 +241,7 @@ export async function commitPendingTurn(): Promise<void> {
     const idx = freshMsgs.findIndex(m => m.id === pendingMsg.id);
     if (idx !== -1) {
         const updated = [...freshMsgs];
-        const { swipeSet: _ss, pendingCommit: _pc, swipeActiveIndex: _si, ...rest } = updated[idx];
+        const { swipeSet: _ss, pendingCommit: _pc, swipeActiveIndex: _si, retryable: _r, precontext: _pc2, ...rest } = updated[idx];
         updated[idx] = rest as ChatMessage;
         useAppStore.setState({ messages: updated });
         import('../../store/campaignStore').then(m => m.saveCampaignState(activeCampaignId, {

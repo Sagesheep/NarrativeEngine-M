@@ -10,11 +10,43 @@ import { sanitizePayloadForApi } from '../llm/payloadSanitizer';
 import { gatherContext } from './turnContext';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool } from './toolHandlers';
 import { extractAndStripSceneStakes } from './sceneStakesTag';
-import { capturePendingTurnSnapshot } from './pendingCommit';
+import { capturePendingTurnSnapshot, getActiveSnapshotId } from './pendingCommit';
+import type { GatheredContext } from './turnContext';
 
 import type { OpenAIMessage } from '../llm/llmService';
 import type { PayloadTrace, ResolveLootOpts, SwipeVariant } from '../../types';
 import { buildAssistantToolCallMessage, buildToolResultMessage } from '../../types/llmMessages';
+
+// Smart Retry v1: build the collapsed-box summary for the precontext field.
+// Kept short and non-technical — the user taps to expand for details (v2).
+function buildPrecontextSummary(gathered: GatheredContext): string {
+    const parts: string[] = [];
+    if (gathered.relevantLore?.length) parts.push(`Lore×${gathered.relevantLore.length}`);
+    if (gathered.relevantRules?.length) parts.push(`Rules×${gathered.relevantRules.length}`);
+    if (gathered.archiveRecall?.length) parts.push(`Archive×${gathered.archiveRecall.length}`);
+    if (gathered.semanticArchiveHits?.length) parts.push(`Hits×${gathered.semanticArchiveHits.length}`);
+    if (gathered.recommendedNPCNames?.length) parts.push(`NPCs×${gathered.recommendedNPCNames.length}`);
+    if (gathered.deepContextSummary) parts.push('DeepScan');
+    return parts.length ? parts.join(' · ') : 'Context gathered';
+}
+
+// Smart Retry v1: stamp the terminal assistant bubble as retryable + attach the
+// precontext ref. Called from every abort/failure exit branch (2.5, 3.5, 4).
+// `assistantMsgId` is the id of the bubble to stamp; `gathered` provides the
+// summary; the capturedPayloadRef matches the in-memory snapshot's snapshotId.
+function stampRetryable(
+    callbacks: TurnCallbacks,
+    assistantMsgId: string,
+    gathered: GatheredContext,
+): void {
+    const ref = getActiveSnapshotId();
+    if (!ref) return;
+    callbacks.updateLastMessage?.({
+        retryable: true,
+        precontext: { summary: buildPrecontextSummary(gathered), capturedPayloadRef: ref },
+    });
+    void assistantMsgId;
+}
 
 export async function runTurn(
     state: TurnState,
@@ -123,6 +155,14 @@ export async function runTurn(
     if (settings.debugMode && callbacks.setLastPayloadTrace && payloadResult.trace) {
         callbacks.setLastPayloadTrace(payloadResult.trace);
     }
+
+    // Smart Retry v1: capture the precontext snapshot BEFORE the story AI runs.
+    // The success path re-captures at line ~380 with tool-call history + complete
+    // messages (idempotent singleton overwrite). The failure/abort path keeps
+    // this early capture so the Retry button can re-enter executeTurn without
+    // regathering. Pass `displayInput` (raw typed text, no 🎲/💰 reveal) to
+    // preserve today's archive semantics exactly.
+    capturePendingTurnSnapshot(state, payload, displayInput);
 
     // Tool calls fire after the snapshot above; append a row each time a tool result is
     // folded back into the payload and re-publish so the debug panel includes them too.
@@ -367,17 +407,27 @@ export async function runTurn(
                         sceneStakes: parsedStakes,
                         tagPresent,
                     };
-                    callbacks.updateLastMessage({
-                        swipeSet: [variant],
-                        pendingCommit: true,
-                        swipeActiveIndex: 0,
-                    });
 
                     // Persist pendingCommit marker + minimal snapshot to IndexedDB
                     // (rides the existing debouncedSaveCampaignState on the message).
                     // Crash safety: on app launch, reconcilePendingCommitOnLaunch
                     // fires handlePostTurn with the then-visible variant, then clears.
+                    // Smart Retry v1: this refresh overwrites the early capture with
+                    // tool-call history + complete messages (Fable 5 findings 1 & 2).
                     capturePendingTurnSnapshot(state, currentPayload, displayInput);
+
+                    // Smart Retry v1: stamp `precontext` atomic with swipeSet
+                    // (per Fable 5 finding 3 — terminal-point stamping). Clear
+                    // `retryable` since the story AI succeeded. Read the ref AFTER
+                    // the refresh so capturedPayloadRef matches the new snapshotId.
+                    const ref = getActiveSnapshotId();
+                    callbacks.updateLastMessage({
+                        swipeSet: [variant],
+                        pendingCommit: true,
+                        swipeActiveIndex: 0,
+                        retryable: undefined,
+                        ...(ref ? { precontext: { summary: buildPrecontextSummary(gathered), capturedPayloadRef: ref } } : {}),
+                    });
                 }
 
                 callbacks.setPipelinePhase?.('idle');
@@ -386,6 +436,15 @@ export async function runTurn(
             },
             (err) => {
                 if (err === '__ABORT__' || err === 'AbortError' || err === 'The user aborted a request.') {
+                    // Smart Retry v1: user pressed Stop. Stamp the (partial) terminal
+                    // assistant bubble as retryable so the Retry button renders. The
+                    // early-captured snapshot (pre-story-AI) is still in memory and
+                    // can re-enter executeTurn without regathering.
+                    stampRetryable(callbacks, assistantMsgId, gathered);
+                    callbacks.setStreaming(false);
+                    callbacks.onCheckingNotes(false);
+                    callbacks.setPipelinePhase?.('idle');
+                    callbacks.setStreamingStats?.(null);
                     return;
                 }
                 if (apiRetryCount === 0) {
@@ -417,6 +476,9 @@ export async function runTurn(
                 } else {
                     callbacks.updateLastAssistant(`⚠️ Error: ${err}`);
                     toast.error('LLM request failed after retries');
+                    // Smart Retry v1: final retry exhaustion — stamp retryable so the
+                    // user can retry from the cached precontext without regathering.
+                    stampRetryable(callbacks, assistantMsgId, gathered);
                     callbacks.setStreaming(false);
                     callbacks.onCheckingNotes(false);
                     callbacks.setLoadingStatus?.(null);

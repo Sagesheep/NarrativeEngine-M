@@ -101,6 +101,11 @@ export type ChatSlice = {
     updateLastAssistant: (content: string) => void;
     updateLastMessage: (patch: Partial<ChatMessage>) => void;
     updateMessageContent: (id: string, content: string) => void;
+    /** Smart Retry v1: patch a specific message by id with a partial update.
+     *  Used to stamp/clear `retryable` and `precontext` on the terminal bubble
+     *  from outside the orchestrator (delete/orphan-cleanup paths). Does NOT
+     *  debounce-save — callers that need persistence should call saveCampaignState. */
+    updateMessage: (id: string, patch: Partial<ChatMessage>) => void;
     /** Returns true if the span was located and spliced; false if the original text could not be found. */
     replaceMessageText: (id: string, oldText: string, newText: string) => boolean;
     renameAcrossMessages: (from: string, to: string) => number;
@@ -379,6 +384,23 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
         set((s) => {
             const msgs = s.messages.map(m => m.id === id ? { ...m, content } : m);
             debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: msgs, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            return { messages: msgs };
+        }),
+    updateMessage: (id, patch) =>
+        set((s) => {
+            const idx = s.messages.findIndex(m => m.id === id);
+            if (idx === -1) return { messages: s.messages };
+            const msgs = [...s.messages];
+            // Strip undefined fields so we "clear" rather than stamp `undefined`.
+            const cleaned: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(patch)) {
+                if (v === undefined) {
+                    delete (msgs[idx] as Record<string, unknown>)[k];
+                } else {
+                    cleaned[k] = v;
+                }
+            }
+            msgs[idx] = { ...msgs[idx], ...cleaned };
             return { messages: msgs };
         }),
     replaceMessageText: (id, oldText, newText) => {

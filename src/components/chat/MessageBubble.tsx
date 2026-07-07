@@ -4,6 +4,7 @@ import type { ChatMessage } from '../../types';
 import { EngineTraceView } from '../engine-trace/EngineTraceView';
 import { ContentWithChips } from './ContentWithChips';
 import { ToolCallChips } from './ToolCallChips';
+import { PrecontextBox } from './PrecontextBox';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from '../Toast';
@@ -32,6 +33,8 @@ type MessageBubbleProps = {
     onOpenSwipeSheet?: (messageId: string) => void;
     /** Swipe Generation v1: called when the user swipes left/right on the bubble. */
     onSwipeNavigate?: (messageId: string, direction: 'prev' | 'next') => void;
+    /** Smart Retry v1: called when the user taps Retry on a failed/aborted bubble. */
+    onRetry?: (messageId: string) => void;
 };
 
 type ImageAttachmentProps = {
@@ -179,7 +182,9 @@ function SwipeIndicator({
     const current = (msg.swipeActiveIndex ?? 0) + 1;
     const total = Math.max(swipeSet.length, MAX_SWIPES);
     const atFirst = (msg.swipeActiveIndex ?? 0) === 0;
-    const atLast = (msg.swipeActiveIndex ?? 0) >= swipeSet.length - 1 && swipeSet.length >= MAX_SWIPES;
+    // Disabled at the last FILLED slot — the chevron only navigates existing
+    // slots. New variants are created via the Generate button in the sheet.
+    const atLast = (msg.swipeActiveIndex ?? 0) >= swipeSet.length - 1;
     const isStreaming = swipeSet[msg.swipeActiveIndex ?? 0]?.streaming === true;
 
     return (
@@ -222,7 +227,8 @@ export const MessageBubble = memo(function MessageBubble({
     onTagDivergence,
     toolResult,
     onOpenSwipeSheet,
-    onSwipeNavigate
+    onSwipeNavigate,
+    onRetry
 }: MessageBubbleProps) {
     const markdownContent = typeof msg.displayContent === 'string' ? msg.displayContent : (typeof msg.content === 'string' ? msg.content : '');
     let thinkingBlock = '';
@@ -675,6 +681,10 @@ export const MessageBubble = memo(function MessageBubble({
 
                         <ToolCallChips toolCalls={msg.tool_calls} toolResult={toolResult} />
 
+                        {msg.precontext && (
+                            <PrecontextBox summary={msg.precontext.summary} />
+                        )}
+
                         <div
                             className={`gm-prose prose-sm leading-relaxed overflow-hidden`}
                             {...(msg.role === 'assistant' ? { 'data-lore-checkable': 'true', 'data-message-id': msg.id } : {})}
@@ -692,6 +702,20 @@ export const MessageBubble = memo(function MessageBubble({
                             )}
                             <ContentWithChips content={cleanContent} streaming={isStreaming && isLastMessage} />
                         </div>
+
+                        {msg.retryable && !isStreaming && onRetry && (
+                            <div className="mt-2 mb-1 flex items-center gap-2 py-2 px-3 bg-void-darker border border-amber-500/30 rounded">
+                                <AlertCircle size={12} className="text-amber-400 shrink-0" />
+                                <span className="text-[11px] text-amber-400/80 truncate flex-1">Story AI halted — context preserved</span>
+                                <button
+                                    onClick={() => onRetry(msg.id)}
+                                    className="text-[10px] uppercase tracking-wider text-text-dim hover:text-amber-300 shrink-0 flex items-center gap-1"
+                                >
+                                    <RotateCw size={10} />
+                                    Retry
+                                </button>
+                            </div>
+                        )}
 
                         {hasSwipeSet(msg) && (
                             <SwipeIndicator

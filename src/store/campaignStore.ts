@@ -57,17 +57,27 @@ export async function deleteCampaign(id: string): Promise<void> {
 // the WebView renderer's heap, pushing it toward the OOM ceiling. The live copy
 // in the store keeps its payloads, so the viewer still works for the current
 // session; only the persisted/reloaded copy is slimmed.
-function stripDebugPayloads(state: CampaignState): CampaignState {
+//
+// Also strips Smart Retry v1 ephemeral fields (`retryable`, `precontext`):
+// `retryable` is a transient UI state that must NOT survive reload (a crashed
+// mid-retry turn just doesn't have a Retry button anymore — user resends, per
+// the "crash = gone" rule). `precontext.capturedPayloadRef` is a string key
+// into the in-memory `pendingSnapshot` singleton; on reload it's a dangling
+// key with no resolution, so there's no value in persisting it either. Both
+// are stripped here on save AND load — the load-side strip gives free cleanup
+// of any pre-fix saves that slipped to disk. `swipeSet`/`pendingCommit` are
+// deliberately NOT stripped — they are crash-safety markers that must persist.
+function stripEphemeralFields(state: CampaignState): CampaignState {
     const messages = state.messages;
-    if (!Array.isArray(messages) || !messages.some(m => m.debugPayload !== undefined)) {
-        return state;
-    }
+    if (!Array.isArray(messages)) return state;
+    const needsDebugStrip = messages.some(m => m.debugPayload !== undefined);
+    const needsRetryStrip = messages.some(m => m.retryable !== undefined || m.precontext !== undefined);
+    if (!needsDebugStrip && !needsRetryStrip) return state;
     return {
         ...state,
         messages: messages.map(m => {
-            if (m.debugPayload === undefined) return m;
-            const { debugPayload: _drop, ...rest } = m;
-            return rest;
+            const { debugPayload: _drop, retryable: _r, precontext: _pc, ...rest } = m;
+            return rest as ChatMessage;
         }),
     };
 }
@@ -86,7 +96,7 @@ export async function saveCampaignState(campaignId: string, state: CampaignState
             toSave = { ...state, pinnedExcerpts: prev.pinnedExcerpts };
         }
     }
-    await set(`state_${campaignId}`, stripDebugPayloads(toSave));
+    await set(`state_${campaignId}`, stripEphemeralFields(toSave));
 
     // B5 — bump the campaign meta's lastPlayedAt on every turn-commit. Previously
     // lastPlayedAt was only written when a campaign was opened/edited in CampaignHub,
@@ -160,7 +170,7 @@ export async function loadCampaignState(campaignId: string): Promise<CampaignSta
     // Existing campaigns saved with debug mode on still carry fat per-message
     // debugPayloads on disk; strip them on load so they never re-enter the
     // renderer heap. (Fresh saves are already slim via saveCampaignState.)
-    return stripDebugPayloads(state);
+    return stripEphemeralFields(state);
 }
 
 // ─── Lore Chunks ───

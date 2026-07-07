@@ -45,18 +45,22 @@ export async function readFileChunked(file: File): Promise<string> {
  * Drop the heavy per-message `debugPayload` blobs unless the caller is in debug
  * mode. These are captured for the inline payload viewer and can be hundreds of
  * KB each — they dominate export size and aren't needed for a normal save.
+ *
+ * Also strips Smart Retry v1 ephemeral fields (`retryable`, `precontext`) —
+ * they reference the in-memory `pendingSnapshot` singleton and have no meaning
+ * in an exported bundle.
  */
 function stripDebugPayloads(state: CampaignState | null | undefined): CampaignState | null {
     if (!state) return state ?? null;
     const messages = state.messages;
-    if (!Array.isArray(messages) || !messages.some(m => (m as { debugPayload?: unknown }).debugPayload !== undefined)) {
-        return state;
-    }
+    if (!Array.isArray(messages)) return state;
+    const needsDebugStrip = messages.some(m => (m as { debugPayload?: unknown }).debugPayload !== undefined);
+    const needsRetryStrip = messages.some(m => (m as { retryable?: boolean }).retryable !== undefined || (m as { precontext?: unknown }).precontext !== undefined);
+    if (!needsDebugStrip && !needsRetryStrip) return state;
     return {
         ...state,
         messages: messages.map(m => {
-            if ((m as { debugPayload?: unknown }).debugPayload === undefined) return m;
-            const { debugPayload: _drop, ...rest } = m as Record<string, unknown>;
+            const { debugPayload: _drop, retryable: _r, precontext: _pc, ...rest } = m as Record<string, unknown>;
             return rest as typeof m;
         }),
     };

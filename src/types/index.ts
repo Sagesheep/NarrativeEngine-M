@@ -486,6 +486,24 @@ export type ChatMessage = {
     swipeSet?: SwipeVariant[];
     pendingCommit?: boolean;
     swipeActiveIndex?: number;
+    // ── Smart Retry v1 ──
+    // `precontext` is captured after gatherContext succeeds but before the story
+    // AI runs, and is stamped on the TERMINAL assistant message (atomic with
+    // swipeSet on success, or with `retryable` on failure/abort). The collapsed
+    // box renders above the assistant prose. `capturedPayloadRef` is a string
+    // key matching PendingTurnSnapshot.snapshotId — never a live ref (would
+    // bloat storage like debugPayload). On reload it's a dangling key: safe,
+    // just doesn't resolve (no Retry button). Stripped from persistence by
+    // campaignStore.stripEphemeralFields.
+    precontext?: {
+        summary: string;            // "Lore · Rules · Archive · 4 NPCs · 2 scenes"
+        capturedPayloadRef: string; // matches PendingTurnSnapshot.snapshotId
+    };
+    // True when the story AI was aborted (Stop) or failed final retry. The
+    // bubble keeps its partial text; a Retry button renders below. Cleared on
+    // first successful Retry, on new-turn start, and at commit (via the
+    // destructure in commitPendingTurn). Not persisted (stripped pre-save).
+    retryable?: boolean;
 };
 
 export type SwipeVariant = {

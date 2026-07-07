@@ -83,13 +83,9 @@ export function RegenerateSheet({
 
     const handlePrev = () => prevSwipe();
     const handleNext = () => {
-        const atLastFilled = currentIdx >= (swipeSet?.length ?? 1) - 1;
-        const canGenerate = (swipeSet?.length ?? 0) < MAX_SWIPES;
-        if (atLastFilled && canGenerate && isLatest) {
-            generateSwipe(guidance.trim() || undefined);
-        } else {
-            nextSwipe();
-        }
+        // Navigate between EXISTING filled slots only. New variants are
+        // generated ONLY via the Generate button below (with optional guidance).
+        nextSwipe();
     };
 
     const handleGuidanceKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -104,8 +100,10 @@ export function RegenerateSheet({
         }
     };
 
-    const atLastSlot = (swipeSet?.length ?? 0) >= MAX_SWIPES;
-    const nextDisabled = currentIdx >= (swipeSet?.length ?? 1) - 1 && atLastSlot;
+    const atLastFilled = currentIdx >= (swipeSet?.length ?? 1) - 1;
+    // Next chevron is disabled when at the last filled slot — it only navigates
+    // existing slots. New variants are created via the Generate button only.
+    const nextDisabled = atLastFilled;
 
     return (
         <div

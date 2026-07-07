@@ -265,8 +265,32 @@ export function useSwipeVariants(messageId: string | null) {
                 pinnedExcerpts: fresh.pinnedExcerpts,
             })).catch(e => console.warn('[Swipe] saveCampaignState failed:', e));
         } catch (err) {
-            if (err instanceof DOMException && err.name === 'AbortError') return;
-            if (err instanceof Error && err.message === '__ABORT__') return;
+            const isAbort = (err instanceof DOMException && err.name === 'AbortError')
+                || (err instanceof Error && err.message === '__ABORT__');
+            if (isAbort) {
+                // Smart Retry v1 / Fable 5 note: clear the streaming flag on the
+                // partial slot and remove it (matches the failure-cleanup path).
+                // The user can tap Generate again from the sheet. v2 may instead
+                // stamp the slot retryable to allow resuming in place.
+                const fresh = useAppStore.getState();
+                const freshIdx = fresh.messages.findIndex(m => m.id === messageId);
+                if (freshIdx !== -1 && fresh.messages[freshIdx].swipeSet) {
+                    const freshMsg = fresh.messages[freshIdx];
+                    const cleanedSet = freshMsg.swipeSet!.filter(v => v.id !== newVariant.id);
+                    const fallbackIdx = Math.min(newIndex, cleanedSet.length - 1);
+                    const fallbackVariant = cleanedSet[fallbackIdx];
+                    const updated = [...fresh.messages];
+                    updated[freshIdx] = {
+                        ...freshMsg,
+                        swipeSet: cleanedSet.length > 0 ? cleanedSet : freshMsg.swipeSet,
+                        swipeActiveIndex: Math.max(0, fallbackIdx),
+                        content: fallbackVariant?.text ?? freshMsg.content,
+                        displayContent: fallbackVariant?.text ?? freshMsg.displayContent,
+                    };
+                    useAppStore.setState({ messages: updated });
+                }
+                return;
+            }
             console.warn('[Swipe] generation failed:', err);
             // Remove the empty streaming slot on failure.
             const fresh = useAppStore.getState();
@@ -340,7 +364,10 @@ export function useSwipeVariants(messageId: string | null) {
     useEffect(() => {
         if (!messageId) return;
         const msg = useAppStore.getState().messages.find(m => m.id === messageId);
-        if (msg && !msg.pendingCommit) {
+        // Smart Retry v1: a `retryable:true` bubble has no `pendingCommit` (it
+        // represents an aborted/failed story AI run, not a committed one). The
+        // retry generation path reuses this hook — guard so we don't abort it.
+        if (msg && !msg.pendingCommit && !msg.retryable) {
             // The turn was committed (by handleSend, Arc Injector, etc.).
             // Invalidate so any in-flight swipe result lands nowhere.
             activeSetIdRef.current = `set_committed_${Date.now()}`;

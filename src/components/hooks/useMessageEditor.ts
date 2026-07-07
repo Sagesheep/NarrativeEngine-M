@@ -3,7 +3,7 @@ import type { ChatMessage } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../services/apiClient';
 import { toast } from '../Toast';
-import { clearPendingTurnSnapshot, findPendingCommitMessage } from '../../services/turn';
+import { clearPendingTurnSnapshot, findPendingCommitMessage, findRetryableMessage, getActiveSnapshotId, getCachedSwipePayload, patchCachedUserPrompt } from '../../services/turn';
 
 interface UseMessageEditorDeps {
     messages: ChatMessage[];
@@ -107,6 +107,31 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             clearPendingTurnSnapshot();
         }
 
+        // Smart Retry v1: if we're deleting a retryable bubble (story AI was
+        // aborted/failed), clear the in-memory snapshot — it's the only consumer
+        // of the cached precontext. Also handles the case where the deleted
+        // message is a user msg whose paired assistant carries `precontext` —
+        // per the orphan rule, deleting the user prompt orphans the precontext.
+        const deletingRetryable = findRetryableMessage(deps.messages)?.id === id;
+        if (deletingRetryable) {
+            clearPendingTurnSnapshot();
+        }
+        if (!deletingRetryable) {
+            // Maybe the deleted message is a user msg whose NEXT assistant carries
+            // precontext (orphan cleanup per the rule: precontext without its
+            // triggering user prompt is meaningless).
+            const idx = deps.messages.findIndex(m => m.id === id);
+            const nextAssistant = idx !== -1
+                ? deps.messages.slice(idx + 1).find(m => m.role === 'assistant')
+                : undefined;
+            if (nextAssistant?.precontext || nextAssistant?.retryable) {
+                if (nextAssistant.precontext?.capturedPayloadRef === getActiveSnapshotId()) {
+                    clearPendingTurnSnapshot();
+                }
+                useAppStore.getState().updateMessage(nextAssistant.id, { retryable: undefined, precontext: undefined });
+            }
+        }
+
         // Remove the GM/user bubble + its trailing scene-marker from chat.
         const idx = deps.messages.findIndex(m => m.id === id);
         const markerId = idx !== -1
@@ -121,6 +146,9 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             if (deletingPending) return;
             if (!sceneId || !deps.activeCampaignId) return;
         }
+        // A retryable bubble also has no archived scene (story AI never finished,
+        // handlePostTurn never ran). Bail the same way.
+        if (deletingRetryable) return;
         try {
             await api.backup.create(deps.activeCampaignId, { trigger: 'pre-scene-delete', isAuto: true }).catch(() => {});
             await api.archive.deleteScene(deps.activeCampaignId, sceneId);
@@ -158,6 +186,39 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         if (!msg) return;
 
         if (msg.role === 'user') {
+            // Smart Retry v1: soft-edit path. If the NEXT assistant message
+            // carries `retryable` (story AI was aborted/failed, precontext is
+            // cached), patch the cached payload's user-msg slot in place —
+            // preserving engine appendages — and update the live user message
+            // content. The user then taps Retry to regenerate with the new
+            // prompt + the cached precontext (no regather, no archive rollback).
+            // If no cached precontext exists, fall through to the hard-rewind
+            // path (today's behavior).
+            const idx = deps.messages.findIndex(m => m.id === id);
+            const nextAssistant = idx !== -1
+                ? deps.messages.slice(idx + 1).find(m => m.role === 'assistant')
+                : undefined;
+            const canSoftEdit = !!(nextAssistant?.retryable && getCachedSwipePayload());
+            if (canSoftEdit) {
+                // Patch the cached payload in place (preserves engine tags).
+                patchCachedUserPrompt(newContent.trim());
+                // Update the live user message content so the chat reflects the edit.
+                useAppStore.getState().updateMessageContent(msg.id, newContent.trim());
+                // Wipe any stale swipeSet on the assistant bubble (prior variants
+                // answered the old prompt). Keep retryable so the Retry button shows.
+                if (nextAssistant!.swipeSet) {
+                    useAppStore.getState().updateMessage(nextAssistant!.id, {
+                        swipeSet: undefined,
+                        swipeActiveIndex: undefined,
+                        content: '',
+                        displayContent: '',
+                        reasoning_content: undefined,
+                    });
+                }
+                setEditingMessageId(null);
+                return;
+            }
+            // Hard-rewind path (today's behavior): archive rollback + delete + resend.
             rollbackArchiveFrom(msg.timestamp);
             deps.deleteMessagesFrom(msg.id);
             setEditingMessageId(null);
@@ -212,6 +273,16 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             const pendingIdx = msgs.findIndex(m => m.id === pending.id);
             if (pendingIdx >= idx) {
                 // The pending turn is being rolled back — discard it without commit.
+                clearPendingTurnSnapshot();
+            }
+        }
+        // Smart Retry v1: a retryable bubble being rolled back also discards the
+        // cached precontext (the snapshot was captured pre-story-AI for retry).
+        // Same leak-prevention as the pending path above.
+        const retryable = findRetryableMessage(msgs);
+        if (retryable) {
+            const retryableIdx = msgs.findIndex(m => m.id === retryable.id);
+            if (retryableIdx >= idx) {
                 clearPendingTurnSnapshot();
             }
         }

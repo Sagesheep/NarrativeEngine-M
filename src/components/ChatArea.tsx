@@ -6,7 +6,7 @@ import {
 import { useAppStore } from '../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { PipelinePhase, StreamingStats, LLMProvider } from '../types';
-import { runTurn, commitPendingTurn } from '../services/turn';
+import { runTurn, commitPendingTurn, findRetryableMessage } from '../services/turn';
 import { TelemetryStrip } from './TelemetryStrip';
 import { useMessageEditor } from './hooks/useMessageEditor';
 import { useCondenser } from './hooks/useCondenser';
@@ -21,6 +21,7 @@ import { RenameNpcModal } from './chat/RenameNpcModal';
 import { PCCreationWizard } from './pc/PCCreationWizard';
 import { RegenerateSheet } from './chat/RegenerateSheet';
 import { useSwipeVariants } from './hooks/useSwipeVariants';
+import { useRetryStoryAI } from './hooks/useRetryStoryAI';
 
 export function ChatArea() {
     const {
@@ -120,6 +121,7 @@ export function ChatArea() {
     }, [messages]);
 
     const swipe = useSwipeVariants(pendingMessageId);
+    const retry = useRetryStoryAI();
 
     const [streamingStats, setStreamingStatsLocal] = useState<StreamingStats | null>(null);
     const streamStartRef = useRef<number>(0);
@@ -168,6 +170,14 @@ export function ChatArea() {
             // and appends the archive scene the next payload builds against).
             // Ordering: commit is awaited before runTurn starts.
             await commitPendingTurn();
+            // Smart Retry v1: clear stale `retryable` on any old bubble before the
+            // new turn starts. The snapshot was just nulled by commitPendingTurn's
+            // no-pending-message branch, so any prior Retry button is now dead —
+            // hide it so the user doesn't tap a button that can't resolve.
+            const staleRetry = findRetryableMessage(useAppStore.getState().messages);
+            if (staleRetry) {
+                useAppStore.getState().updateMessage(staleRetry.id, { retryable: undefined, precontext: undefined });
+            }
             await runTurn({
             input: llmInput,
             displayInput: textToUse,
@@ -444,13 +454,20 @@ export function ChatArea() {
                             if (direction === 'prev') swipe.prevSwipe();
                             else swipe.nextSwipe();
                         }}
+                        onRetry={(id) => retry.retryStoryAI(id)}
                     />
                 ))}
 
                 {isCheckingNotes || isStreaming ? (
                     <div className="flex items-center gap-2 text-terminal/80 text-[10px] uppercase tracking-widest px-4 py-2 bg-terminal/5 rounded-sm border border-terminal/10 mb-4 mx-2">
                         <Loader2 size={12} className="animate-spin" />
-                        <span className="animate-pulse">{isCheckingNotes ? 'GM is checking archives...' : 'Transmission in progress...'}</span>
+                        <span className="animate-pulse">
+                            {isCheckingNotes
+                                ? 'GM is checking archives...'
+                                : pipelinePhase === 'gathering-context' || pipelinePhase === 'building-prompt'
+                                    ? 'GM is gathering context...'
+                                    : 'Transmission in progress...'}
+                        </span>
                     </div>
                 ) : null}
                 <div ref={bottomRef} />

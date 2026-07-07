@@ -39,10 +39,13 @@ export {
     commitPendingTurn,
     reconcilePendingCommitOnLaunch,
     findPendingCommitMessage,
+    findRetryableMessage,
     isLatestGmMessage,
     hasSwipeSet,
     clearPendingTurnSnapshot,
     getCachedSwipePayload,
+    getActiveSnapshotId,
+    patchCachedUserPrompt,
 } from './pendingCommit';
 
 export {
