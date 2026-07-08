@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
 import type { ChatMessage, CondenserState, GameContext, LoreCheckSelection, LoreCheckResult, DivergenceRegister, DivergenceEntry, DivergenceCategory, TopicClusters, PinnedExcerpt } from '../../types';
 import { EMPTY_REGISTER, toggleChapter, toggleCategory, pinFact, editFact, deleteFact, deleteChapter, toggleFact, dismissReviewFlag, editKnownBy, applySubjectTokens, migrateV1ToV2 } from '../../services/campaign-state';
-import { debouncedSaveCampaignState } from './campaignSlice';
+import { debouncedSaveCampaignState } from './saveController';
 import { countTokens } from '../../services/infrastructure';
 import { uid } from '../../utils/uid';
 import { imageStorage } from '../../services/storage/imageStorage';

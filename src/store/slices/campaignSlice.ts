@@ -15,28 +15,17 @@ import {
     DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES,
     DEFAULT_WORLD_WHO, DEFAULT_WORLD_WHERE, DEFAULT_WORLD_WHY, DEFAULT_WORLD_WHAT,
 } from './settingsSlice';
+// debouncedSaveCampaignState + registerCampaignStateGetter used to live
+// here. They were hoisted to saveController.ts to break the
+// campaignSlice ↔ chatSlice cycle (chatSlice imported the function from
+// campaignSlice; campaignSlice imported a type from chatSlice for slice
+// composition). Now both slices import from the neutral saveController.
+import { debouncedSaveCampaignState, registerCampaignStateGetter } from './saveController';
 
 // ── Debounced save helpers ─────────────────────────────────────────────
 
-let stateTimer: ReturnType<typeof setTimeout> | null = null;
 let autoBackupTimer: ReturnType<typeof setInterval> | null = null;
 import type { PinnedExcerpt } from '../../types';
-let _getStateForSave: (() => { context: GameContext; messages: ChatMessage[]; condenser: CondenserState; pinnedExcerpts?: PinnedExcerpt[] }) | null = null;
-
-export function debouncedSaveCampaignState(campaignId: string | null, _state: { context: GameContext; messages: ChatMessage[]; condenser: CondenserState; pinnedExcerpts?: PinnedExcerpt[] }) {
-    if (!campaignId) return;
-    if (stateTimer) clearTimeout(stateTimer);
-    stateTimer = setTimeout(async () => {
-        const state = _getStateForSave ? _getStateForSave() : _state;
-        try {
-            const { saveCampaignState } = await import('../../store/campaignStore');
-            await saveCampaignState(campaignId, state);
-        } catch (e) {
-            console.error(e);
-            notify.error('Failed to save campaign state');
-        }
-    }, 1000);
-}
 
 // ── Default context ────────────────────────────────────────────────────
 
@@ -264,7 +253,8 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         await api.backup.create(campaignId, { trigger, isAuto: true });
     },
     _registerCampaignStateGetter: (getter) => {
-        _getStateForSave = getter;
+        // Forward to the saveController, which owns the getter slot now.
+        registerCampaignStateGetter(getter);
     },
 
     // Auto Bookkeeping
