@@ -16,11 +16,9 @@ const config: CapacitorConfig = {
       backgroundColor: '#0b0f12',
     },
     Keyboard: {
-      // 'native' makes the OS resize the WebView itself when the soft keyboard
-      // opens. Combined with #root { height: 100dvh } (in index.css), dvh then
-      // tracks the shrunk WebView and ChatInput lifts above the keyboard.
-      // 'body' only set an inline <body> height, which #root's height overrode
-      // — so the input stayed pinned behind the keyboard.
+      // Note: `resize` only takes effect on iOS. On Android we drive the
+      // app height from window.visualViewport (see App.tsx), which reports
+      // the actual keyboard-excluded viewport on every device/WebView.
       resize: 'native',
       resizeOnFullScreen: true,
     },

@@ -75,6 +75,36 @@ export default function App() {
     };
   }, []);
 
+  // ── Keyboard-aware viewport sizing (cross-device, web-standard) ─────────────
+  // The Capacitor Keyboard `resize` option is iOS-only, so on Android `100vh`/
+  // `100dvh` never shrink when the soft keyboard opens — the chat input ends up
+  // pinned behind it. window.visualViewport reports the *actual* visible (keyboard-
+  // excluded) viewport height on every modern Android/iOS WebView, so we drive
+  // #root's height from it live. This is device-agnostic: no hardcoded offsets,
+  // no Capacitor config dependency, no per-OS branching. Falls back gracefully
+  // (no-op) where visualViewport is unavailable.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('visualViewport' in window)) return;
+    const vv = window.visualViewport!;
+    const apply = () => {
+      const root = document.getElementById('root');
+      if (!root) return;
+      // px height, NOT divided by ui-scale: html.zoom already scales the root's
+      // CSS pixels, so feeding raw visualViewport.height (also CSS px) keeps them
+      // in the same coordinate space. Avoids double-dividing the keyboard gap.
+      root.style.height = `${vv.height}px`;
+    };
+    apply();
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    return () => {
+      vv.removeEventListener('resize', apply);
+      vv.removeEventListener('scroll', apply);
+      const root = document.getElementById('root');
+      if (root) root.style.height = '';
+    };
+  }, [settingsLoaded]);
+
   useEffect(() => {
     if (settingsLoaded) {
       const scale = useAppStore.getState().settings.uiScale ?? 1;
@@ -83,9 +113,10 @@ export default function App() {
       
       const root = document.getElementById('root');
       if (root) {
-        // Clear old transform hacks permanently
+        // Clear old transform hacks permanently. NOTE: do NOT clear
+        // root.style.height here — the visualViewport effect above owns it
+        // and drives it live so the app shrinks when the keyboard opens.
         root.style.width = '';
-        root.style.height = '';
         root.style.transform = '';
         root.style.transformOrigin = '';
         root.style.zoom = '';
