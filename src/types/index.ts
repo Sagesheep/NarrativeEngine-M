@@ -105,23 +105,61 @@ export type CondenserState = {
     condensedUpToIndex: number;
 };
 
+/** @deprecated — superseded by DiceSystemConfig. Kept for migration detection only. */
 export type DiceConfig = {
-    catastrophe: number; // e.g. 2 (1-2 is catastrophe)
-    failure: number;     // e.g. 6 (3-6 is failure)
-    success: number;     // e.g. 15 (7-15 is success)
-    triumph: number;     // e.g. 19 (16-19 is triumph)
-    crit: number;        // e.g. 20 (20 is crit)
+    catastrophe: number;
+    failure: number;
+    success: number;
+    triumph: number;
+    crit: number;
 };
 
-/**
- * Player-called "dice me" roll modes (header dice button). The player arms a MODE;
- * the actual roll is resolved at send time (turnOrchestrator) so the outcome stays
- * hidden until they commit — genuine commit-then-resolve uncertainty. All three
- * reduce to a single d20 face value fed to `mapTier`:
- * - '1d20'   → one die
- * - 'adv'    → 2d20, keep the higher
- * - 'disadv' → 2d20, keep the lower
- */
+// ─── Generalized dice engine types ──────────────────────────────────────
+
+export type OutcomeBand = {
+    id: string;
+    label: string;   // "Catastrophe", "Mixed", "Success with boon", etc.
+    min: number;      // inclusive
+    max: number;      // inclusive
+};
+
+export type DieType = {
+    id: string;
+    name: string;     // "d6", "d20", "d100", "Custom ..."
+    faces: number;    // 6, 20, 100, ...
+    bands: OutcomeBand[]; // must tile 1..faces with no gaps/overlaps
+};
+
+export type RollAggregation = 'pick_one' | 'total_all';
+export type RollModifier = 'none' | 'adv' | 'disadv';
+
+export type RollDefinition = {
+    modifier: RollModifier;      // Gate 1: None / Advantage / Disadvantage
+    count: number;               // Gate 2: number of dice (e.g. 3 for 3d6)
+    aggregation: RollAggregation; // Gate 3: Pick one / Total all
+};
+
+export type DiceCategory = {
+    id: string;
+    name: string;         // "Combat", "Stealth", custom — up to 10
+    dieTypeId: string;    // references DieType.id
+};
+
+export type DiceSystemConfig = {
+    dieTypes: DieType[];          // registry of available die types
+    categories: DiceCategory[];   // up to 10
+    // Note: no global rollDef — pool mode always does a singular roll per category.
+    // The 3-gate RollDefinition is per-roll (dice me modal / roll_dice tool args), not global.
+};
+
+// Player-called "dice me" arm request (WO-H). Resolved at send time so the result is
+// hidden until the player commits; asserted as fact into the turn.
+export type ManualRollRequest = {
+    dieTypeId: string;       // which DieType to roll
+    rollDef: RollDefinition;  // per-roll 3-gate config (local to this roll)
+};
+
+/** @deprecated — kept for migration. Old shape was '1d20' | 'adv' | 'disadv'. */
 export type ManualRollMode = '1d20' | 'adv' | 'disadv';
 
 export type SurpriseConfig = {
@@ -177,7 +215,8 @@ export type GameContext = {
     worldEventDC?: number;
     agencyTick?: number;          // Phase-3 monotonic tick counter (heartbeat/timeskip advance it)
     agencyHeartbeatDC?: number;   // Phase-3 escalating-DC pity timer (mirrors surpriseDC; §5/§9.3#1)
-    diceConfig?: DiceConfig;
+    diceConfig?: DiceConfig;        // @deprecated — migrated to diceSystem on load
+    diceSystem?: DiceSystemConfig;   // generalized dice engine config
     worldEventConfig?: WorldEventConfig;
     // Toggles: whether each field is appended to context
     starterActive: boolean;
@@ -972,4 +1011,127 @@ export type StatBlock = {
     SPD: number;
     WIL: number;
 };
+
+// ─── Dice System Defaults & Migration ──────────────────────────────────
+
+function bandId() { return `b_${Math.random().toString(36).slice(2, 9)}`; }
+
+/** Standard 8 polyhedral/percentile die types with sensible default outcome bands. */
+export function buildDefaultDieTypes(): DieType[] {
+    return [
+        {
+            id: 'dt_d2', name: 'd2', faces: 2, bands: [
+                { id: bandId(), label: 'Failure', min: 1, max: 1 },
+                { id: bandId(), label: 'Success', min: 2, max: 2 },
+            ],
+        },
+        {
+            id: 'dt_d4', name: 'd4', faces: 4, bands: [
+                { id: bandId(), label: 'Failure', min: 1, max: 2 },
+                { id: bandId(), label: 'Success', min: 3, max: 4 },
+            ],
+        },
+        {
+            id: 'dt_d6', name: 'd6', faces: 6, bands: [
+                { id: bandId(), label: 'Catastrophe', min: 1, max: 1 },
+                { id: bandId(), label: 'Failure', min: 2, max: 3 },
+                { id: bandId(), label: 'Mixed', min: 4, max: 4 },
+                { id: bandId(), label: 'Success', min: 5, max: 6 },
+            ],
+        },
+        {
+            id: 'dt_d8', name: 'd8', faces: 8, bands: [
+                { id: bandId(), label: 'Catastrophe', min: 1, max: 1 },
+                { id: bandId(), label: 'Failure', min: 2, max: 4 },
+                { id: bandId(), label: 'Success', min: 5, max: 7 },
+                { id: bandId(), label: 'Triumph', min: 8, max: 8 },
+            ],
+        },
+        {
+            id: 'dt_d10', name: 'd10', faces: 10, bands: [
+                { id: bandId(), label: 'Catastrophe', min: 1, max: 1 },
+                { id: bandId(), label: 'Failure', min: 2, max: 5 },
+                { id: bandId(), label: 'Success', min: 6, max: 9 },
+                { id: bandId(), label: 'Triumph', min: 10, max: 10 },
+            ],
+        },
+        {
+            id: 'dt_d12', name: 'd12', faces: 12, bands: [
+                { id: bandId(), label: 'Catastrophe', min: 1, max: 2 },
+                { id: bandId(), label: 'Failure', min: 3, max: 6 },
+                { id: bandId(), label: 'Success', min: 7, max: 10 },
+                { id: bandId(), label: 'Triumph', min: 11, max: 12 },
+            ],
+        },
+        {
+            id: 'dt_d20', name: 'd20', faces: 20, bands: [
+                { id: bandId(), label: 'Catastrophe', min: 1, max: 2 },
+                { id: bandId(), label: 'Failure', min: 3, max: 6 },
+                { id: bandId(), label: 'Success', min: 7, max: 15 },
+                { id: bandId(), label: 'Triumph', min: 16, max: 19 },
+                { id: bandId(), label: 'Narrative Boon', min: 20, max: 20 },
+            ],
+        },
+        {
+            id: 'dt_d100', name: 'd100', faces: 100, bands: [
+                { id: bandId(), label: 'Fumble', min: 1, max: 5 },
+                { id: bandId(), label: 'Failure', min: 6, max: 50 },
+                { id: bandId(), label: 'Success', min: 51, max: 95 },
+                { id: bandId(), label: 'Critical', min: 96, max: 100 },
+            ],
+        },
+    ];
+}
+
+const DEFAULT_CATEGORY_NAMES = ['Combat', 'Perception', 'Stealth', 'Social', 'Movement', 'Knowledge'];
+
+export function buildDefaultDiceSystem(): DiceSystemConfig {
+    const dieTypes = buildDefaultDieTypes();
+    return {
+        dieTypes,
+        categories: DEFAULT_CATEGORY_NAMES.map((name, i) => ({
+            id: `cat_default_${i}`,
+            name,
+            dieTypeId: 'dt_d20',
+        })),
+    };
+}
+
+/**
+ * Migrate legacy `diceConfig` (d20-only threshold object) → `diceSystem`.
+ * If `diceSystem` already exists, leave it. If only `diceConfig` exists, build
+ * a d20 die type whose bands reflect the old thresholds.
+ */
+function migrateDiceConfig(ctx: Partial<GameContext>): DiceSystemConfig {
+    if (ctx.diceSystem) return ctx.diceSystem;
+    const sys = buildDefaultDiceSystem();
+    const old = ctx.diceConfig;
+    if (old) {
+        const d20 = sys.dieTypes.find(d => d.id === 'dt_d20');
+        if (d20) {
+            d20.bands = [
+                { id: bandId(), label: 'Catastrophe', min: 1, max: Math.max(1, old.catastrophe) },
+                { id: bandId(), label: 'Failure', min: old.catastrophe + 1, max: Math.max(old.catastrophe + 1, old.failure) },
+                { id: bandId(), label: 'Success', min: old.failure + 1, max: Math.max(old.failure + 1, old.success) },
+                { id: bandId(), label: 'Triumph', min: old.success + 1, max: Math.max(old.success + 1, old.triumph) },
+                { id: bandId(), label: 'Narrative Boon', min: old.triumph + 1, max: Math.max(old.triumph + 1, old.crit) },
+            ];
+        }
+    }
+    return sys;
+}
+
+/**
+ * Migrate a partial/legacy GameContext into a complete one. Currently handles
+ * the dice-system migration (old `diceConfig` → new `diceSystem`); callers
+ * spread the result with `defaultContext` to fill any other gaps. Mirrors the
+ * mainApp `migrateLegacyContext` precedent (scoped to the dice concern).
+ */
+export function migrateDiceSystem(ctx: Partial<GameContext>): GameContext {
+    const merged = { ...ctx } as GameContext;
+    if (!merged.diceSystem) {
+        merged.diceSystem = migrateDiceConfig(merged);
+    }
+    return merged;
+}
 

@@ -1,9 +1,14 @@
 import { useState } from 'react';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppStore, DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES, DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES, DEFAULT_WORLD_WHO, DEFAULT_WORLD_WHERE, DEFAULT_WORLD_WHY, DEFAULT_WORLD_WHAT } from '../../store/useAppStore';
 import { populateEngineTags } from '../../services/chatEngine';
 import { Toggle } from './Toggle';
 import { NPCPressureInspector } from '../NPCPressureInspector';
+import { buildDefaultDiceSystem } from '../../types';
+import { validateBands } from '../../services/engine/diceTier';
+import type { DieType, OutcomeBand, DiceCategory } from '../../types';
+
+function uid(prefix: string) { return `${prefix}_${Math.random().toString(36).slice(2, 9)}`; }
 
 export function EnginesTab() {
     const context = useAppStore((s) => s.context);
@@ -298,51 +303,270 @@ export function EnginesTab() {
                     </div>
                 </div>
 
-                {/* Dice Fairness Engine */}
-                <div className="space-y-2">
-                    <div className="text-[10px] text-ice uppercase tracking-wider font-bold border-b border-ice/20 pb-1 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-ice" />
-                            Dice Fairness Engine
-                        </div>
-                        <Toggle active={context.diceFairnessActive ?? true} onChange={() => updateContext({ diceFairnessActive: !(context.diceFairnessActive ?? true) })} />
-                    </div>
-                    <div className="bg-void border border-border p-3 space-y-2">
-                        {[
-                            { label: 'Catastrophe (<=)', key: 'catastrophe' as const, def: 2 },
-                            { label: 'Failure (<=)', key: 'failure' as const, def: 6 },
-                            { label: 'Success (<=)', key: 'success' as const, def: 15 },
-                            { label: 'Triumph (<=)', key: 'triumph' as const, def: 19 },
-                            { label: 'Critical (<=)', key: 'crit' as const, def: 20 },
-                        ].map(({ label, key, def }) => (
-                            <div key={key} className="flex flex-col">
-                                <label className="text-[10px] text-text-dim uppercase tracking-wider mb-1" title={`Default: ${def} (Min:1, Max:20)`}>
-                                    {label}
-                                </label>
-                                <input
-                                    type="number"
-                                    min={1}
-                                    max={20}
-                                    placeholder={`Def: ${def} (Min:1, Max:20)`}
-                                    title={`Default: ${def} (Min:1, Max:20)`}
-                                    value={context.diceConfig?.[key] ?? ''}
-                                    onChange={(e) => {
-                                        const val = parseInt(e.target.value);
-                                        updateContext({
-                                            diceConfig: {
-                                                ...(context.diceConfig || { catastrophe: 2, failure: 6, success: 15, triumph: 19, crit: 20 }),
-                                                [key]: isNaN(val) ? 0 : val
-                                            }
-                                        });
-                                    }}
-                                    className="w-full bg-surface border border-border px-2 py-1.5 text-[16px] md:text-[11px] font-mono text-text-primary focus:border-terminal outline-none transition-colors min-h-[44px] md:min-h-0"
-                                />
-                            </div>
-                        ))}
-                    </div>
-                </div>
+                {/* Dice Fairness Engine (generalized) */}
+                <DiceFairnessSection context={context} updateContext={updateContext} />
+
             </div>
             <NPCPressureInspector />
+        </div>
+    );
+}
+
+// ─── Dice Fairness Section (generalized dice engine) ───────────────────
+
+type DiceFairnessSectionProps = {
+    context: ReturnType<typeof useAppStore.getState>['context'];
+    updateContext: ReturnType<typeof useAppStore.getState>['updateContext'];
+};
+
+function DiceFairnessSection({ context, updateContext }: DiceFairnessSectionProps) {
+    const [expandedDie, setExpandedDie] = useState<string | null>(null);
+    const diceSystem = context.diceSystem ?? buildDefaultDiceSystem();
+
+    const updateDiceSystem = (patch: Partial<typeof diceSystem>) => {
+        updateContext({ diceSystem: { ...diceSystem, ...patch } });
+    };
+
+    // ── Die Types helpers ──
+    const addDieType = () => {
+        const newDie: DieType = {
+            id: uid('dt'),
+            name: 'd6',
+            faces: 6,
+            bands: [
+                { id: uid('b'), label: 'Failure', min: 1, max: 3 },
+                { id: uid('b'), label: 'Success', min: 4, max: 6 },
+            ],
+        };
+        updateDiceSystem({ dieTypes: [...diceSystem.dieTypes, newDie] });
+        setExpandedDie(newDie.id);
+    };
+
+    const removeDieType = (id: string) => {
+        // Remove the die type and any categories referencing it (reassign to d20)
+        const fallbackId = diceSystem.dieTypes.find(d => d.name === 'd20')?.id ?? diceSystem.dieTypes[0]?.id;
+        const categories = diceSystem.categories.map(c =>
+            c.dieTypeId === id && fallbackId ? { ...c, dieTypeId: fallbackId } : c
+        );
+        updateDiceSystem({
+            dieTypes: diceSystem.dieTypes.filter(d => d.id !== id),
+            categories,
+        });
+    };
+
+    const updateDieType = (id: string, patch: Partial<DieType>) => {
+        updateDiceSystem({
+            dieTypes: diceSystem.dieTypes.map(d => d.id === id ? { ...d, ...patch } : d),
+        });
+    };
+
+    // ── Band helpers ──
+    const addBand = (dieId: string) => {
+        const die = diceSystem.dieTypes.find(d => d.id === dieId);
+        if (!die) return;
+        const usedMax = die.bands.reduce((m, b) => Math.max(m, b.max), 0);
+        const newMax = Math.min(usedMax + 1, die.faces);
+        const newMin = usedMax + 1;
+        if (newMin > die.faces) return; // no room
+        const band: OutcomeBand = { id: uid('b'), label: 'New Band', min: newMin, max: newMax };
+        updateDieType(dieId, { bands: [...die.bands, band] });
+    };
+
+    const updateBand = (dieId: string, bandId: string, patch: Partial<OutcomeBand>) => {
+        const die = diceSystem.dieTypes.find(d => d.id === dieId);
+        if (!die) return;
+        updateDieType(dieId, {
+            bands: die.bands.map(b => b.id === bandId ? { ...b, ...patch } : b),
+        });
+    };
+
+    const removeBand = (dieId: string, bandId: string) => {
+        const die = diceSystem.dieTypes.find(d => d.id === dieId);
+        if (!die) return;
+        updateDieType(dieId, { bands: die.bands.filter(b => b.id !== bandId) });
+    };
+
+    // ── Category helpers ──
+    const addCategory = () => {
+        if (diceSystem.categories.length >= 10) return;
+        const fallbackId = diceSystem.dieTypes[0]?.id ?? '';
+        const cat: DiceCategory = { id: uid('cat'), name: 'New Category', dieTypeId: fallbackId };
+        updateDiceSystem({ categories: [...diceSystem.categories, cat] });
+    };
+
+    const updateCategory = (id: string, patch: Partial<DiceCategory>) => {
+        updateDiceSystem({
+            categories: diceSystem.categories.map(c => c.id === id ? { ...c, ...patch } : c),
+        });
+    };
+
+    const removeCategory = (id: string) => {
+        updateDiceSystem({ categories: diceSystem.categories.filter(c => c.id !== id) });
+    };
+
+    return (
+        <div className="space-y-2">
+            <div className="text-[10px] text-ice uppercase tracking-wider font-bold border-b border-ice/20 pb-1 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-ice" />
+                    Dice Fairness Engine
+                </div>
+                <Toggle active={context.diceFairnessActive ?? true} onChange={() => updateContext({ diceFairnessActive: !(context.diceFairnessActive ?? true) })} />
+            </div>
+
+            {(context.diceFairnessActive ?? true) && (
+                <div className="text-[9px] text-amber-400/70 italic px-1">
+                    ⚡ Pool mode active — pre-rolled dice injected. Turn OFF to let the AI call roll_dice on demand.
+                </div>
+            )}
+
+            <div className="bg-void border border-border p-3 space-y-3">
+                {/* ── Die Types Registry ── */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-text-dim uppercase tracking-wider font-bold">Die Types</span>
+                        <button onClick={addDieType} className="flex items-center gap-1 text-[9px] text-terminal hover:text-text-primary transition-colors">
+                            <Plus size={9} /> Add
+                        </button>
+                    </div>
+                    {diceSystem.dieTypes.map((die) => {
+                        const isExpanded = expandedDie === die.id;
+                        const validation = validateBands(die.bands, die.faces);
+                        return (
+                            <div key={die.id} className="border border-border/50 rounded bg-surface/30">
+                                <div className="flex items-center gap-2 px-2 py-1.5">
+                                    <button
+                                        onClick={() => setExpandedDie(isExpanded ? null : die.id)}
+                                        className="text-text-dim hover:text-text-primary transition-colors"
+                                    >
+                                        {isExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                                    </button>
+                                    <input
+                                        type="text"
+                                        value={die.name}
+                                        onChange={(e) => updateDieType(die.id, { name: e.target.value })}
+                                        className="w-16 bg-surface border border-border px-1.5 py-1 text-[11px] font-mono text-text-primary focus:border-terminal outline-none"
+                                    />
+                                    <span className="text-[9px] text-text-dim">faces:</span>
+                                    <input
+                                        type="number"
+                                        min={2}
+                                        max={1000}
+                                        value={die.faces}
+                                        onChange={(e) => {
+                                            const faces = parseInt(e.target.value) || 2;
+                                            updateDieType(die.id, { faces });
+                                        }}
+                                        className="w-14 bg-surface border border-border px-1.5 py-1 text-[11px] font-mono text-text-primary focus:border-terminal outline-none"
+                                    />
+                                    {!validation.valid && (
+                                        <span className="text-[9px] text-danger" title={validation.error}>⚠</span>
+                                    )}
+                                    <div className="ml-auto flex items-center gap-1">
+                                        <span className="text-[9px] text-text-dim">{die.bands.length} bands</span>
+                                        <button
+                                            onClick={() => removeDieType(die.id)}
+                                            className="text-text-dim hover:text-danger transition-colors"
+                                            title="Remove die type"
+                                        >
+                                            <Trash2 size={10} />
+                                        </button>
+                                    </div>
+                                </div>
+                                {isExpanded && (
+                                    <div className="px-2 pb-2 space-y-1.5 border-t border-border/30">
+                                        {!validation.valid && (
+                                            <div className="text-[9px] text-danger px-1 py-1 bg-danger/10 rounded">{validation.error}</div>
+                                        )}
+                                        {die.bands.map((band, i) => (
+                                            <div key={band.id} className="flex items-center gap-1.5">
+                                                <span className="text-[9px] text-text-dim w-4">{i + 1}.</span>
+                                                <input
+                                                    type="text"
+                                                    value={band.label}
+                                                    onChange={(e) => updateBand(die.id, band.id, { label: e.target.value })}
+                                                    placeholder="Label"
+                                                    className="flex-1 bg-surface border border-border px-1.5 py-1 text-[10px] font-mono text-text-primary focus:border-terminal outline-none"
+                                                />
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    max={die.faces}
+                                                    value={band.min}
+                                                    onChange={(e) => updateBand(die.id, band.id, { min: parseInt(e.target.value) || 1 })}
+                                                    className="w-12 bg-surface border border-border px-1 py-1 text-[10px] font-mono text-text-primary focus:border-terminal outline-none text-center"
+                                                    title="Min (inclusive)"
+                                                />
+                                                <span className="text-[9px] text-text-dim">–</span>
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    max={die.faces}
+                                                    value={band.max}
+                                                    onChange={(e) => updateBand(die.id, band.id, { max: parseInt(e.target.value) || 1 })}
+                                                    className="w-12 bg-surface border border-border px-1 py-1 text-[10px] font-mono text-text-primary focus:border-terminal outline-none text-center"
+                                                    title="Max (inclusive)"
+                                                />
+                                                <button
+                                                    onClick={() => removeBand(die.id, band.id)}
+                                                    className="text-text-dim hover:text-danger transition-colors"
+                                                >
+                                                    <Trash2 size={9} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <button
+                                            onClick={() => addBand(die.id)}
+                                            className="flex items-center gap-1 text-[9px] text-terminal hover:text-text-primary transition-colors py-1"
+                                        >
+                                            <Plus size={9} /> Add Band
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* ── Categories (up to 10) ── */}
+                <div className="space-y-2 border-t border-border/30 pt-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-text-dim uppercase tracking-wider font-bold">Categories (max 10)</span>
+                        <button
+                            onClick={addCategory}
+                            disabled={diceSystem.categories.length >= 10}
+                            className="flex items-center gap-1 text-[9px] text-terminal hover:text-text-primary transition-colors disabled:opacity-30"
+                        >
+                            <Plus size={9} /> Add
+                        </button>
+                    </div>
+                    {diceSystem.categories.map((cat) => (
+                        <div key={cat.id} className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                value={cat.name}
+                                onChange={(e) => updateCategory(cat.id, { name: e.target.value })}
+                                className="flex-1 bg-surface border border-border px-1.5 py-1 text-[10px] font-mono text-text-primary focus:border-terminal outline-none"
+                            />
+                            <select
+                                value={cat.dieTypeId}
+                                onChange={(e) => updateCategory(cat.id, { dieTypeId: e.target.value })}
+                                className="w-20 bg-surface border border-border px-1.5 py-1 text-[10px] font-mono text-text-primary focus:border-terminal outline-none"
+                            >
+                                {diceSystem.dieTypes.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={() => removeCategory(cat.id)}
+                                className="text-text-dim hover:text-danger transition-colors"
+                            >
+                                <Trash2 size={10} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }

@@ -3,36 +3,6 @@ import { countTokens } from '../infrastructure';
 import { renderRegisterForPayload } from '../campaign-state';
 import type { BudgetMap } from './payloadBudgeter';
 
-const TOOL_MODE_ACTION_RESOLUTION = `### ACTION RESOLUTION
-
-Trigger: Player attempts an action with an uncertain outcome — combat hits, skill checks, saves, contested actions.
-
-1. Identify core intent of the player's action.
-2. If the outcome depends on chance, CALL the \`roll_dice\` tool BEFORE narrating. Do NOT narrate the outcome first.
-   - \`dice\`: typically \`1d20\` for skill checks/attacks; use \`NdM\` form for damage or special rolls
-   - \`reason\`: short label (e.g. "Stealth check vs guard", "Longsword attack")
-   - \`category\`: one of Combat / Stealth / Social / Perception / Movement / Knowledge / Mundane (for d20 only)
-3. Use the returned \`tier\` (Catastrophe / Failure / Success / Triumph / Narrative Boon) to shape the narrative — same outcome semantics as pool mode.
-4. Do NOT call \`roll_dice\` for descriptive moments, dialogue, or trivial actions. Mundane actions resolve as plain success without a roll.
-
-**Advantage selection (tool mode):** if the player explicitly leverages a known weakness or superior tool, call \`roll_dice\` twice and use the higher result. If explicitly impaired (blinded, wounded, overwhelmed), call twice and use the lower. Otherwise, single roll.
-
-**Outcomes:**
-- Catastrophe: severe unexpected failure, consequences beyond simple loss.
-- Failure: fails. Damage, setback, or resource loss.
-- Success: succeeds exactly as intended.
-- Triumph: succeeds with an unexpected additional benefit.
-- Narrative Boon: flawless. Massive strategic or narrative advantage.`;
-
-function swapActionResolutionForToolMode(rules: string): string {
-    const marker = '### ACTION RESOLUTION';
-    const idx = rules.indexOf(marker);
-    if (idx === -1) return rules;
-    const nextSectionMatch = rules.substring(idx + marker.length).match(/\n### /);
-    const endIdx = nextSectionMatch ? idx + marker.length + nextSectionMatch.index! : rules.length;
-    return rules.substring(0, idx) + TOOL_MODE_ACTION_RESOLUTION + rules.substring(endIdx);
-}
-
 export interface StableContentResult {
     stableContent: string;
     stableTokens: number;
@@ -61,10 +31,11 @@ export function buildStablePreamble(opts: {
             const rulesText = relevantRules.map(c => `### ${c.header}\n${c.content}`).join('\n\n');
             retrievedRulesContent = `[RULES — RETRIEVED SECTIONS]\n${rulesText}\n[END RULES]`;
         } else {
+            // The user's custom Action Resolution rules are NEVER overwritten — die-type
+            // guidance lives in the roll_dice tool description (toolHandlers.ts). This
+            // fixes the issue where enabling the dice tool silently nuked non-d20
+            // campaign rules.
             let rules = context.rulesRaw;
-            if (context.diceFairnessActive === false) {
-                rules = swapActionResolutionForToolMode(rules);
-            }
             // Verbatim fallback (rules RAG returned nothing or is disabled). Hard-cap
             // it so a huge rules file can't blow the whole context budget when RAG
             // silently misses (AUDIT F6). Small files stay whole — cap ≥ rulesTokenCount.

@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { GameContext, ChatMessage, CondenserState, DivergenceRegister } from '../../types';
+import { buildDefaultDiceSystem, migrateDiceSystem } from '../../types';
 import type { ArchiveSlice } from './archiveSlice';
 import type { LoreSlice } from './loreSlice';
 import type { NPCSlice } from './npcSlice';
@@ -61,13 +62,7 @@ export const defaultContext: GameContext = {
     sceneNote: '',
     sceneNoteActive: false,
     sceneNoteDepth: 3,
-    diceConfig: {
-        catastrophe: 2,
-        failure: 6,
-        success: 15,
-        triumph: 19,
-        crit: 20
-    },
+    diceSystem: buildDefaultDiceSystem(),
     surpriseConfig: {
         initialDC: 95,
         dcReduction: 3,
@@ -200,7 +195,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
 
         set({
             activeCampaignId: id,
-            context: { ...defaultContext, ...(campaignState?.context ?? {}) },
+            context: migrateDiceSystem({ ...defaultContext, ...(campaignState?.context ?? {}) }),
             messages: campaignState?.messages ?? [],
             condenser: campaignState?.condenser ?? { condensedUpToIndex: -1 },
             pinnedExcerpts: campaignState?.pinnedExcerpts ?? [],

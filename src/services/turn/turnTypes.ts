@@ -17,7 +17,7 @@ import type {
     PayloadTrace,
     PinnedExcerpt,
     ThinkingEffort,
-    ManualRollMode,
+    ManualRollRequest,
 } from '../../types';
 import type { LLMCallPriority } from '../../utils/llmCall';
 import type { ArmedLoot } from '../../store/slices/uiSlice';
@@ -104,9 +104,10 @@ export type TurnState = {
     onStageNpcIds?: string[];
     npcPressure?: Record<string, NPCPressure>;
     pinnedExcerpts?: PinnedExcerpt[];
-    // Player-called dice ("dice me"): armed mode resolved at send time. Replaces the auto
+    // Player-called dice ("dice me"): armed roll resolved at send time. Replaces the auto
     // pool menu for this turn and is asserted as fact. null/undefined = normal turn.
-    armedRoll?: ManualRollMode | null;
+    // Accepts the new ManualRollRequest shape OR legacy '1d20'|'adv'|'disadv' string.
+    armedRoll?: ManualRollRequest | string | null;
     // Loot Engine WO-05: armed loot drop config resolved at send time. The walker
     // runs and the result is appended to the GM turn as a fact. null/undefined = normal turn.
     armedLoot?: ArmedLoot | null;

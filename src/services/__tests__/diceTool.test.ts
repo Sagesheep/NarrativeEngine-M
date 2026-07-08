@@ -1,45 +1,54 @@
 import { describe, it, expect } from 'vitest';
 import { mapTier } from '../engine';
 import { handleDiceTool, getToolDefinitions } from '../turn';
-import type { DiceConfig } from '../../types';
+import { buildDefaultDiceSystem } from '../../types';
+import type { DieType, DiceSystemConfig } from '../../types';
 
-const defaultConfig: DiceConfig = { catastrophe: 2, failure: 6, success: 15, triumph: 19, crit: 20 };
+const SYS: DiceSystemConfig = buildDefaultDiceSystem();
+const d20: DieType = SYS.dieTypes.find(d => d.name === 'd20')!;
+const d6: DieType = SYS.dieTypes.find(d => d.name === 'd6')!;
 
 describe('mapTier', () => {
-    it('returns Catastrophe for rolls <= catastrophe threshold', () => {
-        expect(mapTier(1, defaultConfig)).toBe('Catastrophe');
-        expect(mapTier(2, defaultConfig)).toBe('Catastrophe');
+    it('returns Catastrophe for rolls in the Catastrophe band', () => {
+        expect(mapTier(1, d20)).toBe('Catastrophe');
+        expect(mapTier(2, d20)).toBe('Catastrophe');
     });
 
-    it('returns Failure for rolls between catastrophe+1 and failure', () => {
-        expect(mapTier(3, defaultConfig)).toBe('Failure');
-        expect(mapTier(6, defaultConfig)).toBe('Failure');
+    it('returns Failure for rolls in the Failure band', () => {
+        expect(mapTier(3, d20)).toBe('Failure');
+        expect(mapTier(6, d20)).toBe('Failure');
     });
 
-    it('returns Success for rolls between failure+1 and success', () => {
-        expect(mapTier(7, defaultConfig)).toBe('Success');
-        expect(mapTier(15, defaultConfig)).toBe('Success');
+    it('returns Success for rolls in the Success band', () => {
+        expect(mapTier(7, d20)).toBe('Success');
+        expect(mapTier(15, d20)).toBe('Success');
     });
 
-    it('returns Triumph for rolls between success+1 and triumph', () => {
-        expect(mapTier(16, defaultConfig)).toBe('Triumph');
-        expect(mapTier(19, defaultConfig)).toBe('Triumph');
+    it('returns Triumph for rolls in the Triumph band', () => {
+        expect(mapTier(16, d20)).toBe('Triumph');
+        expect(mapTier(19, d20)).toBe('Triumph');
     });
 
-    it('returns Narrative Boon for rolls above triumph', () => {
-        expect(mapTier(20, defaultConfig)).toBe('Narrative Boon');
+    it('returns Narrative Boon for rolls in the top band', () => {
+        expect(mapTier(20, d20)).toBe('Narrative Boon');
     });
 
-    it('uses default config when none provided', () => {
-        expect(mapTier(1)).toBe('Catastrophe');
-        expect(mapTier(10)).toBe('Success');
-        expect(mapTier(20)).toBe('Narrative Boon');
+    it('returns null when no DieType is provided', () => {
+        expect(mapTier(1, null)).toBeNull();
+        expect(mapTier(10, undefined)).toBeNull();
+    });
+
+    it('maps d6 bands correctly', () => {
+        expect(mapTier(1, d6)).toBe('Catastrophe');
+        expect(mapTier(3, d6)).toBe('Failure');
+        expect(mapTier(4, d6)).toBe('Mixed');
+        expect(mapTier(6, d6)).toBe('Success');
     });
 });
 
 describe('handleDiceTool', () => {
     it('returns valid JSON with result and tier for d20', () => {
-        const result = handleDiceTool(JSON.stringify({ dice: '1d20', reason: 'Attack' }), { diceConfig: defaultConfig });
+        const result = handleDiceTool(JSON.stringify({ dice: '1d20', reason: 'Attack' }), { diceSystem: SYS });
         const parsed = JSON.parse(result.toolResult);
         expect(parsed.dice).toBe('1d20');
         expect(parsed.reason).toBe('Attack');
@@ -49,18 +58,30 @@ describe('handleDiceTool', () => {
         expect(['Catastrophe', 'Failure', 'Success', 'Triumph', 'Narrative Boon']).toContain(parsed.tier);
     });
 
-    it('returns no tier for non-d20 rolls', () => {
-        const result = handleDiceTool(JSON.stringify({ dice: '2d6', reason: 'Damage' }), { diceConfig: defaultConfig });
+    it('returns a tier for 2d6 (d6 is a registered die type)', () => {
+        const result = handleDiceTool(JSON.stringify({ dice: '2d6', reason: 'Damage' }), { diceSystem: SYS });
         const parsed = JSON.parse(result.toolResult);
         expect(parsed.dice).toBe('2d6');
         expect(typeof parsed.result).toBe('number');
         expect(parsed.result).toBeGreaterThanOrEqual(2);
         expect(parsed.result).toBeLessThanOrEqual(12);
+        // 2d6 sums to 2..12; tier is mapped via the d6 bands (1..6). Only sums
+        // within 1..6 produce a tier; sums > 6 have no band → null.
+        // So tier may or may not be present depending on the roll. Assert the
+        // contract: when present, it is one of the d6 band labels.
+        if (parsed.tier !== undefined) {
+            expect(['Catastrophe', 'Failure', 'Mixed', 'Success']).toContain(parsed.tier);
+        }
+    });
+
+    it('returns no tier when no diceSystem is configured', () => {
+        const result = handleDiceTool(JSON.stringify({ dice: '1d20', reason: 'Attack' }), { diceSystem: null });
+        const parsed = JSON.parse(result.toolResult);
         expect(parsed.tier).toBeUndefined();
     });
 
     it('handles modifier in dice expression', () => {
-        const result = handleDiceTool(JSON.stringify({ dice: '1d20+5', reason: 'Check with bonus' }), { diceConfig: defaultConfig });
+        const result = handleDiceTool(JSON.stringify({ dice: '1d20+5', reason: 'Check with bonus' }), { diceSystem: SYS });
         const parsed = JSON.parse(result.toolResult);
         expect(parsed.dice).toBe('1d20+5');
         expect(typeof parsed.result).toBe('number');
@@ -70,14 +91,14 @@ describe('handleDiceTool', () => {
     });
 
     it('falls back to 1d20 on malformed input', () => {
-        const result = handleDiceTool(JSON.stringify({ dice: 'garbage', reason: 'test' }), { diceConfig: defaultConfig });
+        const result = handleDiceTool(JSON.stringify({ dice: 'garbage', reason: 'test' }), { diceSystem: SYS });
         const parsed = JSON.parse(result.toolResult);
         expect(parsed.dice).toBe('garbage');
         expect(typeof parsed.result).toBe('number');
     });
 
     it('handles malformed JSON arguments', () => {
-        const result = handleDiceTool('not json', { diceConfig: defaultConfig });
+        const result = handleDiceTool('not json', { diceSystem: SYS });
         const parsed = JSON.parse(result.toolResult);
         expect(parsed.dice).toBe('1d20');
         expect(typeof parsed.result).toBe('number');

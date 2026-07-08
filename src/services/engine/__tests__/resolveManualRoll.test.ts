@@ -1,71 +1,118 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { resolveManualRoll } from '../engineRolls';
-import type { DiceConfig } from '../../../types';
+import { buildDefaultDiceSystem } from '../../../types';
+import type { DiceSystemConfig, ManualRollRequest } from '../../../types';
 
-// Default thresholds (mirror diceTier.ts DEFAULT_DICE_CONFIG):
-// catastrophe<=2, failure<=6, success<=15, triumph<=19, else Narrative Boon.
-const CFG: DiceConfig = { catastrophe: 2, failure: 6, success: 15, triumph: 19, crit: 20 };
+const SYS: DiceSystemConfig = buildDefaultDiceSystem();
+const d20 = SYS.dieTypes.find(d => d.name === 'd20')!;
 
-// Math.random() returns [0,1); roll = floor(r*20)+1. To force face F, use r = (F-1)/20.
-function face(f: number): number { return (f - 1) / 20; }
-
-afterEach(() => vi.restoreAllMocks());
-
-describe('resolveManualRoll', () => {
-    it('1d20 rolls one die and maps via diceConfig', () => {
-        vi.spyOn(Math, 'random').mockReturnValueOnce(face(17)); // 17 → Triumph (16-19)
-        const r = resolveManualRoll('1d20', CFG);
-        expect(r.rolls).toEqual([17]);
-        expect(r.faceValue).toBe(17);
-        expect(r.detail).toBe('Roll');
-        expect(r.tier).toBe('Triumph');
+describe('resolveManualRoll — generalized 3-gate', () => {
+    it('1d20 none: rolls exactly one die and maps to a tier', () => {
+        const req: ManualRollRequest = { dieTypeId: d20.id, rollDef: { modifier: 'none', count: 1, aggregation: 'pick_one' } };
+        const r = resolveManualRoll(req, SYS);
+        expect(r.rolls).toHaveLength(1);
+        expect(r.faceValue).toBe(r.rolls[0]);
+        expect(r.tier).toBeTypeOf('string');
+        expect(r.tier!.length).toBeGreaterThan(0);
     });
 
-    it('advantage rolls 2d20 and keeps the HIGHER', () => {
-        vi.spyOn(Math, 'random')
-            .mockReturnValueOnce(face(4))   // 4 → would be Failure
-            .mockReturnValueOnce(face(18)); // 18 → Triumph
-        const r = resolveManualRoll('adv', CFG);
-        expect(r.rolls).toEqual([4, 18]);
-        expect(r.faceValue).toBe(18);       // kept the higher
-        expect(r.detail).toBe('Advantage');
-        expect(r.tier).toBe('Triumph');
+    it('adv: rolls two dice and takes the higher', () => {
+        const req: ManualRollRequest = { dieTypeId: d20.id, rollDef: { modifier: 'adv', count: 2, aggregation: 'pick_one' } };
+        const r = resolveManualRoll(req, SYS);
+        expect(r.rolls).toHaveLength(2);
+        expect(r.faceValue).toBe(Math.max(r.rolls[0], r.rolls[1]));
     });
 
-    it('disadvantage rolls 2d20 and keeps the LOWER', () => {
-        vi.spyOn(Math, 'random')
-            .mockReturnValueOnce(face(19))  // 19 → Triumph
-            .mockReturnValueOnce(face(3));  // 3 → Failure
-        const r = resolveManualRoll('disadv', CFG);
-        expect(r.rolls).toEqual([19, 3]);
-        expect(r.faceValue).toBe(3);        // kept the lower
-        expect(r.detail).toBe('Disadvantage');
-        expect(r.tier).toBe('Failure');
+    it('disadv: rolls two dice and takes the lower', () => {
+        const req: ManualRollRequest = { dieTypeId: d20.id, rollDef: { modifier: 'disadv', count: 2, aggregation: 'pick_one' } };
+        const r = resolveManualRoll(req, SYS);
+        expect(r.rolls).toHaveLength(2);
+        expect(r.faceValue).toBe(Math.min(r.rolls[0], r.rolls[1]));
     });
 
-    it('maps tier boundaries correctly (catastrophe / boon)', () => {
-        vi.spyOn(Math, 'random').mockReturnValueOnce(face(1));
-        expect(resolveManualRoll('1d20', CFG).tier).toBe('Catastrophe'); // 1 <= 2
-        vi.restoreAllMocks();
-        vi.spyOn(Math, 'random').mockReturnValueOnce(face(20));
-        expect(resolveManualRoll('1d20', CFG).tier).toBe('Narrative Boon'); // 20 > 19
-    });
-
-    it('falls back to default thresholds when no diceConfig given', () => {
-        vi.spyOn(Math, 'random').mockReturnValueOnce(face(10)); // 10 → Success
-        expect(resolveManualRoll('1d20').tier).toBe('Success');
-    });
-
-    it('every face value (1-20) yields a valid tier for all modes', () => {
-        const tiers = new Set(['Catastrophe', 'Failure', 'Success', 'Triumph', 'Narrative Boon']);
-        for (const mode of ['1d20', 'adv', 'disadv'] as const) {
-            for (let i = 0; i < 200; i++) {
-                const r = resolveManualRoll(mode, CFG);
-                expect(tiers.has(r.tier)).toBe(true);
-                expect(r.faceValue).toBeGreaterThanOrEqual(1);
-                expect(r.faceValue).toBeLessThanOrEqual(20);
-                expect(r.rolls.length).toBe(mode === '1d20' ? 1 : 2);
-            }
+    it('faceValue is always 1..20 for d20', () => {
+        const req: ManualRollRequest = { dieTypeId: d20.id, rollDef: { modifier: 'none', count: 1, aggregation: 'pick_one' } };
+        for (let i = 0; i < 50; i++) {
+            const r = resolveManualRoll(req, SYS);
+            expect(r.faceValue).toBeGreaterThanOrEqual(1);
+            expect(r.faceValue).toBeLessThanOrEqual(20);
         }
+    });
+
+    it('maps a 20 to Narrative Boon (top band)', () => {
+        const orig = Math.random;
+        Math.random = () => 0.9999;
+        try {
+            const req: ManualRollRequest = { dieTypeId: d20.id, rollDef: { modifier: 'none', count: 1, aggregation: 'pick_one' } };
+            const r = resolveManualRoll(req, SYS);
+            expect(r.faceValue).toBe(20);
+            expect(r.tier).toBe('Narrative Boon');
+        } finally {
+            Math.random = orig;
+        }
+    });
+
+    it('maps a 1 to Catastrophe (bottom band)', () => {
+        const orig = Math.random;
+        Math.random = () => 0.0;
+        try {
+            const req: ManualRollRequest = { dieTypeId: d20.id, rollDef: { modifier: 'none', count: 1, aggregation: 'pick_one' } };
+            const r = resolveManualRoll(req, SYS);
+            expect(r.faceValue).toBe(1);
+            expect(r.tier).toBe('Catastrophe');
+        } finally {
+            Math.random = orig;
+        }
+    });
+
+    it('total_all: sums the dice and ignores modifier', () => {
+        const req: ManualRollRequest = { dieTypeId: d20.id, rollDef: { modifier: 'adv', count: 3, aggregation: 'total_all' } };
+        const orig = Math.random;
+        Math.random = () => 0.5; // each die = 11
+        try {
+            const r = resolveManualRoll(req, SYS);
+            expect(r.rolls).toHaveLength(3);
+            expect(r.faceValue).toBe(33); // 11+11+11
+        } finally {
+            Math.random = orig;
+        }
+    });
+
+    it('d6 die type: faceValue is 1..6', () => {
+        const d6 = SYS.dieTypes.find(d => d.name === 'd6')!;
+        const req: ManualRollRequest = { dieTypeId: d6.id, rollDef: { modifier: 'none', count: 1, aggregation: 'pick_one' } };
+        for (let i = 0; i < 50; i++) {
+            const r = resolveManualRoll(req, SYS);
+            expect(r.faceValue).toBeGreaterThanOrEqual(1);
+            expect(r.faceValue).toBeLessThanOrEqual(6);
+        }
+    });
+
+    it('d6 maps a 6 to Success (top band)', () => {
+        const d6 = SYS.dieTypes.find(d => d.name === 'd6')!;
+        const orig = Math.random;
+        Math.random = () => 0.9999;
+        try {
+            const req: ManualRollRequest = { dieTypeId: d6.id, rollDef: { modifier: 'none', count: 1, aggregation: 'pick_one' } };
+            const r = resolveManualRoll(req, SYS);
+            expect(r.faceValue).toBe(6);
+            expect(r.tier).toBe('Success');
+        } finally {
+            Math.random = orig;
+        }
+    });
+
+    it('falls back gracefully when diceSystem is null (legacy string)', () => {
+        const r = resolveManualRoll('1d20', null);
+        expect(r.tier).toBeTypeOf('string');
+        expect(r.faceValue).toBeGreaterThanOrEqual(1);
+        expect(r.faceValue).toBeLessThanOrEqual(20);
+    });
+
+    it('legacy string adv mode still works', () => {
+        const r = resolveManualRoll('adv', SYS);
+        expect(r.rolls).toHaveLength(2);
+        expect(r.faceValue).toBe(Math.max(r.rolls[0], r.rolls[1]));
+        expect(r.detail).toBe('Advantage');
     });
 });

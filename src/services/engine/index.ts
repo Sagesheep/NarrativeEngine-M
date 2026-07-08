@@ -1,12 +1,13 @@
-export { rollEngines, rollDiceFairness, resolveManualRoll } from './engineRolls';
-export type { EngineRollResult, ManualRollResult } from './engineRolls';
+export { rollEngines, rollDiceFairness, resolveManualRoll, executeGateRoll, parseDiceExpr } from './engineRolls';
+export type { EngineRollResult, ManualRollResult, GateRollResult } from './engineRolls';
 export { resolveLootDrop } from './lootEngine';
 export type { LootDropResult, LootItem, ResolveLootOpts, LootTree, LootNode, LootProfile } from '../../types';
 export { recordLootDrop, clearLootDropHistory, getLootDropHistory, useLootDropHistory } from './lootDropTelemetry';
 export type { LootDropRecord } from './lootDropTelemetry';
 export { rollCharacterIntroEngine } from './charIntroEngine';
 export type { CharIntroResult } from './charIntroEngine';
-export { mapTier } from './diceTier';
+export { mapTier, mapTierLegacy, validateBands } from './diceTier';
+export type { LegacyDiceConfig } from './diceTier';
 export { populateEngineTags } from './tagGeneration';
 export { generateTroubleOptions } from './troublemaker';
 export {

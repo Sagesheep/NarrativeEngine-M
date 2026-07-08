@@ -69,13 +69,12 @@ export async function runTurn(
     // dice tool for this turn so the model gets exactly one signal it cannot cherry-pick.
     const armed = state.armedRoll;
     if (armed) {
-        const r = resolveManualRoll(armed, context.diceConfig);
+        const r = resolveManualRoll(armed, context.diceSystem);
         const rollsLabel = r.rolls.length > 1 ? ` (rolled ${r.rolls.join(', ')})` : '';
-        finalInput +=
-            `\n[RESOLVED ROLL — ${r.detail}: ${r.faceValue}${rollsLabel} → ${r.tier}. ` +
-            `This HAPPENED. Narrate the consequence as fact; do NOT soften, re-roll, or treat it as optional.]`;
+        const tierLabel = r.tier ?? 'Unmapped';
+        finalInput += `\n[RESOLVED ROLL — ${r.detail} → ${tierLabel} (${r.faceValue})${rollsLabel}. This HAPPENED. The outcome is fixed — do not re-roll, do not alter the tier, do not skip the roll. Narrate the consequence.]`;
         // Player-facing reveal — shows on their own turn bubble.
-        displayInputFinal += `\n\n🎲 ${r.detail} → ${r.tier} (${r.faceValue})`;
+        displayInputFinal += `\n\n🎲 ${r.detail} → ${tierLabel} (${r.faceValue})`;
     } else {
         finalInput += rollDiceFairness(context);
     }
@@ -336,7 +335,7 @@ export async function runTurn(
                         reasoningContent || undefined,
                     ));
 
-                    const { toolResult } = handleDiceTool(toolCall.arguments, { diceConfig: context.diceConfig });
+                    const { toolResult } = handleDiceTool(toolCall.arguments, { diceSystem: context.diceSystem });
                     pushToolTrace(toolCall.name, toolCall.arguments, toolResult);
 
                     const toolMsgId = uid();
