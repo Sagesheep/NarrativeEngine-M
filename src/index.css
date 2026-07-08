@@ -94,12 +94,16 @@
 
   body {
     margin: 0;
-    min-height: calc(100vh / var(--ui-scale, 1));
+    /* dvh (dynamic viewport height) shrinks when the Android soft keyboard
+       opens, so the flex column below shortens and ChatInput rises above the
+       keyboard instead of being pinned behind it. vh is the *large* viewport
+       and never shrinks, which was the root cause of the occlusion. */
+    min-height: calc(100dvh / var(--ui-scale, 1));
     overflow: hidden;
   }
 
   #root {
-    height: calc(100vh / var(--ui-scale, 1));
+    height: calc(100dvh / var(--ui-scale, 1));
     display: flex;
     flex-direction: column;
   }
