@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, ArrowLeft } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { useBackHandler } from '../hooks/useBackHandler';
 import { ProvidersPanel } from './settings/ProvidersPanel';
 import { PresetsPanel } from './settings/PresetsPanel';
 import { GlobalSettingsPanel } from './settings/GlobalSettingsPanel';
@@ -23,12 +24,13 @@ export function SettingsModal() {
     const toggleSettings = useAppStore(s => s.toggleSettings);
     const setMobileView = useAppStore(s => s.setMobileView);
 
-    if (!settingsOpen) return null;
-
     const handleClose = () => {
         toggleSettings();
         setMobileView('chat');
     };
+    useBackHandler(settingsOpen, handleClose);
+
+    if (!settingsOpen) return null;
 
     return (
         <div className={`mobile-page md:fixed md:inset-0 md:z-[100] md:flex md:items-center md:justify-center ${settingsOpen ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="Settings">

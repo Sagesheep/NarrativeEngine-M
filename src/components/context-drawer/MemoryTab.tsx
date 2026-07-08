@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/useAppStore';
 import type { DivergenceCategory, DivergenceEntry, NPCEntry } from '../../types';
 import { countRegisterTokens, EMPTY_REGISTER, CATEGORY_LABELS, DIVERGENCE_CATEGORIES, runFactDedup, assignSubjectTokens, type DedupResult, type DedupCancelled, type ClusteringCancelled, normalizeFaction, parseKnownByToken, groupDivergencesBySubject } from '../../services/campaign-state';
 import { DedupReviewModal } from '../DedupReviewModal';
+import { appConfirm } from '../ConfirmSheet';
 
 const CATEGORY_COLORS: Record<DivergenceCategory, string> = {
     locations: 'text-blue-400',
@@ -655,9 +656,14 @@ export function MemoryTab() {
                                     </div>
                                     <div className="flex items-center gap-1">
                                         <button
-                                            onClick={(ev) => {
+                                            onClick={async (ev) => {
                                                 ev.stopPropagation();
-                                                if (window.confirm(`Delete all ${chapterEntries.length} facts in "${chapterTitle}"?`)) {
+                                                if (await appConfirm({
+                                                    title: 'Delete facts',
+                                                    body: `Delete all ${chapterEntries.length} facts in "${chapterTitle}"?`,
+                                                    confirmLabel: 'Delete',
+                                                    danger: true,
+                                                })) {
                                                     deleteDivergenceChapter(chapterId);
                                                 }
                                             }}

@@ -14,6 +14,7 @@ import { NPCEditForm } from './npc-ledger/NPCEditForm';
 import { NPCSuggestionsPanel } from './npc-ledger/NPCSuggestionsPanel';
 import { NPCReviewModal, type NPCReviewAction } from './NPCReviewModal';
 import { uid } from '../utils/uid';
+import { useBackHandler } from '../hooks/useBackHandler';
 import { getEntriesForNpc } from '../services/campaign-state';
 import { imageStorage } from '../services/storage/imageStorage';
 import { generateNPCPortrait } from '../services/image/portrait';
@@ -52,6 +53,18 @@ export function NPCLedgerModal() {
 
   const [form, setForm] = useState<Partial<NPCEntry>>({
     status: 'Alive', voice: '', personality: '', exampleOutput: '',
+  });
+
+  // Hardware back: close the whole ledger. Registered first (bottom of the stack).
+  useBackHandler(npcLedgerOpen, () => {
+    toggleNPCLedger();
+    setMobileView('chat');
+  });
+  // When a detail/edit sub-view is open, back returns to the list first.
+  // Registered second → sits above the ledger handler, so it fires first (LIFO).
+  useBackHandler(npcLedgerOpen && (selectedId !== null || isEditing), () => {
+    setSelectedId(null);
+    setIsEditing(false);
   });
 
   if (!npcLedgerOpen) return null;

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { X, RotateCcw, Trash2, Save, Clock, Loader2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { useBackHandler } from '../hooks/useBackHandler';
+import { appConfirm } from './ConfirmSheet';
 import { api } from '../services/apiClient';
 import type { BackupMeta } from '../types';
 import { toast } from './Toast';
@@ -26,6 +28,8 @@ export function BackupModal() {
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [backupModalOpen, toggleBackupModal]);
+
+    useBackHandler(backupModalOpen, toggleBackupModal);
 
     if (!backupModalOpen) return null;
 
@@ -61,7 +65,11 @@ export function BackupModal() {
         if (!activeCampaignId) return;
         const backup = backups.find(b => b.timestamp === ts);
         const lbl = backup ? new Date(backup.timestamp).toLocaleString() : String(ts);
-        if (!window.confirm(`Restore from "${lbl}"?\n\nYour current state will be saved as a backup first.`)) return;
+        if (!(await appConfirm({
+            title: 'Restore backup',
+            body: `Restore from "${lbl}"?\n\nYour current state will be saved as a backup first.`,
+            confirmLabel: 'Restore',
+        }))) return;
 
         setRestoringTs(ts);
         const ok = await api.backup.restore(activeCampaignId, ts);
@@ -76,7 +84,12 @@ export function BackupModal() {
 
     async function handleDelete(ts: number) {
         if (!activeCampaignId) return;
-        if (!window.confirm('Delete this backup permanently?')) return;
+        if (!(await appConfirm({
+            title: 'Delete backup',
+            body: 'Delete this backup permanently?',
+            confirmLabel: 'Delete',
+            danger: true,
+        }))) return;
         await api.backup.delete(activeCampaignId, ts);
         toast.success('Backup deleted');
         await loadBackups();

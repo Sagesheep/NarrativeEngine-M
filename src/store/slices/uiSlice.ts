@@ -24,6 +24,8 @@ export type UISlice = {
     pipelinePhase: PipelinePhase;
     streamingStats: StreamingStats | null;
     mobileView: 'chat' | 'context' | 'npcs' | 'settings';
+    keyboardVisible: boolean;
+    setKeyboardVisible: (visible: boolean) => void;
     toggleSettings: () => void;
     toggleDrawer: () => void;
     toggleNPCLedger: () => void;
@@ -54,6 +56,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     pipelinePhase: 'idle' as PipelinePhase,
     streamingStats: null,
     mobileView: 'chat' as const,
+    keyboardVisible: false,
+    setKeyboardVisible: (visible) => set({ keyboardVisible: visible }),
     toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
     toggleDrawer: () => set((s) => ({ drawerOpen: !s.drawerOpen })),
     toggleNPCLedger: () => set((s) => ({ npcLedgerOpen: !s.npcLedgerOpen })),

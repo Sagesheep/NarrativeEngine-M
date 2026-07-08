@@ -17,6 +17,7 @@ import type { StatKey, CreationQuestion } from '../../services/engine/pcCreation
 import type { StatBlock, Archetype, ChatMessage, CharacterProfileState } from '../../types';
 import { generatePCProfile } from '../../services/npc/npcGeneration';
 import { WorldPrimerPanel } from './WorldPrimerPanel';
+import { useBackHandler } from '../../hooks/useBackHandler';
 
 type WizardStep = 'questions' | 'stats' | 'review';
 
@@ -54,6 +55,10 @@ export function PCCreationWizard({ onComplete, onCancel }: {
     const [isGenerating, setIsGenerating] = useState(false);
     const [showPrimer, setShowPrimer] = useState(false);
     const [suggestingField, setSuggestingField] = useState<string | null>(null);
+
+    // Back cancels the wizard. When the World Primer sub-panel is open, its own
+    // handler (mounted on top) takes back first, so this one stays inactive.
+    useBackHandler(!showPrimer, onCancel);
 
     const auxProvider = getActiveAuxiliaryEndpoint();
 

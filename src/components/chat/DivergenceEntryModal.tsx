@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Zap, Loader2 } from 'lucide-react';
 import type { DivergenceCategory, DivergenceEntry } from '../../types';
 import { uid } from '../../utils/uid';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import { DIVERGENCE_CATEGORIES, CATEGORY_LABELS } from '../../services/campaign-state';
 import type { LLMProvider } from '../../types';
 
@@ -22,6 +23,9 @@ export function DivergenceEntryModal({ onAdd, onClose, provider, chapterId = 'ma
     const [category, setCategory] = useState<DivergenceCategory>('npc_events');
     const [freeText, setFreeText] = useState('');
     const [structuring, setStructuring] = useState(false);
+
+    // Only mounted while open → back always dismisses.
+    useBackHandler(true, onClose);
 
     const handleSubmit = () => {
         if (!text.trim()) return;
@@ -62,8 +66,8 @@ export function DivergenceEntryModal({ onAdd, onClose, provider, chapterId = 'ma
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-void/80 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-surface border border-border rounded p-4 w-[calc(90*var(--app-vw))] max-w-md space-y-3" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-void/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+            <div className="bg-surface border border-border rounded-t-lg md:rounded p-4 w-full md:w-[calc(90*var(--app-vw))] max-w-md space-y-3 max-h-[calc(85*var(--app-vh))] overflow-y-auto animate-in slide-in-from-bottom duration-200" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-2 mb-2">
                     <Zap size={14} className="text-amber-400" />
                     <span className="text-[10px] text-amber-400 uppercase tracking-widest font-bold">Add Fact</span>

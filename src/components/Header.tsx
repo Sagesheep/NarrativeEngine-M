@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { LogOut, ScanSearch, BookCheck, Pin, Replace, MoreVertical, Save, Archive, UserPlus, Loader2, Dices, Package } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { hapticMedium } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { addNpcFromSelection } from '../services/npc';
 import type { AiTier, ManualRollMode } from '../types';
@@ -287,6 +288,7 @@ export function Header() {
                                 <button
                                     key={mode}
                                     onClick={() => {
+                                        if (armedRoll !== mode) hapticMedium();
                                         setArmedRoll(armedRoll === mode ? null : mode);
                                         setDiceOpen(false);
                                     }}
@@ -319,6 +321,7 @@ export function Header() {
                             toast.warning('No loot table for this world');
                             return;
                         }
+                        hapticMedium();
                         openLootRollModal();
                     }}
                     className={`transition-colors p-1 touch-btn ${

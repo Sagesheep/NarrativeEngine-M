@@ -1,5 +1,6 @@
 import { Send, Square } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import { hapticLight } from '../../utils/haptics';
 
 type ChatInputProps = {
     input: string;
@@ -44,7 +45,7 @@ export function ChatInput({
                     {leading}
                     <div className="relative shrink-0 ml-1">
                         <select value={settings.activePresetId} onChange={(e) => useAppStore.getState().setActivePreset(e.target.value)}
-                            className="h-[32px] bg-surface border border-border text-text-dim pl-2 pr-6 text-[10px] font-bold uppercase transition-colors appearance-none rounded focus:border-terminal overflow-hidden max-w-[100px]">
+                            className="h-[40px] bg-surface border border-border text-text-dim pl-2 pr-6 text-[10px] font-bold uppercase transition-colors appearance-none rounded focus:border-terminal overflow-hidden max-w-[100px]">
                             {settings.presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                         <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-text-dim pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -58,9 +59,9 @@ export function ChatInput({
                         className="flex-1 bg-transparent px-2 py-2 text-[16px] md:text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[40px] leading-5 disabled:opacity-50"
                     />
                     <button
-                        onClick={isStreaming ? onStop : onSend}
+                        onClick={isStreaming ? onStop : () => { hapticLight(); onSend(); }}
                         disabled={(!isStreaming && !input.trim()) || blocking}
-                        className={`h-[32px] w-[40px] rounded transition-all flex items-center justify-center shrink-0 ${
+                        className={`h-[44px] w-[48px] rounded transition-all flex items-center justify-center shrink-0 ${
                             isStreaming ? 'text-amber-500 hover:bg-amber-500/10' :
                             'text-terminal hover:bg-terminal/10'
                         } disabled:opacity-30`}>

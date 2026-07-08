@@ -16,6 +16,8 @@ import { MessageBubble } from './chat/MessageBubble';
 import { PinnedMemoriesPanel } from './chat/PinnedMemoriesPanel';
 
 import { ChatInput } from './chat/ChatInput';
+import { appConfirm } from './ConfirmSheet';
+import { hapticLight } from '../utils/haptics';
 import { ActionSpeedDial } from './chat/ActionSpeedDial';
 import { RenameNpcModal } from './chat/RenameNpcModal';
 import { PCCreationWizard } from './pc/PCCreationWizard';
@@ -286,12 +288,21 @@ export function ChatArea() {
 
 
     const pipelinePhase = useAppStore(s => s.pipelinePhase);
+    const keyboardVisible = useAppStore(s => s.keyboardVisible);
 
     useEffect(() => {
         if (pipelinePhase === 'generating') {
             streamStartRef.current = Date.now();
         }
     }, [pipelinePhase]);
+
+    // When the soft keyboard opens, keep the latest message in view (the nav bar
+    // disappears and the viewport shrinks, so the tail would otherwise be hidden).
+    useEffect(() => {
+        if (keyboardVisible) {
+            requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'end' }));
+        }
+    }, [keyboardVisible]);
 
     useEffect(() => {
         if (pipelinePhase !== 'generating') {
@@ -451,6 +462,7 @@ export function ChatArea() {
                             // Touch-swipe on the bubble navigates EXISTING filled slots.
                             // New variants are generated only via the Generate button in the
                             // sheet (with optional guidance), not by swiping past the end.
+                            hapticLight();
                             if (direction === 'prev') swipe.prevSwipe();
                             else swipe.nextSwipe();
                         }}
@@ -481,7 +493,7 @@ export function ChatArea() {
                         <button
                             onClick={scrollToPrevMessage}
                             title="Jump to previous message"
-                            className="w-10 h-10 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"
+                            className="w-11 h-11 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"
                         >
                             <ChevronUp size={20} />
                         </button>
@@ -489,7 +501,7 @@ export function ChatArea() {
                             <button
                                 onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
                                 title="Jump to latest message"
-                                className="w-10 h-10 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"
+                                className="w-11 h-11 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"
                             >
                                 <ChevronDown size={20} />
                             </button>
@@ -510,7 +522,7 @@ export function ChatArea() {
                 inputRef={inputRef}
                 leading={
                     <ActionSpeedDial
-                        onTrim={() => { if (window.confirm('Trim conversation history? This condenses older messages.')) triggerTrim(); }}
+                        onTrim={async () => { if (await appConfirm({ title: 'Trim history', body: 'Trim conversation history? This condenses older messages.', confirmLabel: 'Trim' })) triggerTrim(); }}
                         pinnedCount={pinnedExcerpts.length}
                         onOpenPins={() => setPinnedPanelOpen(true)}
                         trimDisabled={messages.length < 6}

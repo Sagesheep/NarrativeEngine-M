@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { X, ScrollText, Globe, Zap, BookOpen, Bookmark, Brain, Sliders, Images } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { useBackHandler } from '../hooks/useBackHandler';
 import { RulesTab } from './context-drawer/RulesTab';
 import { RulesManagerTab } from './context-drawer/RulesManagerTab';
 import { LoreTab } from './context-drawer/LoreTab';
@@ -28,6 +29,7 @@ export function ContextDrawer() {
   const drawerOpen = useAppStore((s) => s.drawerOpen);
   const toggleDrawer = useAppStore((s) => s.toggleDrawer);
   const setMobileView = useAppStore((s) => s.setMobileView);
+  const mobileView = useAppStore((s) => s.mobileView);
   const [activeTab, setActiveTab] = useState<TabId>('sys');
 
   const visibleTabs = TABS;
@@ -70,6 +72,9 @@ export function ContextDrawer() {
     toggleDrawer();
     setMobileView('chat');
   };
+
+  // Mobile only: hardware back closes the context sheet when it's the foreground view.
+  useBackHandler(drawerOpen && mobileView === 'context', handleClose);
 
   const tabContent = (
     <>

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { X, Loader2, StopCircle } from 'lucide-react';
 import type { DedupGroup } from '../services/campaign-state';
 import type { DivergenceEntry } from '../types';
+import { useBackHandler } from '../hooks/useBackHandler';
 
 type DedupReviewModalProps = {
     open: boolean;
@@ -44,6 +45,8 @@ export function DedupReviewModal({
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [open, running, onCancel, onStop]);
+
+    useBackHandler(open, () => { if (running) onStop(); else onCancel(); });
 
     if (!open) return null;
 

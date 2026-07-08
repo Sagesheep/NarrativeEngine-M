@@ -4,6 +4,7 @@ import type { NPCEntry } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { imageStorage } from '../../services/storage/imageStorage';
 import { generateNPCPortrait } from '../../services/image/portrait';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import { toast } from '../Toast';
 
 type Props = {
@@ -16,6 +17,9 @@ export function NPCPortraitSection({ npc }: Props) {
     const [portraitUrl, setPortraitUrl] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [lightboxOpen, setLightboxOpen] = useState(false);
+
+    // Hardware back closes the portrait lightbox first.
+    useBackHandler(lightboxOpen, () => setLightboxOpen(false));
 
     useEffect(() => {
         if (!npc.portrait || !activeCampaignId) {

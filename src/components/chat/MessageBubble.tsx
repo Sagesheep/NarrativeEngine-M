@@ -7,6 +7,8 @@ import { ToolCallChips } from './ToolCallChips';
 import { PrecontextBox } from './PrecontextBox';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
+import { useBackHandler } from '../../hooks/useBackHandler';
+import { appConfirm } from '../ConfirmSheet';
 import { toast } from '../Toast';
 import { illustrateMessage } from '../../services/image';
 import { imageStorage } from '../../services/storage/imageStorage';
@@ -46,6 +48,9 @@ function ImageAttachment({ msg }: ImageAttachmentProps) {
     const [lightboxOpen, setLightboxOpen] = useState(false);
     const activeCampaignId = useAppStore(s => s.activeCampaignId);
     const image = msg.image;
+
+    // Hardware back closes the image lightbox before anything else.
+    useBackHandler(lightboxOpen, () => setLightboxOpen(false));
     const readyToLoad = image?.status === 'ready' && activeCampaignId;
 
     useEffect(() => {
@@ -242,10 +247,8 @@ export const MessageBubble = memo(function MessageBubble({
     const hasDebugPayload = !!(debugMode && msg.debugPayload);
 
     const [editText, setEditText] = useState(msg.displayContent || msg.content);
-    const [showActions, setShowActions] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const bubbleRef = useRef<HTMLDivElement>(null);
-    const actionsDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // ── Swipe Generation v1: touch-swipe gesture handling ──
     // Only the latest GM message (with a swipe set) responds to horizontal
@@ -383,61 +386,14 @@ export const MessageBubble = memo(function MessageBubble({
     const addPinnedExcerpt = useAppStore(s => s.addPinnedExcerpt);
     const removePinnedExcerpt = useAppStore(s => s.removePinnedExcerpt);
 
-    const clearActionsDismissTimer = () => {
-        if (actionsDismissTimer.current) {
-            clearTimeout(actionsDismissTimer.current);
-            actionsDismissTimer.current = null;
-        }
-    };
-
-    const scheduleActionsDismiss = () => {
-        clearActionsDismissTimer();
-        actionsDismissTimer.current = setTimeout(() => setShowActions(false), 4000);
-    };
-
-    const handleBubbleTap = (e: React.MouseEvent) => {
-        // Don't toggle if we're clicking inside a button/link inside the bubble
-        if ((e.target as HTMLElement).closest('button, a')) return;
-        if (isEditing) return;
-        setShowActions(prev => {
-            if (!prev) {
-                scheduleActionsDismiss();
-                return true;
-            }
-            clearActionsDismissTimer();
-            return false;
-        });
-    };
-
-    // Dismiss on outside click
-    useEffect(() => {
-        if (!showActions) return;
-        const handler = (e: MouseEvent) => {
-            if (bubbleRef.current && !bubbleRef.current.contains(e.target as Node)) {
-                setShowActions(false);
-                clearActionsDismissTimer();
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [showActions]);
-
-    // Clean up timer on unmount
-    useEffect(() => {
-        return () => clearActionsDismissTimer();
-    }, []);
-
     const handlePinToggle = () => {
         if (fullMessagePin) {
             removePinnedExcerpt(fullMessagePin.id);
-            setShowActions(false);
         } else {
             const text = msg.displayContent || msg.content;
             const result = addPinnedExcerpt(msg.id, text, true);
             if (!result.ok) {
                 toast.warning(result.reason);
-            } else {
-                setShowActions(false);
             }
         }
     };
@@ -502,7 +458,6 @@ export const MessageBubble = memo(function MessageBubble({
         >
             <div
                 ref={bubbleRef}
-                onClick={handleBubbleTap}
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
                 className={`px-3 md:px-4 py-2 md:py-3 text-sm font-mono leading-relaxed relative transition-all duration-200 ${
@@ -547,8 +502,13 @@ export const MessageBubble = memo(function MessageBubble({
                         {msg.role === 'assistant' && !hasSwipeSet(msg) && (
                             <button
                                 title="Rewind to here (destructive — regenerates from this point)"
-                                onClick={() => {
-                                    if (window.confirm('Rewind to this message? This regenerates the turn from here — the current GM reply and everything after it is discarded.')) {
+                                onClick={async () => {
+                                    if (await appConfirm({
+                                        title: 'Rewind to here',
+                                        body: 'Rewind to this message? This regenerates the turn from here — the current GM reply and everything after it is discarded.',
+                                        confirmLabel: 'Rewind',
+                                        danger: true,
+                                    })) {
                                         onRegenerate(msg.id);
                                     }
                                 }}

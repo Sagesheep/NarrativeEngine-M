@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { X, Loader2, StopCircle } from 'lucide-react';
 import type { NPCReviewCandidate } from '../services/npc';
+import { useBackHandler } from '../hooks/useBackHandler';
 
 export type NPCReviewAction = 'keep' | 'archive' | 'delete';
 
@@ -47,6 +48,8 @@ export function NPCReviewModal({
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [open, running, onCancel, onStop]);
+
+    useBackHandler(open, () => { if (running) onStop(); else onCancel(); });
 
     if (!open) return null;
 

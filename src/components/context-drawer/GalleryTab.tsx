@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Images, XCircle, Trash2, CornerUpRight, Loader2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { imageStorage } from '../../services/storage/imageStorage';
+import { useBackHandler } from '../../hooks/useBackHandler';
 
 type SceneImage = {
     messageId: string;
@@ -32,6 +33,9 @@ export function GalleryTab() {
     const [images, setImages] = useState<SceneImage[]>([]);
     const [loading, setLoading] = useState(false);
     const [lightbox, setLightbox] = useState<SceneImage | null>(null);
+
+    // Hardware back closes the image lightbox before the drawer.
+    useBackHandler(lightbox !== null, () => setLightbox(null));
 
     // Newest-first list of messages that have a ready illustration.
     const readyMessages = useMemo(

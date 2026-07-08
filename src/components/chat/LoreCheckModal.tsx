@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Check, Edit3, AlertTriangle, ShieldCheck, HelpCircle, Loader2, Search, Zap, Wand2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import { runLoreCheck, runDirectRewrite } from '../../services/lore';
 import type { LoreCheckCategory } from '../../types';
 
@@ -148,6 +149,18 @@ export function LoreCheckModal() {
             }
         })();
     };
+
+    // Hardware back: abort any in-flight check, reset, and close (mirrors handleClose).
+    useBackHandler(open, () => {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        setEditMode(false);
+        setDraft('');
+        setStage('hint');
+        setHint('');
+        setCategories([]);
+        close();
+    });
 
     if (!open) return null;
 

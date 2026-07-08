@@ -11,6 +11,7 @@ import { defaultContext } from '../store/slices/campaignSlice';
 import { dedupeNPCLedger } from '../store/slices/npcSlice';
 import { api } from '../services/apiClient';
 import { downloadBundle, importBundle, readFileChunked } from '../services/campaignBundle';
+import { useBackHandler } from '../hooks/useBackHandler';
 import { toast } from './Toast';
 import type { Campaign } from '../types';
 
@@ -61,6 +62,10 @@ export function CampaignHub() {
         setLootName('');
         setEditingCampaign(null);
     };
+
+    // Hardware back dismisses whichever hub overlay is open.
+    useBackHandler(modalOpen, () => { setModalOpen(false); resetForm(); });
+    useBackHandler(confirmDelete !== null, () => setConfirmDelete(null));
 
     const openCreate = () => {
         resetForm();
@@ -393,7 +398,7 @@ export function CampaignHub() {
 
             {/* Delete Confirmation */}
             {confirmDelete && (
-                <div className="fixed inset-0 bg-ember/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setConfirmDelete(null)}>
+                <div className="fixed inset-0 bg-ember/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setConfirmDelete(null)}>
                     <div className="bg-surface border border-danger rounded-lg p-6 max-w-sm" onClick={(e) => e.stopPropagation()}>
                         <p className="text-text-primary text-sm mb-4">Delete this campaign? All data (chat, lore, saves) will be lost.</p>
                         <div className="flex gap-3 justify-end">
@@ -410,8 +415,8 @@ export function CampaignHub() {
 
             {/* Create / Edit Campaign Modal */}
             {modalOpen && (
-                <div className="fixed inset-0 bg-ember/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => { setModalOpen(false); resetForm(); }}>
-                    <div className="bg-surface border border-border rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-ember/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setModalOpen(false); resetForm(); }}>
+                    <div className="bg-surface border border-border rounded-lg p-6 w-full max-w-md max-h-[calc(85*var(--app-vh))] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                         <h2 className="text-terminal text-sm font-bold tracking-widest uppercase mb-6">
                             {editingCampaign ? 'Edit Campaign' : 'New Campaign'}
                         </h2>

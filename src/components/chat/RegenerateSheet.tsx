@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, RefreshCw, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import { MAX_SWIPES, SWIPE_BASE_TEMP_OFFSET } from '../../services/turn/swipeGeneration';
 import { hasSwipeSet } from '../../services/turn/pendingCommit';
 import type { ChatMessage } from '../../types';
@@ -60,6 +61,8 @@ export function RegenerateSheet({
         }
     }, [messageId, getSessionOffset]);
 
+    useBackHandler(!!messageId, onClose);
+
     if (!messageId || !msg) return null;
 
     const swipeSet = msg.swipeSet;
@@ -111,7 +114,7 @@ export function RegenerateSheet({
             onClick={handleBackdropClick}
         >
             <div
-                className="w-full md:max-w-2xl bg-void-darker border border-border rounded-t-lg md:rounded-lg shadow-2xl max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-300"
+                className="w-full md:max-w-2xl bg-void-darker border border-border rounded-t-lg md:rounded-lg shadow-2xl max-h-[calc(85*var(--app-vh))] overflow-y-auto animate-in slide-in-from-bottom duration-300"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
@@ -248,7 +251,7 @@ export function RegenerateSheet({
                         )}
                     </div>
 
-                    <div className="bg-void-lighter border border-border/50 rounded p-3 text-[13px] font-mono leading-relaxed text-text-primary max-h-[40vh] overflow-y-auto whitespace-pre-wrap">
+                    <div className="bg-void-lighter border border-border/50 rounded p-3 text-[13px] font-mono leading-relaxed text-text-primary max-h-[calc(40*var(--app-vh))] overflow-y-auto whitespace-pre-wrap">
                         {msg.content || (generating ? '…' : '(empty)')}
                     </div>
                 </div>

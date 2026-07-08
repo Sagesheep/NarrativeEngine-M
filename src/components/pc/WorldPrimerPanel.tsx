@@ -2,6 +2,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useState } from 'react';
 import type { LLMProvider } from '../../types';
+import { useBackHandler } from '../../hooks/useBackHandler';
 
 export function WorldPrimerPanel({ onClose }: { onClose: () => void }) {
     const { loreChunks, getActiveAuxiliaryEndpoint } = useAppStore(useShallow(s => ({
@@ -12,6 +13,9 @@ export function WorldPrimerPanel({ onClose }: { onClose: () => void }) {
     const [digest, setDigest] = useState<string | null>(null);
     const [isDigesting, setIsDigesting] = useState(false);
     const [selectedChunk, setSelectedChunk] = useState<string | null>(null);
+
+    // Only mounted while open → back always dismisses.
+    useBackHandler(true, onClose);
 
     const auxProvider = getActiveAuxiliaryEndpoint();
 

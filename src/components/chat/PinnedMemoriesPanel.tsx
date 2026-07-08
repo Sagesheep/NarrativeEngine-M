@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, ArrowLeft, Pin, Trash2, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { countTokens } from '../../services/infrastructure';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import type { PinnedExcerpt } from '../../types';
 
 const PIN_TOKEN_CAP = 3000;
@@ -115,6 +116,8 @@ export function PinnedMemoriesPanel({ open, onClose }: Props) {
             setConfirmClear(true);
         }
     };
+
+    useBackHandler(open, handleClose);
 
     if (!open) return null;
 

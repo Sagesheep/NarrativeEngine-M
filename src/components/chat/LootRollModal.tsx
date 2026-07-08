@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Package } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import type { LootTree, LootPickNode } from '../../types';
 
 /**
@@ -42,6 +43,8 @@ export function LootRollModal() {
         }
     }, [open]);
 
+    useBackHandler(open, onClose);
+
     if (!open) return null;
 
     const handleBackdropClick = () => {
@@ -75,8 +78,8 @@ export function LootRollModal() {
     const isChecked = (opt: string) => checked[opt] !== false;
 
     return (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60" onClick={handleBackdropClick}>
-            <div className="bg-surface border border-border rounded-lg w-full max-w-sm mx-4 flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[120] flex items-end md:items-center justify-center bg-black/60 animate-in fade-in duration-200" onClick={handleBackdropClick}>
+            <div className="bg-surface border border-border rounded-t-lg md:rounded-lg w-full md:max-w-sm md:mx-4 max-h-[calc(85*var(--app-vh))] overflow-y-auto flex flex-col animate-in slide-in-from-bottom duration-200" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between p-4 border-b border-border">
                     <h2 className="text-terminal text-sm font-bold tracking-[0.2em] uppercase flex items-center gap-2">
                         <Package size={14} /> Roll Loot

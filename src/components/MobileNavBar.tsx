@@ -1,4 +1,5 @@
 import { useAppStore } from '../store/useAppStore';
+import { hapticLight } from '../utils/haptics';
 
 const TABS = [
   { id: 'chat' as const,    label: 'Chat' },
@@ -15,12 +16,14 @@ export function MobileNavBar() {
   const npcLedger = useAppStore((s) => s.npcLedger);
   const npcPressure = useAppStore((s) => s.npcPressure);
   const debugMode = useAppStore((s) => s.settings.debugMode);
+  const keyboardVisible = useAppStore((s) => s.keyboardVisible);
 
   const pressureCount = debugMode
     ? npcLedger.filter(n => n.drives || npcPressure[n.id]).length
     : 0;
 
   const handleTap = (tabId: typeof TABS[number]['id']) => {
+    hapticLight();
     if (tabId === 'chat') {
       if (drawerOpen) toggleDrawer();
       useAppStore.setState({ settingsOpen: false, npcLedgerOpen: false });
@@ -44,6 +47,10 @@ export function MobileNavBar() {
       setMobileView('settings');
     }
   };
+
+  // While the soft keyboard is up, hide the nav so it doesn't ride on top of it
+  // and the chat input can sit directly against the keyboard.
+  if (keyboardVisible) return null;
 
   return (
     <nav className="mobile-nav md:hidden">
