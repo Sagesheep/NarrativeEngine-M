@@ -8,9 +8,8 @@
  *           no store/* imports from components/*
  *   GATE 6: no new services/* imports from store/* (compared to baseline)
  *
- * Type-only imports (import type {...}) are NOT counted as runtime
- * cycles — they're erased at compile time and cannot form a runtime
- * dependency. This script distinguishes the two.
+ * Catches BOTH static imports (`from '...'`) AND dynamic imports
+ * (`import('...')`). Type-only imports (`import type`) are excluded.
  *
  * Run: node scripts/gate.mjs
  */
@@ -32,8 +31,28 @@ function walk(dir, out = []) {
 
 const files = walk(SRC);
 
+/**
+ * Extract all import paths from a source file — both static
+ * (`from '...'`) and dynamic (`import('...')`). Excludes type-only
+ * imports. Returns a Set of module specifiers.
+ */
+function extractImports(content) {
+  const imports = new Set();
+  const lines = content.split('\n');
+  for (const line of lines) {
+    // Skip type-only imports
+    if (line.match(/^\s*import\s+type\s/)) continue;
+    // Static imports: from '...'
+    const staticMatches = [...line.matchAll(/from\s+['"]([^'"]+)['"]/g)];
+    for (const m of staticMatches) imports.add(m[1]);
+    // Dynamic imports: import('...') — may be inline, not on own line
+    const dynamicMatches = [...line.matchAll(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/g)];
+    for (const m of dynamicMatches) imports.add(m[1]);
+  }
+  return imports;
+}
+
 // ── GATE 4: runtime cycle in store/slices/* ──────────────────────────
-// We look for value imports (not `import type`) between any two slices.
 console.log('═══════════════════════════════════════════════════════');
 console.log('  GATE 4/6: no runtime cycle in store/slices/*');
 console.log('═══════════════════════════════════════════════════════');
@@ -41,17 +60,15 @@ console.log('══════════════════════�
 const sliceDir = join(SRC, 'store/slices');
 const sliceFiles = walk(sliceDir).filter(f => !f.includes('__tests__') && !f.endsWith('saveController.ts'));
 
-// Build adjacency: sliceName -> set of sliceNames it value-imports from
 const adj = new Map();
 for (const f of sliceFiles) {
   const name = f.replace(sliceDir + '/', '').replace(/\.(ts|tsx)$/, '');
   const content = readFileSync(f, 'utf8');
   const valueImports = [];
-  // Match `import { ... } from './xxx'` — but NOT `import type { ... }`
-  const lines = content.split('\n');
-  for (const line of lines) {
-    if (line.match(/^\s*import\s+type\s/)) continue; // type-only, skip
-    const m = line.match(/from\s+['"]\.\/([^'"]+)['"]/);
+  const allImports = extractImports(content);
+  for (const imp of allImports) {
+    // Only look at relative imports between slices
+    const m = imp.match(/^\.\/([^'"]+)$/);
     if (m) {
       const target = m[1].replace(/\.(ts|tsx)$/, '');
       if (target !== name) valueImports.push(target);
@@ -60,7 +77,6 @@ for (const f of sliceFiles) {
   adj.set(name, valueImports);
 }
 
-// Detect cycle via DFS
 let cycleFound = null;
 function dfs(node, visited, stack) {
   if (stack.has(node)) {
@@ -88,8 +104,9 @@ if (cycleFound) {
 }
 
 // ── GATE 5: layer violations (services/store → components) ───────────
+// Now catches dynamic imports too.
 console.log('\n═══════════════════════════════════════════════════════');
-console.log('  GATE 5/6: no services/store → components imports');
+console.log('  GATE 5/6: no services/store → components imports (static + dynamic)');
 console.log('═══════════════════════════════════════════════════════');
 
 const layerLeaks = [];
@@ -101,8 +118,8 @@ for (const f of files) {
   const isService = rel.startsWith('src/services/');
   const isStore = rel.startsWith('src/store/');
   if (!isService && !isStore) continue;
-  const imports = [...content.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1]);
-  for (const imp of imports) {
+  const allImports = extractImports(content);
+  for (const imp of allImports) {
     if (imp.includes('/components/')) {
       layerLeaks.push(`${rel} → ${imp}`);
     }
@@ -117,8 +134,9 @@ if (layerLeaks.length > 0) {
 }
 
 // ── GATE 6: no new services → store leak ──────────────────────────────
+// Now catches dynamic imports too. Counts unique file → store pairs.
 console.log('\n═══════════════════════════════════════════════════════');
-console.log('  GATE 6/6: services → store leak (current count vs Wave 1 baseline)');
+console.log('  GATE 6/6: services → store leak (static + dynamic, non-test)');
 console.log('═══════════════════════════════════════════════════════');
 
 const svcToStore = [];
@@ -128,22 +146,20 @@ for (const f of files) {
   if (rel.includes('__tests__')) continue;
   let content;
   try { content = readFileSync(f, 'utf8'); } catch { continue; }
-  const imports = [...content.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1]);
-  for (const imp of imports) {
+  const allImports = extractImports(content);
+  for (const imp of allImports) {
     if (imp.includes('/store/useAppStore') || imp.includes('/store/campaignStore') || imp.includes('/store/slices/')) {
       svcToStore.push(`${rel} → ${imp}`);
     }
   }
 }
 console.log(`Current services → store leak count: ${svcToStore.length}`);
-console.log('(Wave 1 baseline was 9 — this is a known pre-existing leak');
-console.log(' to be addressed in Wave 2: StorePort. Gate 6 only fails if');
-console.log(' the count INCREASES from baseline.)');
-// Wave 1 baseline: 9. If we added new ones, fail.
-const BASELINE = 9;
+svcToStore.forEach(l => console.log(`  ${l}`));
+// Baseline is 7 (6 files, 7 import paths — pendingCommit has 2).
+// Gate 6 fails if the count INCREASES from this baseline.
+const BASELINE = 7;
 if (svcToStore.length > BASELINE) {
   console.log(`❌ FAIL: leak count grew from ${BASELINE} to ${svcToStore.length}`);
-  svcToStore.forEach(l => console.log(`  ${l}`));
   process.exit(1);
 } else {
   console.log(`✓ no new services → store leak introduced (count: ${svcToStore.length} ≤ baseline ${BASELINE})`);
