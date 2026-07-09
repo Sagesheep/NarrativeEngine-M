@@ -5,7 +5,7 @@ import {
     DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES,
     DEFAULT_WORLD_WHAT, DEFAULT_WORLD_WHERE,
     DEFAULT_WORLD_WHO, DEFAULT_WORLD_WHY
-} from '../../store/slices/settingsSlice';
+} from './constants';
 
 export type EngineRollResult = {
     appendToInput: string;

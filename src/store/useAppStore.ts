@@ -10,7 +10,10 @@ import { createNPCSlice, type NPCSlice } from './slices/npcSlice';
 import { createPressureSlice, type PressureSlice } from './slices/pressureSlice';
 import { registerStore } from '../services/embedding/embeddingScheduler';
 
-// Re-export DEFAULT_* constants for backward compatibility
+// Re-export DEFAULT_* constants for backward compatibility — canonical
+// home is now services/engine/constants.ts (hoisted to break a
+// services → store leak). Re-exporting here keeps external callers
+// working.
 export {
     DEFAULT_SURPRISE_TYPES,
     DEFAULT_SURPRISE_TONES,
@@ -20,7 +23,7 @@ export {
     DEFAULT_WORLD_WHERE,
     DEFAULT_WORLD_WHY,
     DEFAULT_WORLD_WHAT,
-} from './slices/settingsSlice';
+} from '../services/engine/constants';
 export type { ReindexState } from './slices/uiSlice';
 
 // ── Combined store type ────────────────────────────────────────────────
