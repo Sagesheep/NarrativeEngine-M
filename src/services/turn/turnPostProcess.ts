@@ -33,7 +33,7 @@ import { notify } from '../../ports/notification';
 import { shouldAutoSeal, sealChapter, sealChapterCombined, type CombinedSealResult, rateImportance } from '../archive';
 import { computeOpenThreads } from '../payload/payloadWorldContext';
 import { fetchFacts, scanCharacterProfile, scanInventory, mergeSealEntries } from '../campaign-state';
-import { loadChapters } from '../../store/campaignStore';
+import { chapterRepository } from '../../ports/chapterRepository';
 import { scanPressure, buildPressurePatch, applyDecay } from '../npc';
 import {
     rollArcTick,
@@ -1107,7 +1107,7 @@ export function runArcTick(
 }
 
 async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, activeCampaignId: string) {
-    const currentChapters = await loadChapters(activeCampaignId);
+    const currentChapters = await chapterRepository.loadChapters(activeCampaignId);
 
     if (currentChapters.length > 0 && shouldAutoSeal(currentChapters).shouldSeal) {
         try {
@@ -1225,7 +1225,7 @@ async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, act
                 // gate is needed. runArcTick below still ticks/surfaces existing arcs.
             }
 
-            const updatedChapters = await loadChapters(activeCampaignId);
+            const updatedChapters = await chapterRepository.loadChapters(activeCampaignId);
             if (callbacks.setChapters) callbacks.setChapters(updatedChapters);
             notify.success('Chapter sealed');
         } catch (err) {
