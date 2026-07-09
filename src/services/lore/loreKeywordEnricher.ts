@@ -1,6 +1,6 @@
 import type { LoreChunk, LLMProvider } from '../../types';
 import { llmCall } from '../../utils/llmCall';
-import { saveLoreChunks } from '../../store/campaignStore';
+import { loreRepository } from '../../ports/loreRepository';
 import {
     JSON_ONLY_FOOTER,
     ANCHOR_BEFORE_INPUT,
@@ -132,7 +132,7 @@ export async function enrichLoreKeywords(
     }
 
     if (enrichedCount > 0) {
-        await saveLoreChunks(campaignId, chunks);
+        await loreRepository.saveLoreChunks(campaignId, chunks);
         console.log(`[LoreEnricher] Saved ${enrichedCount} enriched chunks for campaign ${campaignId}`);
     }
 }

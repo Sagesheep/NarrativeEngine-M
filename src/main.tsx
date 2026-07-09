@@ -2,13 +2,14 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { wireNotifications } from './adapters/uiToastAdapter'
+import { wireLoreRepository } from './adapters/loreRepositoryAdapter'
 
-// Wire the UI toast store as the implementation behind the
-// NotificationPort. Services and store slices depend on the port
-// (notify.*), not on the toast component — this call is what makes
-// those notifications actually appear on screen. Must run before
-// any service/store code that calls notify.* at module load.
+// Wire ports to their real implementations. Services depend on the
+// ports (contracts), not the store/components — these calls are what
+// actually connect them. Must run before any service/store code that
+// uses a port at module load.
 wireNotifications();
+wireLoreRepository();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
