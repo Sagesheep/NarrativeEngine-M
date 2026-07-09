@@ -1,31 +1,33 @@
-import { useAppStore } from '../../store/useAppStore';
+import type { NPCEntry } from '../../types';
 import { generateImage } from './imageClient';
 import { composeImagePrompt } from './composePrompt';
 import { imageStorage } from '../storage/imageStorage';
 import { notify } from '../../ports/notification';
+import { settings } from '../../ports/settings';
+import { npc as npcPort } from '../../ports/npc';
 
 export async function generateNPCPortrait(npcId: string): Promise<void> {
-    const state = useAppStore.getState();
-    const provider = state.getActiveImageEndpoint();
+    const provider = settings.getActiveImageEndpoint();
     if (!provider) {
         notify.warning('No Image Generation AI configured. Add one in Settings \u2192 Presets.');
         return;
     }
 
-    const campaignId = state.activeCampaignId;
+    const s = settings.getSettings();
+    const campaignId = (s as unknown as { activeCampaignId: string | null }).activeCampaignId;
     if (!campaignId) {
         notify.warning('No active campaign');
         return;
     }
 
-    const npcLedger = (state as unknown as { npcLedger: import('../../types').NPCEntry[] }).npcLedger;
-    const npc = npcLedger.find(n => n.id === npcId);
-    if (!npc) {
+    const npcLedger = npcPort.getNPCLedger() as NPCEntry[];
+    const target = npcLedger.find(n => n.id === npcId);
+    if (!target) {
         notify.warning('NPC not found');
         return;
     }
 
-    if (!npc.appearance?.trim() && !npc.appearanceTags?.trim()) {
+    if (!target.appearance?.trim() && !target.appearanceTags?.trim()) {
         notify.warning('Add an appearance description before generating a portrait');
         return;
     }
@@ -33,8 +35,8 @@ export async function generateNPCPortrait(npcId: string): Promise<void> {
     const composed = composeImagePrompt({
         portraitNpcId: npcId,
         npcLedger,
-        stylePrompt: state.settings.imageStylePrompt,
-        negativePrompt: state.settings.imageNegativePrompt,
+        stylePrompt: s.imageStylePrompt,
+        negativePrompt: s.imageNegativePrompt,
     });
 
     const dataUrl = await generateImage(provider, composed.prompt, {
@@ -44,5 +46,5 @@ export async function generateNPCPortrait(npcId: string): Promise<void> {
     });
 
     await imageStorage.storePortrait(campaignId, npcId, dataUrl);
-    useAppStore.getState().updateNPC(npcId, { portrait: true });
+    npcPort.updateNPC(npcId, { portrait: true });
 }

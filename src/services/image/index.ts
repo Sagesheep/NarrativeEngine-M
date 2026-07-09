@@ -1,43 +1,45 @@
 import type { NPCEntry, CharacterProfileState, SceneSteer } from '../../types';
-import { useAppStore } from '../../store/useAppStore';
 import { generateImage } from './imageClient';
 import { composeImagePrompt } from './composePrompt';
 import { imageStorage } from '../storage/imageStorage';
 import { notify } from '../../ports/notification';
+import { settings } from '../../ports/settings';
+import { messaging } from '../../ports/messaging';
+import { npc } from '../../ports/npc';
 
 export async function illustrateMessage(messageId: string, steer?: SceneSteer): Promise<void> {
-    const state = useAppStore.getState();
-    const preset = state.settings.presets.find(p => p.id === state.settings.activePresetId);
+    const preset = settings.getActivePreset();
     if (!preset) {
         notify.warning('No active preset found');
         return;
     }
 
-    const imageProvider = state.getActiveImageEndpoint();
+    const imageProvider = settings.getActiveImageEndpoint();
     if (!imageProvider) {
         notify.warning('No Image Generation AI configured in this preset. Add one in Settings → Presets.');
         return;
     }
 
-    const campaignId = state.activeCampaignId;
+    const s = settings.getSettings();
+    const campaignId = (s as unknown as { activeCampaignId: string | null }).activeCampaignId;
     if (!campaignId) return;
 
-    const message = state.messages.find(m => m.id === messageId);
+    const message = messaging.getMessageById(messageId);
     if (!message || message.role !== 'assistant') return;
 
     if (message.image?.status === 'pending') return;
 
-    const npcLedger = (state as unknown as { npcLedger: NPCEntry[] }).npcLedger ?? [];
-    const onStageNpcIds = (state as unknown as { onStageNpcIds?: string[] }).onStageNpcIds ?? [];
-    const pc = (state.context?.characterProfile as CharacterProfileState | undefined)?.identity;
+    const npcLedger = npc.getNPCLedger() as NPCEntry[];
+    const onStageNpcIds = [...npc.getOnStageNPCIds()];
+    const pc = (s as unknown as { context?: { characterProfile?: CharacterProfileState } }).context?.characterProfile?.identity;
 
     const composed = composeImagePrompt({
         sceneText: message.displayContent || message.content,
         npcLedger,
         pc,
         onStageNpcIds,
-        stylePrompt: state.settings.imageStylePrompt,
-        negativePrompt: state.settings.imageNegativePrompt,
+        stylePrompt: s.imageStylePrompt,
+        negativePrompt: s.imageNegativePrompt,
         steer,
     });
 
@@ -46,7 +48,7 @@ export async function illustrateMessage(messageId: string, steer?: SceneSteer): 
         return;
     }
 
-    useAppStore.getState().setMessageImage(messageId, {
+    messaging.attachImage(messageId, {
         status: 'pending',
         prompt: composed.prompt,
         createdAt: Date.now(),
@@ -61,7 +63,7 @@ export async function illustrateMessage(messageId: string, steer?: SceneSteer): 
 
         await imageStorage.store(campaignId, messageId, dataUrl);
 
-        useAppStore.getState().setMessageImage(messageId, {
+        messaging.attachImage(messageId, {
             status: 'ready',
             prompt: composed.prompt,
             createdAt: Date.now(),
@@ -69,7 +71,7 @@ export async function illustrateMessage(messageId: string, steer?: SceneSteer): 
         });
     } catch (e) {
         const errorMessage = e instanceof Error ? e.message : String(e);
-        useAppStore.getState().setMessageImage(messageId, {
+        messaging.attachImage(messageId, {
             status: 'error',
             prompt: composed.prompt,
             createdAt: Date.now(),
