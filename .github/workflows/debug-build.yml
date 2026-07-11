@@ -5,7 +5,6 @@ on:
     branches: [refactor/architecture-isolation]
   workflow_dispatch:
 
-# Cancel in-progress runs for the same ref so a red build is fresh.
 concurrency:
   group: debug-build-${{ github.ref }}
   cancel-in-progress: true
@@ -26,13 +25,21 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      # Generate src/data/nameBank.json + nameBlocklist.json from the asset pipeline.
+      # Source assets live under Upgrade/FablePlans/assets/clean; if they are absent
+      # (e.g. not committed on CI) the step is allowed to fail so the typecheck can
+      # still proceed against the JSON module declarations in src/json.d.ts.
+      - name: Generate name bank assets
+        run: node scripts/buildNameBank.mjs
+        continue-on-error: true
+
       - name: Typecheck + Build
         id: build
         run: npm run build
-        continue-on-error: true
 
-      - name: Lint (best effort)
+      - name: Lint (report only, non-blocking)
         if: always()
+        id: lint
         run: npm run lint
         continue-on-error: true
 
@@ -41,17 +48,10 @@ jobs:
         run: |
           if [ "${{ steps.build.outcome }}" = "success" ]; then
             echo "::notice title=BUILD OK::debug-build passed on ${{ github.ref }}"
+            if [ "${{ steps.lint.outcome }}" != "success" ]; then
+              echo "::warning title=LINT WARNINGS::build passed but lint reported issues (non-blocking)"
+            fi
           else
             echo "::error title=BUILD FAILED::debug-build failed on ${{ github.ref }}"
             exit 1
           fi
-
-      - name: Upload build logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: |
-            tsconfig*.tsbuildinfo
-            node_modules/.cache
-          if-no-files-found: ignore
