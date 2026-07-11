@@ -134,7 +134,7 @@ export function CampaignHub() {
             const utilityEndpointForEnrichment = useAppStore.getState().getActiveUtilityEndpoint();
             if (utilityEndpointForEnrichment?.endpoint) {
                 import('../services/lore').then(({ enrichLoreKeywords }) => {
-                    enrichLoreKeywords(campaign.id, chunks, utilityEndpointForEnrichment)
+                    enrichLoreKeywords(campaign.id, chunks, utilityEndpointForEnrichment, saveLoreChunks)
                         .catch(err => console.warn('[LoreEnricher] Background enrichment failed:', err));
                 }).catch(() => {});
             }

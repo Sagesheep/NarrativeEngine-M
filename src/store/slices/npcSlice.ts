@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { NPCEntry } from '../../types';
-import { toast } from '../../components/Toast';
+import { notify } from '../../services/ports/notify';
 import { embedText, getCurrentModelId } from '../../services/embedding';
 import { embeddingStorage } from '../../services/storage/embeddingStorage';
 import { imageStorage } from '../../services/storage/imageStorage';
@@ -23,7 +23,7 @@ export function debouncedSaveNPCLedger(campaignId: string | null, npcs: NPCEntry
             await saveNPCLedger(campaignId, npcs);
         } catch (e) {
             console.error(e);
-            toast.error('Failed to save NPC ledger');
+            notify.error('Failed to save NPC ledger');
         }
     }, 1000);
 }

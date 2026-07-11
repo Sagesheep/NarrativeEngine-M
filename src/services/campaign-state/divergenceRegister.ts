@@ -1,6 +1,6 @@
 import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, NPCEntry } from '../../types';
 import { countTokens } from '../infrastructure';
-import { toast } from '../../components/Toast';
+import { notify } from '../ports/notify';
 
 export const EMPTY_REGISTER: DivergenceRegister = {
     entries: [],
@@ -310,7 +310,7 @@ export function getEntriesForNpc(register: DivergenceRegister, npcId: string): D
 
 export function migrateV1ToV2(v1: { entries: unknown[]; prunedLog?: unknown[]; lastUpdatedSceneId?: string; lastUpdatedAt?: number; version?: number }): DivergenceRegister {
     console.log('[DivergenceRegister] Migrating v1 register to v2 — wiping all entries');
-    toast.info('Divergence register redesigned. Existing entries cleared. New facts will be extracted at chapter seal.');
+    notify.info('Divergence register redesigned. Existing entries cleared. New facts will be extracted at chapter seal.');
     return {
         entries: [],
         chapterToggles: {},

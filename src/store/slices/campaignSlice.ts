@@ -5,7 +5,7 @@ import type { ArchiveSlice } from './archiveSlice';
 import type { LoreSlice } from './loreSlice';
 import type { NPCSlice } from './npcSlice';
 import type { ChatSlice } from './chatSlice';
-import { toast } from '../../components/Toast';
+import { notify } from '../../services/ports/notify';
 import { debouncedSaveSettings } from './settingsSlice';
 import { runFullReindex, abortForCampaignSwitch } from '../../services/embedding';
 import { embeddingStorage } from '../../services/storage/embeddingStorage';
@@ -33,7 +33,7 @@ export function debouncedSaveCampaignState(campaignId: string | null, _state: { 
             await saveCampaignState(campaignId, state);
         } catch (e) {
             console.error(e);
-            toast.error('Failed to save campaign state');
+            notify.error('Failed to save campaign state');
         }
     }, 1000);
 }
@@ -226,7 +226,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
                     });
                 }).then(() => {
                     useAppStore.getState().setEmbeddingsReindexing({ active: false, total: 0, done: 0, reason: null });
-                    toast.success('Re-indexing complete');
+                    notify.success('Re-indexing complete');
                 }).catch((_e) => {
                     console.error('[Campaign] Lazy re-index failed:', _e);
                     useAppStore.getState().setEmbeddingsReindexing({ active: false, total: 0, done: 0, reason: null });

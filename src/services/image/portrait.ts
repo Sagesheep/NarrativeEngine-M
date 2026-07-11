@@ -1,32 +1,32 @@
-import { useAppStore } from '../../store/useAppStore';
 import { generateImage } from './imageClient';
 import { composeImagePrompt } from './composePrompt';
 import { imageStorage } from '../storage/imageStorage';
-import { toast } from '../../components/Toast';
+import { notify } from '../ports/notify';
+import { storeAccess } from '../ports/store';
 
 export async function generateNPCPortrait(npcId: string): Promise<void> {
-    const state = useAppStore.getState();
+    const state = storeAccess().getState();
     const provider = state.getActiveImageEndpoint();
     if (!provider) {
-        toast.warning('No Image Generation AI configured. Add one in Settings \u2192 Presets.');
+        notify.warning('No Image Generation AI configured. Add one in Settings \u2192 Presets.');
         return;
     }
 
     const campaignId = state.activeCampaignId;
     if (!campaignId) {
-        toast.warning('No active campaign');
+        notify.warning('No active campaign');
         return;
     }
 
     const npcLedger = (state as unknown as { npcLedger: import('../../types').NPCEntry[] }).npcLedger;
     const npc = npcLedger.find(n => n.id === npcId);
     if (!npc) {
-        toast.warning('NPC not found');
+        notify.warning('NPC not found');
         return;
     }
 
     if (!npc.appearance?.trim() && !npc.appearanceTags?.trim()) {
-        toast.warning('Add an appearance description before generating a portrait');
+        notify.warning('Add an appearance description before generating a portrait');
         return;
     }
 
@@ -44,5 +44,5 @@ export async function generateNPCPortrait(npcId: string): Promise<void> {
     });
 
     await imageStorage.storePortrait(campaignId, npcId, dataUrl);
-    useAppStore.getState().updateNPC(npcId, { portrait: true });
+    storeAccess().getState().updateNPC(npcId, { portrait: true });
 }

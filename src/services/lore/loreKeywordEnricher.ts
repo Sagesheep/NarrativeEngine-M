@@ -1,6 +1,5 @@
 import type { LoreChunk, LLMProvider } from '../../types';
 import { llmCall } from '../../utils/llmCall';
-import { saveLoreChunks } from '../../store/campaignStore';
 import {
     JSON_ONLY_FOOTER,
     ANCHOR_BEFORE_INPUT,
@@ -75,7 +74,8 @@ function capKeywords(keywords: string[]): string[] {
 export async function enrichLoreKeywords(
     campaignId: string,
     chunks: LoreChunk[],
-    utilityEndpoint: LLMProvider
+    utilityEndpoint: LLMProvider,
+    saveLoreChunks: (campaignId: string, chunks: LoreChunk[]) => Promise<void>,
 ): Promise<void> {
     const toEnrich = chunks.filter(c => !c.alwaysInclude && (c.enrichedVersion ?? 0) < ENRICHER_VERSION);
 

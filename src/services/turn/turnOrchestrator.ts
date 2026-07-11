@@ -5,7 +5,7 @@ import { uid } from '../../utils/uid';
 import { sendMessage } from '../chatEngine';
 import { rollEngines, rollDiceFairness, rollCharacterIntroEngine, resolveManualRoll, resolveLootDrop } from '../engine';
 import { recordLootDrop } from '../engine/lootDropTelemetry';
-import { toast } from '../../components/Toast';
+import { notify } from '../ports/notify';
 import { sanitizePayloadForApi } from '../llm/payloadSanitizer';
 import { gatherContext } from './turnContext';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool } from './toolHandlers';
@@ -448,7 +448,7 @@ export async function runTurn(
                 }
                 if (apiRetryCount === 0) {
                     callbacks.updateLastAssistant(`⚠️ Error: ${err}. Retrying...`);
-                    toast.warning('LLM request failed — retrying...');
+                    notify.warning('LLM request failed — retrying...');
                     setTimeout(() => {
                         if (abortController.signal.aborted) {
                             callbacks.setStreaming(false);
@@ -461,7 +461,7 @@ export async function runTurn(
                     }, 2000);
                 } else if (apiRetryCount === 1) {
                     callbacks.updateLastAssistant(`⚠️ Error: ${err}. Retrying without tools...`);
-                    toast.warning('Retry failed — trying without tools...');
+                    notify.warning('Retry failed — trying without tools...');
                     setTimeout(() => {
                         if (abortController.signal.aborted) {
                             callbacks.setStreaming(false);
@@ -474,7 +474,7 @@ export async function runTurn(
                     }, 2000);
                 } else {
                     callbacks.updateLastAssistant(`⚠️ Error: ${err}`);
-                    toast.error('LLM request failed after retries');
+                    notify.error('LLM request failed after retries');
                     // Smart Retry v1: final retry exhaustion — stamp retryable so the
                     // user can retry from the cached precontext without regathering.
                     stampRetryable(callbacks, assistantMsgId, gathered);

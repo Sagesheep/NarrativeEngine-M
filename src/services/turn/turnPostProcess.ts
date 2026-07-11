@@ -29,11 +29,10 @@ import {
 import type { TickDelta, Band } from '../npc';
 import { api } from '../apiClient';
 import { uid } from '../../utils/uid';
-import { toast } from '../../components/Toast';
+import { notify } from '../ports/notify';
 import { shouldAutoSeal, sealChapter, sealChapterCombined, type CombinedSealResult, rateImportance } from '../archive';
 import { computeOpenThreads } from '../payload/payloadWorldContext';
 import { fetchFacts, scanCharacterProfile, scanInventory, mergeSealEntries } from '../campaign-state';
-import { loadChapters } from '../../store/campaignStore';
 import { scanPressure, buildPressurePatch, applyDecay } from '../npc';
 import {
     rollArcTick,
@@ -169,7 +168,8 @@ export async function handlePostTurn(
     displayInput: string,
     activeCampaignId: string,
     npcLedger: NPCEntry[],
-    lastAssistantContent: string
+    lastAssistantContent: string,
+    loadChapters: (campaignId: string) => Promise<ArchiveChapter[]>,
 ): Promise<void> {
     // Clear the agency digest that was folded into the GM call just completed.
     // A new digest may be set below if the heartbeat fires this turn.
@@ -232,7 +232,7 @@ export async function handlePostTurn(
         }).catch((e) => console.warn('[TurnPostProcess] Refresh-Facts queue push failed:', e));
     }
 
-    backgroundQueue.push('Seal-Chapter', () => handleSealChapter(state, callbacks, activeCampaignId))
+    backgroundQueue.push('Seal-Chapter', () => handleSealChapter(state, callbacks, activeCampaignId, loadChapters))
         .catch((e) => console.warn('[TurnPostProcess] Seal-Chapter queue push failed:', e));
 
     queueIndexPatch(state, callbacks, appendedSceneId, displayInput, lastAssistantContent, npcLedger, activeCampaignId);
@@ -1106,7 +1106,7 @@ export function runArcTick(
     }
 }
 
-async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, activeCampaignId: string) {
+async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, activeCampaignId: string, loadChapters: (campaignId: string) => Promise<ArchiveChapter[]>) {
     const currentChapters = await loadChapters(activeCampaignId);
 
     if (currentChapters.length > 0 && shouldAutoSeal(currentChapters).shouldSeal) {
@@ -1216,7 +1216,7 @@ async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, act
                     callbacks.setDivergenceRegister(merged);
                     console.log(`[CombinedSeal] Chapter ${sealed.chapterId}: ${sealResult.divergences.length} entries extracted`);
                 } else if (sealResult.divergenceParseError) {
-                    toast.warning('Chapter sealed but divergence facts failed to parse');
+                    notify.warning('Chapter sealed but divergence facts failed to parse');
                 }
 
                 // Arc Engine spawn is MANUAL — fired by the Arc Injector button, never
@@ -1227,10 +1227,10 @@ async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, act
 
             const updatedChapters = await loadChapters(activeCampaignId);
             if (callbacks.setChapters) callbacks.setChapters(updatedChapters);
-            toast.success('Chapter sealed');
+            notify.success('Chapter sealed');
         } catch (err) {
             console.error('[SealChapter] Failed to seal chapter:', err);
-            toast.error('Failed to seal chapter');
+            notify.error('Failed to seal chapter');
         }
     }
 }

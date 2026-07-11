@@ -16,7 +16,9 @@ import { DiceRollModal } from './components/chat/DiceRollModal';
 import { NPCLedgerModal } from './components/NPCLedgerModal';
 import { BackupModal } from './components/BackupModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ToastContainer } from './components/Toast';
+import { ToastContainer, toast } from './components/Toast';
+import { setNotifyImpl } from './services/ports/notify';
+import { setStoreAccess } from './services/ports/store';
 import { ConfirmSheet } from './components/ConfirmSheet';
 import { MobileNavBar } from './components/MobileNavBar';
 import { useRulesIndexer } from './hooks/useRulesIndexer';
@@ -43,6 +45,21 @@ export default function App() {
     loadSettings();
     initVoices();
   }, [loadSettings]);
+
+  // Wire the notification port (composition root). UI → services/ports is the
+  // allowed direction; services/ and store/ never import components/Toast.
+  useEffect(() => {
+    setNotifyImpl({
+      success: toast.success,
+      error:   toast.error,
+      warning: toast.warning,
+      info:    toast.info,
+    });
+    setStoreAccess({
+      getState: useAppStore.getState,
+      setState: useAppStore.setState,
+    });
+  }, []);
 
   // Hardware back button (Android): dismiss the top-most open overlay; else
   // fall back from a non-chat tab to chat; else background the app. Never exit.
