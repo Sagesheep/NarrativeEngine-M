@@ -1,5 +1,5 @@
 import type { DivergenceRegister, DivergenceEntry, NPCEntry, ArchiveChapter, LLMProvider } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { CATEGORY_LABELS } from './divergenceRegister';
 import {
     extractJsonRobust,

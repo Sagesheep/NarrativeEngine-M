@@ -102,7 +102,7 @@ export function PCCreationWizard({ onComplete, onCancel }: {
         if (!auxProvider) return;
         setSuggestingField(questionId);
         try {
-            const { llmCall } = await import('../../utils/llmCall');
+            const { llmCall } = await import('../../services/llm/llmCall');
             const loreContext = loreChunks.slice(0, 5).map(c => c.content).join('\n\n');
             const question = CREATION_QUESTIONS.find(q => q.id === questionId);
             if (!question) return;
@@ -122,7 +122,7 @@ export function PCCreationWizard({ onComplete, onCancel }: {
         if (!auxProvider) return;
         setIsGenerating(true);
         try {
-            const { llmCall } = await import('../../utils/llmCall');
+            const { llmCall } = await import('../../services/llm/llmCall');
             const loreContext = loreChunks.slice(0, 5).map(c => c.content).join('\n\n');
             const concept = answers.concept || answers.name || 'A mysterious wanderer';
             const prompt = `Create a brief character concept for a player character named "${answers.name || 'Unknown'}" with archetype "${answers.archetype || 'skirmisher'}". ${concept ? `Concept: ${concept}.` : ''}\n\nWorld context:\n${loreContext || 'A fantasy world.'}\n\nRespond with just the description text (2-3 sentences each) for: concept, voice, and drives.`;

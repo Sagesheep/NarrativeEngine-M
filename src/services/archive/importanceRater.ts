@@ -1,5 +1,5 @@
 import type { ChatMessage, LLMProvider } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { INPUT_DELIMITER, joinPromptSections } from '../infrastructure';
 
 const IMPORTANCE_PROMPT_STATIC = joinPromptSections(

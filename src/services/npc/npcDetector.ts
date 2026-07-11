@@ -1,5 +1,5 @@
 import type { NPCEntry, LLMProvider } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import {
     extractJson,
     ANCHOR_BEFORE_INPUT,

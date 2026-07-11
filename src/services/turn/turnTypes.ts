@@ -29,7 +29,7 @@ import type {
     ThinkingEffort,
     ManualRollRequest,
 } from '../../types';
-import type { LLMCallPriority } from '../../utils/llmCall';
+import type { LLMCallPriority } from '../llm/llmCall';
 import type { ArmedLoot } from '../../types';
 
 // ── UtilityLLM port (Plan 4 — the single injection point for utility LLM access) ──

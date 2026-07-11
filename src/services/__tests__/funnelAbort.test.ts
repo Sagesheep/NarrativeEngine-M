@@ -6,7 +6,7 @@ import type { ArchiveChapter, ChatMessage } from '../../types';
 // These tests pin the abort plumbing at the iterativeChapterFilter seam.
 
 const mockLlmCall = vi.fn((..._args: unknown[]) => Promise.resolve('YES'));
-vi.mock('../../utils/llmCall', () => ({
+vi.mock('../llm/llmCall', () => ({
     llmCall: (...args: unknown[]) => mockLlmCall(...args),
 }));
 

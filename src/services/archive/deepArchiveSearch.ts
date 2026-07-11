@@ -15,7 +15,7 @@
  */
 
 import type { LLMProvider, ArchiveIndexEntry, ArchiveChapter, ChatMessage } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { getList, k, type SceneRecord } from '../storage/_helpers';
 
 import {

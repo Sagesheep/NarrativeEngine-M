@@ -1,5 +1,5 @@
 import type { DivergenceRegister, TopicClusters, TopicCluster, LLMProvider } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import {
     countTokens,
     extractJsonRobust,

@@ -3,11 +3,11 @@ import { populateAgencyFields, updateExistingNPCs, bulkNpcUpdate } from './npcGe
 import { buildProximityRoster } from './agencyHeartbeat';
 import type { NPCEntry, LLMProvider, ChatMessage } from '../../types';
 
-vi.mock('../../utils/llmCall', () => ({
+vi.mock('../llm/llmCall', () => ({
     llmCall: vi.fn()
 }));
 
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 const mockLlmCall = vi.mocked(llmCall);
 
 describe('agencyGeneration', () => {

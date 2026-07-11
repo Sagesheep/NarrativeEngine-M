@@ -9,7 +9,7 @@
  */
 
 import type { LoreChunk, LLMProvider } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { saveLoreChunks } from '../../services/persistence/campaignStore';  // @rf RF-004 W0 — domain→state, switch to CampaignContextPort
 import {
     JSON_ONLY_FOOTER,

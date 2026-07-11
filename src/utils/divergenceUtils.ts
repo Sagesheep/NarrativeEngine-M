@@ -9,7 +9,7 @@
  */
 
 import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, NPCEntry } from '../types';
-import { countTokens } from '../services/infrastructure';
+import { countTokens } from './tokenizer';
 import { notificationPort } from '../ports';
 
 export const EMPTY_REGISTER: DivergenceRegister = {

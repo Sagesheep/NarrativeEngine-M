@@ -32,7 +32,7 @@ import type {
     NPCEntry,
     NPCPressure,
 } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { uid } from '../../utils/uid';
 import {
     TTRPG_PERSONA_GM_ASSISTANT,

@@ -46,7 +46,7 @@ export function DivergenceEntryModal({ onAdd, onClose, provider, chapterId = 'ma
         if (!freeText.trim() || !provider) return;
         setStructuring(true);
         try {
-            const { llmCall } = await import('../../utils/llmCall');
+            const { llmCall } = await import('../../services/llm/llmCall');
             const { extractJson } = await import('../../services/infrastructure');
             const { INPUT_DELIMITER: DELIM, JSON_ONLY_FOOTER: JSON_FOOTER, joinPromptSections } = await import('../../services/infrastructure');
             const prompt = joinPromptSections(

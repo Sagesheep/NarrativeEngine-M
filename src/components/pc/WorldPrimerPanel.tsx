@@ -23,7 +23,7 @@ export function WorldPrimerPanel({ onClose }: { onClose: () => void }) {
         if (!auxProvider) return;
         setIsDigesting(true);
         try {
-            const { llmCall } = await import('../../utils/llmCall');
+            const { llmCall } = await import('../../services/llm/llmCall');
             const loreText = loreChunks.slice(0, 10).map(c => `## ${c.header}\n${c.content}`).join('\n\n');
             const prompt = `Summarize the following world lore for a new player in 2-3 paragraphs. Focus on the most important facts a newcomer would need to know.\n\n${loreText}`;
             const result = await llmCall(auxProvider as LLMProvider, prompt, { priority: 'low' });

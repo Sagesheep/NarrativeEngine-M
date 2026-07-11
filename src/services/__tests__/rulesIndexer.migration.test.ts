@@ -14,7 +14,7 @@ vi.mock('../embedding/embeddingScheduler', () => ({
     enqueueProgressiveWithExistingCheck: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock('../../utils/llmCall', () => ({
+vi.mock('../llm/llmCall', () => ({
     llmCall: vi.fn(() => Promise.resolve('{"primary":[],"secondary":[]}')),
 }));
 

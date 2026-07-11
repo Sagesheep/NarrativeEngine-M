@@ -1,5 +1,5 @@
 import type { ChatMessage, LLMProvider, CharacterProfileState, CharacterTrait, CharacterIdentity, StatBlock, DivergenceCategory, SceneEventType } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { uid } from '../../utils/uid';
 import {
     ANCHOR_BEFORE_INPUT,

@@ -19,11 +19,11 @@ import { rollArcTick, rollArcOutcome, advanceRung } from './arcDice';
 import { arcSurfaceLine } from './arcSurface';
 import { scanArcStance } from './arcStance';
 
-vi.mock('../../utils/llmCall', () => ({
+vi.mock('../llm/llmCall', () => ({
     llmCall: vi.fn(),
 }));
 
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { spawnArc } from './arcSpawn';
 
 const mockLlmCall = vi.mocked(llmCall);

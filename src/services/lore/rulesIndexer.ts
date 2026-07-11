@@ -2,7 +2,7 @@ import type { LoreChunk, RuleChunkMeta, LLMProvider } from '../../types';
 import { chunkLoreFile } from './loreChunker';
 import { embeddingStorage, EMBEDDING_VERSION } from '../storage/embeddingStorage';
 import { enqueueProgressiveWithExistingCheck } from '../embedding/embeddingScheduler';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { INPUT_DELIMITER } from '../infrastructure';
 
 const STOP_WORDS = new Set([

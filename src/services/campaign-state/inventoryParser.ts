@@ -1,5 +1,5 @@
 import type { ChatMessage, LLMProvider } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import {
     ANCHOR_BEFORE_INPUT,
     INPUT_DELIMITER,

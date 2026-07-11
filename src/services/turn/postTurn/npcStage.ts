@@ -18,7 +18,7 @@ import {
 } from '../../npc';
 import type { TickDelta, Band } from '../../npc';
 import { rollArcTick, rollArcOutcome, advanceRung, arcSurfaceLine, scanArcStance } from '../../arc';
-import { llmCall } from "../../../utils/llmCall";
+import { llmCall } from '../../llm/llmCall';
 import { isAgencyEligible } from "../../npc";
 import { mergeSealEntries } from "../../campaign-state";
 

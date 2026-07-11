@@ -1,5 +1,5 @@
 import type { LLMProvider, ThinkingEffort, SceneEvent, SceneEventType, DivergenceEntry } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import {
     countTokens,
     extractJson,

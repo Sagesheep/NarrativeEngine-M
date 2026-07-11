@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runLoreCheck, buildVerifierPrompt, buildSearchQuery } from '../lore';
 
-vi.mock('../../utils/llmCall', () => ({ llmCall: vi.fn() }));
+vi.mock('../llm/llmCall', () => ({ llmCall: vi.fn() }));
 vi.mock('../archive', () => ({ deepArchiveScan: vi.fn(async () => 'mock archive brief') }));
 vi.mock('../lore/loreRetriever', () => ({
     retrieveRelevantLore: vi.fn(() => [
@@ -24,7 +24,7 @@ vi.mock('../turn/utilityLLM', () => ({
     })),
 }));
 
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { retrieveRelevantLore } from '../lore/loreRetriever';
 import { semanticSearch, isEmbedderReady } from '../embedding';
 import { expandQuery } from '../turn/stages/expandQueryStage';

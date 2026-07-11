@@ -1,7 +1,7 @@
 import type { ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, SemanticFact, LLMProvider } from '../../types';
 import type { SearchHit } from '../embedding/vectorSearch';
 import { extractContextActivations, expandActivationsWithFacts, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 
 const AUTO_SEAL_SCENE_THRESHOLD = 25;
 

@@ -10,7 +10,7 @@ import type {
     LoreCheckCategory,
     NPCEntry,
 } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { retrieveRelevantLore } from './loreRetriever';
 import { deepArchiveScan } from '../archive';
 import { semanticSearch, isEmbedderReady } from '../embedding';

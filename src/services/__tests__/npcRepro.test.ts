@@ -4,8 +4,8 @@ import { dedupeNPCLedger } from '../../store/slices/npcSlice';
 import type { NPCEntry, LLMProvider } from '../../types';
 
 // llmCall is the single network boundary inside validateNPCCandidates.
-vi.mock('../../utils/llmCall', () => ({ llmCall: vi.fn() }));
-import { llmCall } from '../../utils/llmCall';
+vi.mock('../llm/llmCall', () => ({ llmCall: vi.fn() }));
+import { llmCall } from '../llm/llmCall';
 const mockLlmCall = vi.mocked(llmCall);
 
 // Realistic GM output per AI_GM_OS_v3 rule 6: every proper name → [**Name**]

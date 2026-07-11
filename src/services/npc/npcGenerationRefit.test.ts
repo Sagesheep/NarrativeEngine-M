@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NPCEntry, LLMProvider, ChatMessage, PersonalityHex } from '../../types';
 import { generateNPCProfile } from './npcGeneration';
 
-vi.mock('../../utils/llmCall', () => ({
+vi.mock('../llm/llmCall', () => ({
     llmCall: vi.fn()
 }));
 
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 const mockLlmCall = vi.mocked(llmCall);
 
 // ── Seeded RNG (mulberry32) — same helper as hexRoll.test.ts. Deterministic across runs.

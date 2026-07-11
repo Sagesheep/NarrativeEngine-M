@@ -12,7 +12,7 @@ import {
     DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES,
     DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES,
     DEFAULT_WORLD_WHO, DEFAULT_WORLD_WHERE, DEFAULT_WORLD_WHY, DEFAULT_WORLD_WHAT,
-} from '../store/slices/settingsSlice';
+} from './engineConstants';
 
 export const defaultContext: GameContext = {
     loreRaw: '',

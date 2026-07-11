@@ -11,7 +11,7 @@
  */
 
 import type { AppSettings, AIPreset, LLMProvider } from '../types';
-import { migrateSettings } from '../store/settingsMigration';
+import { migrateSettings } from '../utils/settingsMigration';
 import { encryptSettingsProviders, decryptSettingsProviders, decryptSettingsPresets } from './infrastructure';
 import { applyTheme, watchSystemTheme, applyUIScale } from './infrastructure/themeService';
 import { get as idbGet, set as idbSet } from 'idb-keyval';

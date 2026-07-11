@@ -1,5 +1,5 @@
 import type { SceneStakes, LLMProvider } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import { joinPromptSections, TTRPG_PERSONA_STATE_ANALYZER, JSON_ONLY_FOOTER, ANCHOR_BEFORE_INPUT, INPUT_DELIMITER } from '../infrastructure';
 import { recordSceneStakesFallback } from '../llm/sceneStakesTelemetry';
 

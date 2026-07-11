@@ -16,7 +16,7 @@ vi.mock('../archive/archiveMemory', () => ({
     fetchArchiveScenes: (...args: unknown[]) => mockFetchArchiveScenes(...args),
 }));
 
-vi.mock('../../utils/llmCall', () => ({
+vi.mock('../llm/llmCall', () => ({
     llmCall: (...args: unknown[]) => mockLlmCall(...args),
 }));
 

@@ -4,7 +4,7 @@
 
 import type { NPCEntry, LLMProvider } from '../../../types';
 import { classifyNPCNames } from '../../npc';
-import { llmCall } from '../../../utils/llmCall';
+import { llmCall } from '../../llm/llmCall';
 import { extractJson, ANCHOR_BEFORE_INPUT, INPUT_DELIMITER, JSON_ARRAY_ONLY_FOOTER, TTRPG_PERSONA_GM_ASSISTANT, joinPromptSections } from '../../infrastructure';
 
 const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*[:\-–—]?\s*(.+?)(?:\n|$)/i;

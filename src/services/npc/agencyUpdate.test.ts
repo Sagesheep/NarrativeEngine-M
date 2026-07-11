@@ -3,11 +3,11 @@ import { updateExistingNPCs } from './npcGeneration';
 import { buildDriftAlert } from './npcBehaviorDirective';
 import type { NPCEntry, LLMProvider, ChatMessage } from '../../types';
 
-vi.mock('../../utils/llmCall', () => ({
+vi.mock('../llm/llmCall', () => ({
     llmCall: vi.fn()
 }));
 
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 const mockLlmCall = vi.mocked(llmCall);
 
 describe('agencyUpdate — updateExistingNPCs & buildDriftAlert', () => {

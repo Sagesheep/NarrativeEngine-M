@@ -1,5 +1,5 @@
 import type { LLMProvider } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import type { UtilityLLM } from './turnTypes';
 
 /**

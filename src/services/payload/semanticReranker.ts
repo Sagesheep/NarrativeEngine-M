@@ -1,5 +1,5 @@
 import type { LLMProvider } from '../../types';
-import { llmCall } from '../../utils/llmCall';
+import { llmCall } from '../llm/llmCall';
 import {
     JSON_ARRAY_ONLY_FOOTER,
     ANCHOR_BEFORE_INPUT,

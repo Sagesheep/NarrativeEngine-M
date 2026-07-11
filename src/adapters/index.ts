@@ -18,8 +18,6 @@ import { createArchiveAdapter } from './archiveAdapter';
 import { createCampaignContextAdapter } from './campaignContextAdapter';
 import { createSettingsAdapter } from './settingsAdapter';
 import { createNotificationAdapter } from './notificationAdapter';
-import { useAppStore } from '../store/useAppStore';
-import { registerStore } from '../services/embedding/embeddingScheduler';
 
 let wired = false;
 
@@ -42,7 +40,6 @@ export function wireAllAdapters(): void {
   wireNotifications(createNotificationAdapter());
 
   // Register the store with the embedding scheduler (was in useAppStore.ts)
-  registerStore(useAppStore);
 
   wired = true;
 
