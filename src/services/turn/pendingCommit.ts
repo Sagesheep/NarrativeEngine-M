@@ -8,14 +8,13 @@
  * @see REFACTOR-MAP.md
  */
 
-import type { ChatMessage, NPCEntry, SceneStakes, PipelinePhase, StreamingStats } from '../../types';
+import type { ChatMessage, NPCEntry, SceneStakes, PipelinePhase, StreamingStats, PayloadTrace } from '../../types';
 import type { TurnCallbacks, TurnState } from './turnTypes';
 import type { OpenAIMessage } from '../llm/llmService';
 import { handlePostTurn } from './turnPostProcess';
 import { classifySceneStakes } from './sceneStakesTag';
 import { tierAllows } from './aiTier';
 import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from '../payload';
-import { useAppStore } from '../../store/useAppStore';  // @rf RF-001 W1 — domain→state, partial migration in progress
 import { messagingPort, npcCapability, archivePort, campaignContextPort, notificationPort } from '../../ports';
 import { uid } from '../../utils/uid';
 
@@ -140,11 +139,11 @@ function buildCommitCallbacks(activeCampaignId: string): TurnCallbacks {
         addNpcSuggestions: (names, ctx) => npcCapability.suggestNPCs(names, ctx),
         setCondensed: (upToIndex) => messagingPort.condenseHistory(upToIndex),
         setStreaming: () => {},
-        setLastPayloadTrace: useAppStore.getState().setLastPayloadTrace,
+        setLastPayloadTrace: (trace: PayloadTrace[]) => messagingPort.setLastPayloadTrace(trace[0]),
         setSemanticFacts: (facts) => archivePort.replaceSemanticFacts(facts),
         setChapters: (chapters) => archivePort.replaceChapters(chapters),
-        setPipelinePhase: (phase: PipelinePhase) => useAppStore.getState().setPipelinePhase(phase),
-        setStreamingStats: (stats: StreamingStats | null) => useAppStore.getState().setStreamingStats(stats),
+        setPipelinePhase: (phase: PipelinePhase) => messagingPort.setPipelinePhase(phase),
+        setStreamingStats: (stats: StreamingStats | null) => messagingPort.setStreamingStats(stats),
         setDivergenceRegister: (reg) => {
             archivePort.replaceDivergenceRegister(reg);
             if (activeCampaignId) {
@@ -165,8 +164,8 @@ function buildCommitCallbacks(activeCampaignId: string): TurnCallbacks {
 // commit path.
 export async function commitPendingTurn(): Promise<void> {
     const snapshot = pendingSnapshot;
-    const store = useAppStore.getState();
-    const messages = store.messages;
+    const store = messagingPort;
+    const messages = messagingPort.getMessages();
 
     const pendingMsg = findPendingCommitMessage(messages);
     if (!pendingMsg || !pendingMsg.swipeSet) {
@@ -189,8 +188,8 @@ export async function commitPendingTurn(): Promise<void> {
     // Determine scene stakes from the chosen variant.
     let sceneStakes: SceneStakes = variant.sceneStakes;
     if (!variant.tagPresent) {
-        const utilityProvider = snapshot?.turnState.getUtilityEndpoint?.() ?? store.getActiveUtilityEndpoint?.();
-        const aiTier = snapshot?.turnState.settings.aiTier ?? store.settings.aiTier;
+        const utilityProvider = snapshot?.turnState.getUtilityEndpoint?.() ?? messagingPort.getActiveUtilityEndpoint();
+        const aiTier = snapshot?.turnState.settings.aiTier ?? messagingPort.getSettings().aiTier;
         if (utilityProvider && tierAllows(aiTier, 'sceneStakesClassify')) {
             try {
                 const recentScene = (snapshot?.messages ?? messages).slice(-3).map(m => {
@@ -205,7 +204,7 @@ export async function commitPendingTurn(): Promise<void> {
     }
 
     // Update context with lastSceneStakes from the chosen variant (commit only).
-    store.updateContext({ lastSceneStakes: sceneStakes });
+    campaignContextPort.applyContextPatch({ lastSceneStakes: sceneStakes });
 
     // Build the commit state — use the ORIGINAL TurnState reference but
     // override getMessages so the importance rater reads the snapshot,
@@ -253,12 +252,12 @@ export async function commitPendingTurn(): Promise<void> {
         const { swipeSet: _ss, pendingCommit: _pc, swipeActiveIndex: _si, retryable: _r, precontext: _pc2, ...rest } = updated[idx];
         updated[idx] = rest as ChatMessage;
         messagingPort.replaceMessages(updated);
-        const storeForSnapshot = useAppStore.getState();
+        
         import('../../services/persistence/campaignStore').then(m => m.saveCampaignState(activeCampaignId, {
-            context: storeForSnapshot.context,
+            context: messagingPort.getContext(),
             messages: updated,
-            condenser: storeForSnapshot.condenser,
-            pinnedExcerpts: storeForSnapshot.pinnedExcerpts,
+            condenser: messagingPort.getCondenser(),
+            pinnedExcerpts: messagingPort.getPinnedExcerpts(),
         })).catch(e => console.warn('[Commit] saveCampaignState failed:', e));
     }
 
@@ -270,50 +269,50 @@ export async function commitPendingTurn(): Promise<void> {
 // lost (WebView/renderer death). At relaunch, no "next turn's messages"
 // exist, so reading live is safe — the snapshot invariant (don't see the
 // next turn's messages) holds vacuously.
-function rebuildStateFromLiveStore(store: ReturnType<typeof useAppStore.getState>): TurnState {
+function rebuildStateFromLiveStore(store: typeof messagingPort): TurnState {
     return {
         input: '',
         displayInput: '',
-        settings: store.settings,
-        context: store.context,
-        messages: store.messages,
-        condenser: store.condenser,
-        loreChunks: store.loreChunks,
-        npcLedger: store.npcLedger,
-        archiveIndex: store.archiveIndex,
-        semanticFacts: store.semanticFacts,
-        chapters: store.chapters ?? [],
-        activeCampaignId: store.activeCampaignId,
-        provider: store.getActiveStoryEndpoint(),
-        getMessages: () => useAppStore.getState().messages,
-        getFreshProvider: () => store.getActiveStoryEndpoint(),
+        settings: messagingPort.getSettings(),
+        context: messagingPort.getContext(),
+        messages: messagingPort.getMessages(),
+        condenser: messagingPort.getCondenser(),
+        loreChunks: messagingPort.getLoreChunks(),
+        npcLedger: messagingPort.getNpcLedger(),
+        archiveIndex: messagingPort.getArchiveIndex(),
+        semanticFacts: messagingPort.getSemanticFacts(),
+        chapters: messagingPort.getChapters() ?? [],
+        activeCampaignId: messagingPort.getActiveCampaignId(),
+        provider: messagingPort.getActiveStoryEndpoint(),
+        getMessages: () => messagingPort.getMessages(),
+        getFreshProvider: () => messagingPort.getActiveStoryEndpoint(),
         getFreshSummarizerProvider: () => {
-            const s = store.getActiveSummarizerEndpoint?.();
+            const s = messagingPort.getActiveSummarizerEndpoint();
             return (s?.endpoint && s?.modelName) ? s : undefined;
         },
         getUtilityEndpoint: () => store.getActiveUtilityEndpoint(),
         getFreshAuxiliaryProvider: () => {
-            const aux = store.getActiveAuxiliaryEndpoint?.();
-            return aux?.modelName ? aux : store.getActiveStoryEndpoint();
+            const aux = messagingPort.getActiveAuxiliaryEndpoint();
+            return aux?.modelName ? aux : messagingPort.getActiveStoryEndpoint();
         },
         getExtractionProvider: () => {
             const hasEndpoint = (p?: { endpoint?: string; modelName?: string }) => !!(p?.endpoint && p?.modelName);
-            const a = store.getActiveAuxiliaryEndpoint?.();
+            const a = messagingPort.getActiveAuxiliaryEndpoint();
             if (hasEndpoint(a)) return a!;
-            const s = store.getActiveSummarizerEndpoint?.();
+            const s = messagingPort.getActiveSummarizerEndpoint();
             if (hasEndpoint(s)) return s!;
-            return store.getActiveStoryEndpoint();
+            return messagingPort.getActiveStoryEndpoint();
         },
-        incrementBookkeepingTurnCounter: () => useAppStore.getState().incrementBookkeepingTurnCounter(),
-        autoBookkeepingInterval: useAppStore.getState().autoBookkeepingInterval,
-        resetBookkeepingTurnCounter: () => useAppStore.getState().resetBookkeepingTurnCounter(),
-        timeline: store.timeline,
-        pinnedChapterIds: useAppStore.getState().pinnedChapterIds,
-        clearPinnedChapters: () => useAppStore.getState().clearPinnedChapters(),
-        divergenceRegister: store.divergenceRegister,
-        onStageNpcIds: store.onStageNpcIds,
-        npcPressure: store.npcPressure,
-        pinnedExcerpts: store.pinnedExcerpts,
+        incrementBookkeepingTurnCounter: () => messagingPort.incrementBookkeepingTurnCounter(),
+        autoBookkeepingInterval: messagingPort.getAutoBookkeepingInterval(),
+        resetBookkeepingTurnCounter: () => messagingPort.resetBookkeepingTurnCounter(),
+        timeline: messagingPort.getTimeline(),
+        pinnedChapterIds: messagingPort.getPinnedChapterIds(),
+        clearPinnedChapters: () => messagingPort.clearPinnedChapters(),
+        divergenceRegister: messagingPort.getDivergenceRegister(),
+        onStageNpcIds: messagingPort.getOnStageNpcIds(),
+        npcPressure: messagingPort.getNpcPressure(),
+        pinnedExcerpts: messagingPort.getPinnedExcerpts(),
     };
 }
 
@@ -322,8 +321,8 @@ function rebuildStateFromLiveStore(store: ReturnType<typeof useAppStore.getState
 // with the then-visible variant's text, then clear the marker. Covers
 // WebView/renderer death mid-browse.
 export async function reconcilePendingCommitOnLaunch(): Promise<void> {
-    const store = useAppStore.getState();
-    const pendingMsg = findPendingCommitMessage(store.messages);
+    
+    const pendingMsg = findPendingCommitMessage(messagingPort.getMessages());
     if (!pendingMsg || !pendingMsg.swipeSet) return;
 
     console.log('[Reconcile] Found pendingCommit on launch — firing deferred handlePostTurn');

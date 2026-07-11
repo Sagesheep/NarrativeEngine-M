@@ -32,8 +32,16 @@ function walk(dir, files = []) {
     if (entry === 'node_modules' || entry === 'dist' || entry.startsWith('.')) continue;
     const full = join(dir, entry);
     const stat = statSync(full);
-    if (stat.isDirectory()) walk(full, files);
-    else if (/\.(ts|tsx)$/.test(entry)) files.push(full);
+    if (stat.isDirectory()) {
+      // Skip test directories
+      if (entry === '__tests__' || entry === '__smoke__' || entry === '__evals__') continue;
+      walk(full, files);
+    }
+    else if (/\.(ts|tsx)$/.test(entry)) {
+      // Skip test files
+      if (entry.includes('.test.') || entry.includes('.spec.')) continue;
+      files.push(full);
+    }
   }
   return files;
 }
