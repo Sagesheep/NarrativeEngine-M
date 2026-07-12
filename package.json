@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^8.0.2",
-    "@narrative/engine": "file:../packages/engine",
+    "@narrative/engine": "file:../mainApp/packages/engine",
     "@capacitor/android": "^8.1.0",
     "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.1.0",
