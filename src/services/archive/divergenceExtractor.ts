@@ -413,10 +413,12 @@ export function parseCombinedSealOutput(
         parsed = JSON.parse(jsonStr);
     } catch (e) {
         console.warn('[CombinedSeal] JSON parse failed on extractJson output, attempting split-object recovery', e);
-        const splitMatch = jsonStr.match(/\}\s*\{/);
+        // Two back-to-back objects arrive either raw ("} {") or already fused
+        // by the engine's repair pass ("},{") — split on both.
+        const splitMatch = jsonStr.match(/\}\s*,?\s*\{/);
         if (splitMatch && splitMatch.index !== undefined) {
             const first = jsonStr.slice(0, splitMatch.index + 1);
-            const second = jsonStr.slice(splitMatch.index + 1);
+            const second = jsonStr.slice(splitMatch.index + splitMatch[0].length - 1);
             try {
                 const firstObj = JSON.parse(first);
                 const secondObj = JSON.parse(second) as Record<string, unknown>;
