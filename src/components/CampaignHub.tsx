@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Trash2, Play, Clock, BookOpen, Pencil, Settings, Download, Upload, Loader2, Package } from 'lucide-react';
+import { Plus, Trash2, Clock, BookOpen, Pencil, Settings, Download, Upload, Loader2, Package } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
     listCampaigns, deleteCampaign, loadCampaignState,
@@ -290,6 +290,38 @@ export function CampaignHub() {
         return `${days}d ago`;
     };
 
+    // Cover-art library: sort locally (don't assume listCampaigns sorts) —
+    // most-recently-played campaign becomes the "Continue" hero card, the
+    // rest render in the "Library" grid.
+    const validCampaigns = campaigns.filter(c => c && c.id && c.name && c.id !== 'undefined');
+    const sortedCampaigns = [...validCampaigns].sort((a, b) => (b.lastPlayedAt ?? 0) - (a.lastPlayedAt ?? 0));
+    const heroCampaign = sortedCampaigns[0];
+    const libraryCampaigns = sortedCampaigns.slice(1);
+
+    // Hero-only stats (turn/message count + NPC count) — loaded lazily for just
+    // the single hero campaign, never for library cards. Failures are silent;
+    // the stats row simply omits itself.
+    const [heroStats, setHeroStats] = useState<{ messages: number; npcs: number } | null>(null);
+    useEffect(() => {
+        if (!heroCampaign) { setHeroStats(null); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const [state, npcs] = await Promise.all([
+                    loadCampaignState(heroCampaign.id),
+                    getNPCLedger(heroCampaign.id),
+                ]);
+                if (!cancelled) setHeroStats({ messages: state?.messages?.length ?? 0, npcs: npcs.length });
+            } catch {
+                if (!cancelled) setHeroStats(null);
+            }
+        })();
+        return () => { cancelled = true; };
+        // Only re-run when the hero campaign's identity changes, not on every
+        // render (heroCampaign is a freshly-sorted object each render).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [heroCampaign?.id]);
+
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-void p-4 md:p-8 relative">
             <input ref={importInputRef} type="file" accept=".campaign, .json, application/json, application/octet-stream, */*" className="hidden" onChange={handleImportFile} />
@@ -322,78 +354,171 @@ export function CampaignHub() {
             </p>
 
             {/* Campaign Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl w-full mb-8">
-                {campaigns.filter(c => c && c.id && c.name && c.id !== 'undefined').map((c) => (
-                    <div
-                        key={c.id}
-                        className="group relative bg-surface border border-border rounded-lg overflow-hidden hover:border-terminal transition-all duration-300 cursor-pointer"
-                        onClick={() => handleSelectCampaign(c)}
+            <div className="max-w-4xl w-full mb-8">
+                {sortedCampaigns.length === 0 ? (
+                    /* Empty state — just the New Campaign card, no section labels */
+                    <button
+                        onClick={openCreate}
+                        className="w-full bg-surface border border-dashed border-border rounded-lg min-h-[140px] md:h-56 flex flex-col items-center justify-center gap-3 hover:border-terminal hover:bg-void-lighter transition-all duration-300 group"
                     >
-                        {/* Cover Image */}
-                        <div className="h-36 bg-void-lighter flex items-center justify-center overflow-hidden">
-                            {c.coverImage ? (
-                                <img src={c.coverImage} alt={c.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" />
-                            ) : (
-                                <BookOpen size={32} className="text-text-dim group-hover:text-terminal transition-colors" />
-                            )}
-                        </div>
+                        <Plus size={32} className="text-text-dim group-hover:text-terminal transition-colors" />
+                        <span className="text-text-dim text-xs uppercase tracking-widest group-hover:text-terminal transition-colors font-bold">
+                            New Campaign
+                        </span>
+                    </button>
+                ) : (
+                    <>
+                        {/* CONTINUE — hero card for the most-recently-played campaign */}
+                        <p className="text-text-dim text-[10px] uppercase tracking-widest mb-2">Continue</p>
+                        <div
+                            className="group relative bg-surface border border-border rounded-lg overflow-hidden hover:border-terminal transition-all duration-300 cursor-pointer mb-8"
+                            onClick={() => handleSelectCampaign(heroCampaign)}
+                        >
+                            {/* Cover Image */}
+                            <div className="relative h-40 bg-void-lighter overflow-hidden">
+                                {heroCampaign.coverImage ? (
+                                    <img src={heroCampaign.coverImage} alt={heroCampaign.name} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <BookOpen size={40} className="text-text-dim group-hover:text-terminal transition-colors" />
+                                    </div>
+                                )}
 
-                        {/* Info */}
-                        <div className="p-4">
-                            <h2 className="text-text-primary font-bold text-sm uppercase tracking-wider group-hover:text-terminal transition-colors">
-                                {c.name}
-                            </h2>
-                            <div className="flex items-center gap-1 mt-2 text-text-dim text-xs">
-                                <Clock size={10} />
-                                <span>{timeAgo(c.lastPlayedAt)}</span>
+                                {/* Bottom gradient + name */}
+                                <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/90 via-black/30 to-transparent pointer-events-none" />
+                                <h2 className="absolute bottom-3 left-4 right-4 text-white font-bold text-base uppercase tracking-wider drop-shadow-lg truncate">
+                                    {heroCampaign.name}
+                                </h2>
+
+                                {/* Tools cluster */}
+                                <div className="absolute top-2 right-2 flex gap-1.5">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); openEdit(heroCampaign); }}
+                                        className="p-2 rounded bg-black/55 border border-white/10 backdrop-blur-sm text-text-dim hover:text-terminal touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                        title="Edit campaign"
+                                    >
+                                        <Pencil size={16} />
+                                    </button>
+                                    <button
+                                        onClick={(e) => handleExport(heroCampaign.id, e)}
+                                        disabled={isExporting === heroCampaign.id}
+                                        className="p-2 rounded bg-black/55 border border-white/10 backdrop-blur-sm text-text-dim hover:text-terminal touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-40"
+                                        title="Export campaign"
+                                    >
+                                        {isExporting === heroCampaign.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                                    </button>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(heroCampaign.id); }}
+                                        className="p-2 rounded bg-black/55 border border-white/10 backdrop-blur-sm text-text-dim hover:text-danger touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                        title="Delete campaign"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Meta row */}
+                            <div className="flex items-center justify-between gap-3 px-4 py-3">
+                                <div className="flex items-center gap-2 text-text-dim text-xs min-w-0">
+                                    <span className="flex items-center gap-1 shrink-0">
+                                        <Clock size={10} />
+                                        {timeAgo(heroCampaign.lastPlayedAt)}
+                                    </span>
+                                    {heroStats && (
+                                        <>
+                                            <span className="text-text-dim/40 shrink-0">•</span>
+                                            <span className="shrink-0">{heroStats.messages} turns</span>
+                                            <span className="text-text-dim/40 shrink-0">•</span>
+                                            <span className="shrink-0">{heroStats.npcs} NPCs</span>
+                                        </>
+                                    )}
+                                </div>
+                                <button className="bg-terminal/15 border border-terminal/30 text-terminal rounded-full text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 shrink-0">
+                                    ▶ RESUME
+                                </button>
                             </div>
                         </div>
 
-                        {/* Play overlay */}
-                        <div className="absolute inset-0 bg-terminal/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                            <Play size={40} className="text-terminal glow-green opacity-0 group-hover:opacity-80 transition-opacity" />
+                        {/* LIBRARY grid — remaining campaigns */}
+                        {libraryCampaigns.length > 0 && (
+                            <p className="text-text-dim text-[10px] uppercase tracking-widest mb-2">Library</p>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {libraryCampaigns.map((c) => (
+                                <div
+                                    key={c.id}
+                                    className="group relative bg-surface border border-border rounded-lg overflow-hidden hover:border-terminal transition-all duration-300 cursor-pointer"
+                                    onClick={() => handleSelectCampaign(c)}
+                                >
+                                    {/* Cover Image */}
+                                    <div className="relative h-36 bg-void-lighter overflow-hidden">
+                                        {c.coverImage ? (
+                                            <img src={c.coverImage} alt={c.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center">
+                                                <BookOpen size={32} className="text-text-dim group-hover:text-terminal transition-colors" />
+                                            </div>
+                                        )}
+
+                                        {/* Bottom gradient + name */}
+                                        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/90 via-black/30 to-transparent pointer-events-none" />
+                                        <h2 className="absolute bottom-2 left-3 right-3 text-white font-bold text-sm uppercase tracking-wider drop-shadow-lg truncate">
+                                            {c.name}
+                                        </h2>
+
+                                        {/* Tools cluster */}
+                                        <div className="absolute top-2 right-2 flex gap-1.5">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); openEdit(c); }}
+                                                className="p-2 rounded bg-black/55 border border-white/10 backdrop-blur-sm text-text-dim hover:text-terminal touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                                title="Edit campaign"
+                                            >
+                                                <Pencil size={16} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => handleExport(c.id, e)}
+                                                disabled={isExporting === c.id}
+                                                className="p-2 rounded bg-black/55 border border-white/10 backdrop-blur-sm text-text-dim hover:text-terminal touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-40"
+                                                title="Export campaign"
+                                            >
+                                                {isExporting === c.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setConfirmDelete(c.id); }}
+                                                className="p-2 rounded bg-black/55 border border-white/10 backdrop-blur-sm text-text-dim hover:text-danger touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                                title="Delete campaign"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Meta row */}
+                                    <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+                                        <span className="flex items-center gap-1 text-text-dim text-xs">
+                                            <Clock size={10} />
+                                            {timeAgo(c.lastPlayedAt)}
+                                        </span>
+                                        <button className="bg-terminal/15 border border-terminal/30 text-terminal rounded-full text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 shrink-0">
+                                            ▶ PLAY
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
 
-                        {/* Edit button */}
+                        {/* New Campaign — dashed row, after the library grid */}
                         <button
-                            onClick={(e) => { e.stopPropagation(); openEdit(c); }}
-                            className="absolute top-2 left-2 p-2 rounded bg-void/90 text-text-dim hover:text-terminal touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                            title="Edit campaign"
+                            onClick={openCreate}
+                            className="w-full mt-6 bg-surface border border-dashed border-border rounded-lg py-4 flex items-center justify-center gap-3 hover:border-terminal hover:bg-void-lighter transition-all duration-300 group"
                         >
-                            <Pencil size={16} />
+                            <Plus size={20} className="text-text-dim group-hover:text-terminal transition-colors" />
+                            <span className="text-text-dim text-xs uppercase tracking-widest group-hover:text-terminal transition-colors font-bold">
+                                New Campaign
+                            </span>
                         </button>
-
-                        {/* Delete button */}
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setConfirmDelete(c.id); }}
-                            className="absolute top-2 right-2 p-2 rounded bg-void/90 text-text-dim hover:text-danger touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                            title="Delete campaign"
-                        >
-                            <Trash2 size={16} />
-                        </button>
-
-                        {/* Export button */}
-                        <button
-                            onClick={(e) => handleExport(c.id, e)}
-                            disabled={isExporting === c.id}
-                            className="absolute bottom-2 left-2 p-2 rounded bg-void/90 text-text-dim hover:text-terminal touch-btn md:p-1.5 md:min-h-0 md:min-w-0 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-40"
-                            title="Export campaign"
-                        >
-                            {isExporting === c.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                        </button>
-                    </div>
-                ))}
-
-                {/* New Campaign Card */}
-                <button
-                    onClick={openCreate}
-                    className="bg-surface border border-dashed border-border rounded-lg min-h-[140px] md:h-56 flex flex-col items-center justify-center gap-3 hover:border-terminal hover:bg-void-lighter transition-all duration-300 group"
-                >
-                    <Plus size={32} className="text-text-dim group-hover:text-terminal transition-colors" />
-                    <span className="text-text-dim text-xs uppercase tracking-widest group-hover:text-terminal transition-colors font-bold">
-                        New Campaign
-                    </span>
-                </button>
+                    </>
+                )}
             </div>
 
             {/* Delete Confirmation */}

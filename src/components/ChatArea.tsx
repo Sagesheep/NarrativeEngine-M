@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
-    Loader2,
     ChevronDown, ChevronUp, X
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
@@ -471,15 +470,21 @@ export function ChatArea() {
                 ))}
 
                 {isCheckingNotes || isStreaming ? (
-                    <div className="flex items-center gap-2 text-terminal/80 text-[10px] uppercase tracking-widest px-4 py-2 bg-terminal/5 rounded-sm border border-terminal/10 mb-4 mx-2">
-                        <Loader2 size={12} className="animate-spin" />
-                        <span className="animate-pulse">
-                            {isCheckingNotes
-                                ? 'GM is checking archives...'
-                                : pipelinePhase === 'gathering-context' || pipelinePhase === 'building-prompt'
-                                    ? 'GM is gathering context...'
-                                    : 'Transmission in progress...'}
-                        </span>
+                    <div className="flex justify-start mb-4 mx-2">
+                        <div className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 max-w-[95%] md:max-w-[75%] bg-void-lighter border-l-2 border-terminal/25 glow-border rounded-sm">
+                            <div className="flex items-center gap-1">
+                                <span className="w-1 h-1 rounded-full bg-terminal animate-pulse" style={{ animationDelay: '0ms' }} />
+                                <span className="w-1 h-1 rounded-full bg-terminal animate-pulse" style={{ animationDelay: '200ms' }} />
+                                <span className="w-1 h-1 rounded-full bg-terminal animate-pulse" style={{ animationDelay: '400ms' }} />
+                            </div>
+                            <span className="text-terminal text-[10px] uppercase tracking-widest">
+                                {isCheckingNotes
+                                    ? 'GM is checking archives...'
+                                    : pipelinePhase === 'gathering-context' || pipelinePhase === 'building-prompt'
+                                        ? 'GM is gathering context...'
+                                        : 'GM is writing…'}
+                            </span>
+                        </div>
                     </div>
                 ) : null}
                 <div ref={bottomRef} />
