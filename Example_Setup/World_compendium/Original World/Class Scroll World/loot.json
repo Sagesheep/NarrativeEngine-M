@@ -1,0 +1,570 @@
+{
+  "root": "categoryPick",
+  "nodes": {
+    "categoryPick": {
+      "kind": "pick",
+      "axis": "category",
+      "weights": {
+        "scroll": 60,
+        "iron-bits": 30,
+        "magic-item": 10
+      },
+      "branches": {
+        "scroll": "scrollRecipe",
+        "iron-bits": "currencyRarityPick",
+        "magic-item": "gearRarityPick"
+      }
+    },
+    "scrollRecipe": {
+      "kind": "pick",
+      "axis": "rarityClass",
+      "weights": {
+        "plain": 80,
+        "rare": 18,
+        "unique": 2
+      },
+      "branches": {
+        "plain": "scrollPlainDomainPick",
+        "rare": "scrollRareDomainPick",
+        "unique": "scrollUniqueDomainPick"
+      }
+    },
+    "scrollPlainDomainPick": {
+      "kind": "pick",
+      "axis": "domain",
+      "weights": {
+        "combat": 50,
+        "nonCombat": 50
+      },
+      "branches": {
+        "combat": "scrollPlainDraw",
+        "nonCombat": "scrollPlainDraw"
+      }
+    },
+    "scrollPlainDraw": {
+      "kind": "draw",
+      "draws": [
+        {
+          "pool": "jobList",
+          "as": "job",
+          "filterBy": "domain"
+        }
+      ],
+      "next": "scrollPlainCompose"
+    },
+    "scrollPlainCompose": {
+      "kind": "compose",
+      "template": "{job}"
+    },
+    "scrollRareDomainPick": {
+      "kind": "pick",
+      "axis": "domain",
+      "weights": {
+        "combat": 50,
+        "nonCombat": 50
+      },
+      "branches": {
+        "combat": "scrollRareDraw",
+        "nonCombat": "scrollRareDraw"
+      }
+    },
+    "scrollRareDraw": {
+      "kind": "draw",
+      "draws": [
+        {
+          "pool": "rareJobList",
+          "as": "job",
+          "filterBy": "domain"
+        },
+        {
+          "pool": "aspectList",
+          "as": "aspect"
+        }
+      ],
+      "next": "scrollRareCompose"
+    },
+    "scrollRareCompose": {
+      "kind": "compose",
+      "template": "{job} of the {aspect}"
+    },
+    "scrollUniqueDomainPick": {
+      "kind": "pick",
+      "axis": "domain",
+      "weights": {
+        "combat": 50,
+        "nonCombat": 50
+      },
+      "branches": {
+        "combat": "scrollUniqueDraw",
+        "nonCombat": "scrollUniqueDraw"
+      }
+    },
+    "scrollUniqueDraw": {
+      "kind": "draw",
+      "draws": [
+        {
+          "pool": "uniqueList",
+          "as": "job",
+          "filterBy": "domain"
+        }
+      ],
+      "next": "scrollUniqueCompose"
+    },
+    "scrollUniqueCompose": {
+      "kind": "compose",
+      "template": "{job}"
+    },
+    "currencyRarityPick": {
+      "kind": "pick",
+      "axis": "currencyRarity",
+      "weights": {
+        "small": 70,
+        "mid": 25,
+        "large": 5
+      },
+      "branches": {
+        "small": "currencySmallAmount",
+        "mid": "currencyMidAmount",
+        "large": "currencyLargeAmount"
+      }
+    },
+    "currencySmallAmount": {
+      "kind": "amount",
+      "unit": "iron bits",
+      "min": 1,
+      "max": 20,
+      "next": "currencyCompose"
+    },
+    "currencyMidAmount": {
+      "kind": "amount",
+      "unit": "iron bits",
+      "min": 20,
+      "max": 80,
+      "next": "currencyCompose"
+    },
+    "currencyLargeAmount": {
+      "kind": "amount",
+      "unit": "iron bits",
+      "min": 80,
+      "max": 300,
+      "next": "currencyCompose"
+    },
+    "currencyCompose": {
+      "kind": "compose",
+      "template": "{iron bits} iron bits"
+    },
+    "gearRarityPick": {
+      "kind": "pick",
+      "axis": "gearRarity",
+      "weights": {
+        "common": 75,
+        "uncommon": 20,
+        "rare": 5
+      },
+      "branches": {
+        "common": "gearCommonDraw",
+        "uncommon": "gearUncommonDraw",
+        "rare": "gearRareDraw"
+      }
+    },
+    "gearCommonDraw": {
+      "kind": "draw",
+      "draws": [
+        {
+          "pool": "commonGearPool",
+          "as": "item"
+        }
+      ],
+      "next": "gearCommonCompose"
+    },
+    "gearCommonCompose": {
+      "kind": "compose",
+      "template": "{item}"
+    },
+    "gearUncommonDraw": {
+      "kind": "draw",
+      "draws": [
+        {
+          "pool": "uncommonGearPool",
+          "as": "item"
+        }
+      ],
+      "next": "gearUncommonCompose"
+    },
+    "gearUncommonCompose": {
+      "kind": "compose",
+      "template": "{item}"
+    },
+    "gearRareDraw": {
+      "kind": "draw",
+      "draws": [
+        {
+          "pool": "rareGearPool",
+          "as": "item"
+        }
+      ],
+      "next": "gearRareCompose"
+    },
+    "gearRareCompose": {
+      "kind": "compose",
+      "template": "{item}"
+    }
+  },
+  "pools": {
+    "jobList": {
+      "combat": [
+        { "text": "Swordsman" },
+        { "text": "Spearman" },
+        { "text": "Archer" },
+        { "text": "Bowman" },
+        { "text": "Crossbowman" },
+        { "text": "Guard" },
+        { "text": "Shieldbearer" },
+        { "text": "Footman" },
+        { "text": "Foot-soldier" },
+        { "text": "Militia" },
+        { "text": "Recruit" },
+        { "text": "Brawler" },
+        { "text": "Slasher" },
+        { "text": "Axeman" },
+        { "text": "Macebearer" },
+        { "text": "Pikeman" },
+        { "text": "Skirmisher" },
+        { "text": "Defender" },
+        { "text": "Guardian" },
+        { "text": "Outrider" },
+        { "text": "Marauder" },
+        { "text": "Yeoman" },
+        { "text": "Charger" },
+        { "text": "Guerilla" },
+        { "text": "Sapper" },
+        { "text": "Combatant" },
+        { "text": "Swords-hire" },
+        { "text": "Sellsword" },
+        { "text": "Mercenary" },
+        { "text": "Marine" },
+        { "text": "Mage" },
+        { "text": "Enchanter" },
+        { "text": "Shaman" },
+        { "text": "Priest" },
+        { "text": "Druid" },
+        { "text": "Slinger" },
+        { "text": "Levy" },
+        { "text": "Caravan Guard" },
+        { "text": "Pit-fighter" },
+        { "text": "Squire" },
+        { "text": "Retainer" },
+        { "text": "Tracker" },
+        { "text": "Brigand" }
+      ],
+      "nonCombat": [
+        { "text": "Cook" },
+        { "text": "Dishwasher" },
+        { "text": "Farmer" },
+        { "text": "Peasant" },
+        { "text": "Laborer" },
+        { "text": "Clerk" },
+        { "text": "Weaver" },
+        { "text": "Potter" },
+        { "text": "Cobbler" },
+        { "text": "Mason" },
+        { "text": "Baker" },
+        { "text": "Butler" },
+        { "text": "Maid" },
+        { "text": "Woodcutter" },
+        { "text": "Thatcher" },
+        { "text": "Bookbinder" },
+        { "text": "Cartographer" },
+        { "text": "Glassblower" },
+        { "text": "Sculptor" },
+        { "text": "Beekeeper" },
+        { "text": "Swineherd" },
+        { "text": "Goatherd" },
+        { "text": "Charcoal-burner" },
+        { "text": "Water-carrier" },
+        { "text": "Laundress" },
+        { "text": "Spinner" },
+        { "text": "Seamstress" },
+        { "text": "Stable-hand" },
+        { "text": "Orchardist" },
+        { "text": "Pot-boy" },
+        { "text": "Scullion" }
+      ]
+    },
+    "rareJobList": {
+      "combat": [
+        { "text": "Sentry" },
+        { "text": "Watchman" },
+        { "text": "Halberdier" },
+        { "text": "Legionary" },
+        { "text": "Pugilist" },
+        { "text": "Lancer" },
+        { "text": "Scout" },
+        { "text": "Raider" },
+        { "text": "Vanguard" },
+        { "text": "Bodyguard" },
+        { "text": "Duelist" },
+        { "text": "Peltast" },
+        { "text": "Hoplite" },
+        { "text": "Man-at-arms" },
+        { "text": "Siege-engineer" },
+        { "text": "Pathfinder" },
+        { "text": "Bounty-hunter" },
+        { "text": "Standard-bearer" },
+        { "text": "Gladiator" },
+        { "text": "Highwayman" },
+        { "text": "Crossbow-sergeant" }
+      ],
+      "nonCombat": [
+        { "text": "Healer" },
+        { "text": "Smith" },
+        { "text": "Scribe" },
+        { "text": "Merchant" },
+        { "text": "Herbalist" },
+        { "text": "Tailor" },
+        { "text": "Fisherman" },
+        { "text": "Miner" },
+        { "text": "Carpenter" },
+        { "text": "Brewer" },
+        { "text": "Cooper" },
+        { "text": "Tanner" },
+        { "text": "Carter" },
+        { "text": "Shepherd" },
+        { "text": "Drover" },
+        { "text": "Butcher" },
+        { "text": "Grocer" },
+        { "text": "Innkeeper" },
+        { "text": "Gardener" },
+        { "text": "Miller" },
+        { "text": "Barker" },
+        { "text": "Dyer" },
+        { "text": "Chandler" },
+        { "text": "Barber-surgeon" },
+        { "text": "Apothecary" },
+        { "text": "Midwife" },
+        { "text": "Navigator" },
+        { "text": "Armourer" },
+        { "text": "Weaponsmith" },
+        { "text": "Bowyer" },
+        { "text": "Fletcher" },
+        { "text": "Locksmith" },
+        { "text": "Envoy" },
+        { "text": "Herald" },
+        { "text": "Tax-collector" },
+        { "text": "Bailiff" }
+      ]
+    },
+    "uniqueList": {
+      "combat": [
+        { "text": "Swordmaster" },
+        { "text": "Paladin" },
+        { "text": "Bastion" },
+        { "text": "Ninja" },
+        { "text": "Marionettist" },
+        { "text": "Combat Maid" },
+        { "text": "Serial Killer" },
+        { "text": "Inquisitor" },
+        { "text": "Executioner" },
+        { "text": "Necromancer" },
+        { "text": "Pyrocarver" },
+        { "text": "Beastcaller" },
+        { "text": "Chronist" },
+        { "text": "Waterbender" },
+        { "text": "Puppeteer" },
+        { "text": "Dreadnought" },
+        { "text": "Berserklord" },
+        { "text": "Deathdealer" },
+        { "text": "Saboteur" },
+        { "text": "Flagellant" },
+        { "text": "Manhunter" },
+        { "text": "Revenant" },
+        { "text": "Juggernaut" },
+        { "text": "Oathbreaker" },
+        { "text": "Bulwark" },
+        { "text": "Hexblade" },
+        { "text": "Skinwalker" },
+        { "text": "Bonecrusher" },
+        { "text": "Runecarver" },
+        { "text": "Warcrier" },
+        { "text": "Bloodletter" },
+        { "text": "Ironmonger" },
+        { "text": "Gravewarden" },
+        { "text": "Witchfinder" },
+        { "text": "Myrmidon" },
+        { "text": "Vivisector" },
+        { "text": "Sandstrider" },
+        { "text": "Gatecrasher" },
+        { "text": "Nightreaper" },
+        { "text": "Witch" },
+        { "text": "Wizard" },
+        { "text": "Sorcerer" },
+        { "text": "Onmyoji" },
+        { "text": "Bishop" },
+        { "text": "Naturecaller" },
+        { "text": "Runecrafter" }
+      ],
+      "nonCombat": [
+        { "text": "Chef" },
+        { "text": "Surgeon" },
+        { "text": "Chemist" },
+        { "text": "Alchemist" },
+        { "text": "Architect" },
+        { "text": "Toymaker" },
+        { "text": "Perfumer" },
+        { "text": "Taxidermist" },
+        { "text": "Mortician" },
+        { "text": "Archivist" },
+        { "text": "Calligrapher" },
+        { "text": "Horologist" },
+        { "text": "Goldsmith" },
+        { "text": "Lapidary" },
+        { "text": "Meteorologist" },
+        { "text": "Cartomancer" },
+        { "text": "Sommelier" },
+        { "text": "Poisoner" },
+        { "text": "Embalmer" },
+        { "text": "Diviner" },
+        { "text": "Dreamweaver" },
+        { "text": "Illusionist" },
+        { "text": "Glasswright" },
+        { "text": "Fleshcrafter" },
+        { "text": "Threadbinder" },
+        { "text": "Bonecarver" },
+        { "text": "Inkmaster" },
+        { "text": "Brewmaster" },
+        { "text": "Lockbreaker" },
+        { "text": "Beastwhisperer" },
+        { "text": "Ratcatcher" },
+        { "text": "Falconer" },
+        { "text": "Shipwright" },
+        { "text": "Geomancer" },
+        { "text": "Vintner" },
+        { "text": "Astrologer" },
+        { "text": "Philosopher" },
+        { "text": "Troubadour" },
+        { "text": "Guildmaster" },
+        { "text": "Merchant Prince" }
+      ]
+    },
+    "aspectList": [
+      { "text": "Wind" },
+      { "text": "Duck" },
+      { "text": "Cactus" },
+      { "text": "Void" },
+      { "text": "Smoke" },
+      { "text": "Wolf" },
+      { "text": "Coral" },
+      { "text": "Ledger" },
+      { "text": "Silence" },
+      { "text": "Hunger" },
+      { "text": "Tide" },
+      { "text": "Mirror" },
+      { "text": "Bramble" },
+      { "text": "Echo" },
+      { "text": "Forge" },
+      { "text": "Loom" },
+      { "text": "Fire" },
+      { "text": "Earth" },
+      { "text": "Shadow" },
+      { "text": "Light" },
+      { "text": "Ice" },
+      { "text": "Lightning" },
+      { "text": "Blood" },
+      { "text": "Rust" },
+      { "text": "Decay" },
+      { "text": "Frost" },
+      { "text": "Iron" },
+      { "text": "Gold" },
+      { "text": "Mist" },
+      { "text": "Stone" },
+      { "text": "Bone" },
+      { "text": "Star" },
+      { "text": "Plague" },
+      { "text": "Slime" },
+      { "text": "Ash" },
+      { "text": "Amber" },
+      { "text": "Glass" },
+      { "text": "Storm" },
+      { "text": "Moon" },
+      { "text": "Sun" },
+      { "text": "Dream" },
+      { "text": "Nightmare" },
+      { "text": "Poison" },
+      { "text": "Venom" },
+      { "text": "Web" },
+      { "text": "Silk" },
+      { "text": "Thorn" },
+      { "text": "Root" },
+      { "text": "Leaf" },
+      { "text": "Bloom" },
+      { "text": "Wave" },
+      { "text": "Gale" },
+      { "text": "Spark" },
+      { "text": "Ember" },
+      { "text": "Cinder" }
+    ],
+    "commonGearPool": [
+      { "text": "reagent pouch" },
+      { "text": "alchemical salve" },
+      { "text": "whetstone" },
+      { "text": "scroll-tube" },
+      { "text": "iron lantern" },
+      { "text": "oil flask" },
+      { "text": "tinderbox" },
+      { "text": "leather waterskin" },
+      { "text": "charcoal stick" },
+      { "text": "parchment scroll" },
+      { "text": "flint and steel" },
+      { "text": "chalk pouch" },
+      { "text": "iron spikes" },
+      { "text": "quill pen" },
+      { "text": "leather tool-belt" },
+      { "text": "iron bits" },
+      { "text": "sealing wax" },
+      { "text": "blank ledger" },
+      { "text": "throwing dagger" },
+      { "text": "herbal tincture" },
+      { "text": "smelling salts" },
+      { "text": "silk rope" },
+      { "text": "copper compass" },
+      { "text": "padlock" },
+      { "text": "clay vial" }
+    ],
+    "uncommonGearPool": [
+      { "text": "runic focus" },
+      { "text": "alchemist's mortar" },
+      { "text": "ward-token (minor)" },
+      { "text": "vial of acid" },
+      { "text": "lockpick set" },
+      { "text": "iron ingot cache" },
+      { "text": "rusty key" },
+      { "text": "magnifying glass" },
+      { "text": "healer's kit" },
+      { "text": "iron spyglass" },
+      { "text": "obsidian mirror" },
+      { "text": "smoke bomb" },
+      { "text": "grappling hook" },
+      { "text": "counting abacus" },
+      { "text": "signet ring" },
+      { "text": "quicksilver vial" },
+      { "text": "beast-repellent incense" },
+      { "text": "runic chalk" },
+      { "text": "silver-tipped arrow" },
+      { "text": "alchemist's bellows" }
+    ],
+    "rareGearPool": [
+      { "text": "ward-token (major)" },
+      { "text": "enchanter's focus" },
+      { "text": "ruins-key" },
+      { "text": "precursor-glass vial" },
+      { "text": "ancient scroll-case" },
+      { "text": "blank vellum scroll" },
+      { "text": "essence extractor" },
+      { "text": "glowing lichen vial" },
+      { "text": "precursor relic" },
+      { "text": "black-glass lens" },
+      { "text": "void-salt jar" },
+      { "text": "starlight tincture" }
+    ]
+  }
+}

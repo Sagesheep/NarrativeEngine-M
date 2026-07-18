@@ -11,8 +11,8 @@ You are an expert worldbuilder for a tabletop RPG engine. I need you to generate
 **[INSERT YOUR CAMPAIGN IDEA HERE — e.g. "A cyberpunk city built on the ruins of a magical floating island"]**
 
 You **MUST** format the output exactly according to the structured template below.
-Do not deviate from the `### Category — Title` header structure, as it is parsed programmatically by the engine's RegEx.
-For characters, you MUST include the expected bolded fields (Aliases, Appearance, Disposition, Goals, Faction, Status, Axes).
+Do not deviate from the `### Category -- Title` header structure (note the double-hyphen `--` separator), as it is parsed programmatically by the engine's RegEx.
+For characters, you MUST include the expected bolded fields (Aliases, Appearance, Disposition, Goals, Faction, Status, Axes). Where a character is known for signature gear or powers, also fill the optional **SignatureEquipment / SignatureAbilities / Element** fields — these are the character's durable loadout and keep their equipment and abilities consistent across the whole campaign.
 
 Here is the exact structure you must use:
 
@@ -20,25 +20,25 @@ Here is the exact structure you must use:
 # [World Name]
 
 ## 1. WORLD OVERVIEW
-### OVERVIEW — [Core Premise or Intro]
+### OVERVIEW -- [Core Premise or Intro]
 [Describe the fundamental premise, era, and core conflict of the world. State the genre and tone clearly.]
 **Tone:** [e.g. GRIM, NOIR, COMEDIC, EPIC]
 
 ## 2. FACTIONS
-### FACTION — [Faction Name]
+### FACTION -- [Faction Name]
 **Type:** [Military Order / Megacorp / Guild / Cult]
 **Key Members:** [Leader Name, Notable Member]
 **Stance:** [Pro-establishment, Hostile, Neutral]
 [Describe the faction's goals, methods, and relationship to the world.]
 
 ## 3. LOCATIONS
-### LOCATION — [Location Name]
+### LOCATION -- [Location Name]
 **Type:** [City / Region / Landmark]
 **Status:** [Flourishing / Ruined / Contested]
 [Describe the key features, atmosphere, and importance of this location.]
 
 ## 4. CHARACTERS
-### CHARACTER — [Character Name]
+### CHARACTER -- [Character Name]
 **Aliases:** [aka..., The Title]
 **Appearance:** [Describe visual features — used by AI for image/description generation.]
 **Disposition:** [Stoic, Protective, Ambitious]
@@ -50,6 +50,9 @@ Here is the exact structure you must use:
 **StoryRelevance:** [Why this character matters to the plot or world.]
 **Example Output:** [One line of dialogue that perfectly captures their voice.]
 **Affinity:** [0–100] (0 = hostile, 50 = neutral, 100 = devoted)
+**SignatureEquipment:** [Optional. Signature gear this character is known for — e.g. Excalibur (holy longsword), plate armor. Their durable loadout; max 4 items. Omit if they carry nothing notable.]
+**SignatureAbilities:** [Optional. Signature powers or techniques — e.g. fire magic, holy smite. Max 4.]
+**Element:** [Optional. A single elemental / damage affinity — e.g. fire, light, ice. Omit if none.]
 [Describe their background and relevance to the story.]
 
 ### CHARACTER INTRO FLAGS (optional — controls when/where this character appears in play)
@@ -65,19 +68,19 @@ Here is the exact structure you must use:
 > - Location + Intro Boost = character appears when party is at that place AND the boost keyword is relevant.
 
 ## 5. POWER SYSTEM & RULES
-### POWER_SYSTEM — [Name of Magic/Tech]
+### POWER_SYSTEM -- [Name of Magic/Tech]
 [Explain how magic, technology, or special abilities work. What are the limitations?]
 
 ## 6. ECONOMY
-### ECONOMY — [Currency / Trade]
+### ECONOMY -- [Currency / Trade]
 [Detail the monetary system, rare resources, and general cost of living.]
 
 ## 7. EVENTS
-### EVENT — [Significant Event]
+### EVENT -- [Significant Event]
 [Summarize a major historical or plot event that shapes the current state.]
 
 ## ENGINE SEED TAGS (IMPORTANT)
-### SYSTEM — Engine Seeds
+### SYSTEM -- Engine Seeds
 
 > The engine has 3 tiers. Read the guidance for each carefully — the tag format matters.
 
@@ -108,6 +111,35 @@ Here is the exact structure you must use:
 
 ---
 
+## Signature Kit — worked example
+
+The **SignatureEquipment**, **SignatureAbilities**, and **Element** bullets are a character's *durable loadout* — the gear and powers the engine keeps consistent every time they appear, so a knight famed for a holy sword doesn't quietly end up swinging a plain spear three sessions later. They're optional; omit them for characters with no signature kit. Here is a fully-filled character showing them in use:
+
+```markdown
+### CHARACTER -- John Roleplay
+**Aliases:** The Paladin of Abalon, Sir John
+**Appearance:** A broad-shouldered knight in gleaming silver plate chased with gold filigree, over a white tabard bearing a radiant sun sigil. Close-cropped brown hair, earnest blue eyes, a squared jaw. At his hip rests a longsword whose blade glows faintly with an inner light.
+**Disposition:** Earnest, righteous, unfailingly courteous.
+**Personality:** John is a storybook paladin — brave to a fault and a touch naive. He believes the best of everyone until proven otherwise, speaks in oaths and vows, and cannot abide cruelty to the weak. His conviction is wholly genuine, never smug.
+**Voice:** Formal and warm, fond of oaths ("By the light of Abalon..."). Speaks plainly, never coarsely. Addresses others as "friend" or "good sir/lady".
+**Status:** Alive
+**Faction:** The Knights of Abalon
+**Goals:** To uphold the Light and shield the innocent — and to prove himself worthy of the blade Ekkusukalibah.
+**StoryRelevance:** A wandering paladin and steadfast ally; the moral compass of any party and a living link to the holy realm of Abalon.
+**Example Output:** "By the light of Abalon, I swear it: no harm shall come to these people while I draw breath. Stand behind me, friend."
+**Affinity:** 65
+**SignatureEquipment:** [Ekkusukalibah (radiant longsword), blessed silver plate, kite shield]
+**SignatureAbilities:** [holy smite, lay on hands, divine shield]
+**Element:** light
+**PersonalityHex:** drive:+2, diligence:+2, boldness:+2, warmth:+3, empathy:+3, composure:+1
+**Traits:** [faithful, loyal, honorable, protective, oath-bound]
+Once a squire of Abalon, John drew the radiant blade Ekkusukalibah from its resting stone and swore to carry the Light into the world. He now wanders in search of those who need a shield.
+**Wandering: true**
+**Intro Boost: light, holy, paladin, oath, Abalon, undead**
+```
+
+---
+
 ## Example of a Completed Generation (Cyber-Noir Setting)
 *(You can use this as reference or upload this directly just to test it out!)*
 
@@ -115,25 +147,25 @@ Here is the exact structure you must use:
 # Neo-Veridya
 
 ## 1. WORLD OVERVIEW
-### OVERVIEW — Core Premise
+### OVERVIEW -- Core Premise
 Neo-Veridya is a sprawling, rain-slicked metropolis where advanced cybernetics collide with highly illegal blood-magic. The city is controlled by three massive corporatocracies, while the lower levels drown in neon and organized crime. 
 **Tone:** GRIM, NOIR, CYBERPUNK.
 
 ## 2. FACTIONS
-### FACTION — The Crimson Syndicate
+### FACTION -- The Crimson Syndicate
 **Type:** Organized Crime / Magic Cartel
 **Key Members:** Jax "The Bleeder" Vance
 **Stance:** Hostile to Corpos, allied with the lower wards.
 The syndicate controls the flow of "Sanguine," a magical narcotic that enhances reflexes but slowly crystallizes the user's blood. They operate out of the sunken districts.
 
 ## 3. LOCATIONS
-### LOCATION — Layer Zero
+### LOCATION -- Layer Zero
 **Type:** Slums / Black Market
 **Status:** Lawless
 The lowest level of Neo-Veridya. Constant acid rain and blocked out sun. It is a labyrinth of junk-tech stalls, illegal cyber-docs, and sanctuary for those fleeing the CorpEnforcers.
 
 ## 4. CHARACTERS
-### CHARACTER — Jax Vance
+### CHARACTER -- Jax Vance
 **Aliases:** The Bleeder, Mr. Vance
 **Appearance:** Tall, gaunt. One glowing red biosynthetic eye, pale skin, sharply dressed in a maroon trenchcoat.
 **Disposition:** Ruthless, calculating, falsely polite.
@@ -149,7 +181,7 @@ Jax is the undisputed king of Layer Zero. He rarely gets his own hands dirty, pr
 **Location: Layer Zero**
 **Intro Boost: sanguine, syndicate, drug, debt, underworld**
 
-### CHARACTER — Mira Solenne
+### CHARACTER -- Mira Solenne
 **Aliases:** The Ghost, Mira
 **Appearance:** Slight build, close-cropped silver hair, a faded CorpSec tattoo on her left wrist she tries to hide. Always wears grey.
 **Disposition:** Guarded, perceptive, quietly haunted.
@@ -166,11 +198,11 @@ Former CorpSec investigator who went dark after a case led somewhere she wasn't 
 **Intro Boost: corpse, massacre, evidence, investigation, CorpSec**
 
 ## 5. POWER SYSTEM & RULES
-### POWER_SYSTEM — Haemomancy & Chrome
+### POWER_SYSTEM -- Haemomancy & Chrome
 Magic in Neo-Veridya requires blood—either drawn from the caster or a victim. Tech enhancements (Chrome) suppress magical ability. The more machine you become, the less magic you can wield.
 
 ## 6. ENGINE SEED TAGS
-### SYSTEM — Engine Seeds
+### SYSTEM -- Engine Seeds
 
 **── TIER 1: SURPRISE ENGINE ──**
 **Surprise Types:** STREET_BRAWL, FOUND_CREDCHIP, OVERHEARD_DEAL, DRONE_MALFUNCTION, VENDOR_DISPUTE, ADDICT_SCENE, CORP_PROPAGANDA_BROADCAST, RAIN_SURGE, STRANGER_COLLAPSES, URCHIN_PICKPOCKET
