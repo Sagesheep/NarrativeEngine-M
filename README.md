@@ -1,3 +1,5 @@
+EDIT 19/07 - I'm in the middle of reworking the desktop version majorly and trying to merge code base so it can run within the same code base. the mobile development is halted for now.
+
 # Narrative Engine — Mobile
 
 The mobile companion to [Narrative Engine](https://github.com/Sagesheep/NarrativeEngine-P). Same AI Dungeon Master, built as a native Android app with Capacitor.
@@ -7,6 +9,7 @@ Run extended, multi-session TTRPG campaigns with persistent memory, living NPCs,
 No cloud. No subscription. Your campaigns stay on your device.
 
 Join our community on [Discord](https://discord.gg/Qp2y7s3X6T)!
+
 
 ---
 
