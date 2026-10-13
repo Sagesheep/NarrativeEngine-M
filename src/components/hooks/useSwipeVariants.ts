@@ -196,6 +196,7 @@ export function useSwipeVariants(messageId: string | null) {
                     temperature,
                     abortSignal,
                     guidance,
+                    sceneNote: useAppStore.getState().context,
                 },
                 (chunk) => {
                     // Guard 1: is this swipe set still active? If commit already

@@ -8,6 +8,7 @@ import { assembleWorldBlocks, trimWorldBlocks, type WorldBlock, type NpcStrategy
 import { fitHistory, computeHistoryBudget, buildPinnedMemoriesBlock, pinnedExcerptsTokenCost } from './payloadHistoryFitting';
 import { buildChapterRecapBlock } from './lodRenderer';
 import { buildAbsoluteCommandBlock } from '../turn/absoluteCommand';
+import { sceneNoteText as buildSceneNoteText, sceneNoteTokens } from './sceneNote';
 import { queryTraits, formatTraitsForContext } from '../campaign-state';
 
 export type { BudgetMap, WorldBlock, NpcStrategy };
@@ -197,17 +198,19 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     let inventoryText = '';
     if (context.inventoryActive && context.inventory) { inventoryText = `[PLAYER INVENTORY]\n${context.inventory}`; volatileParts.push(inventoryText); }
 
-    let sceneNoteText = '';
-    if (context.sceneNoteActive && context.sceneNote) { sceneNoteText = `[SCENE NOTE: VOLATILE GUIDANCE]\n${context.sceneNote}`; volatileParts.push(sceneNoteText); }
+    // The Scene Note is placed at its depth at request time (applySceneNote, in the
+    // orchestrator and swipe generator), not here; only its tokens are reserved.
+    const sceneNoteText = buildSceneNoteText(context);
+    const sceneNoteReserve = sceneNoteTokens(context);
 
     const volatileContent = volatileParts.join('\n\n');
     const volatileTokens = countTokens(volatileContent);
     if (retrievedRulesText) addTrace({ source: 'Retrieved Rules', classification: 'volatile_state', tokens: countTokens(retrievedRulesText), reason: 'RAG rules retrieved for this turn', included: true, position: 'system_dynamic', preview: retrievedRulesText });
     if (profileText) addTrace({ source: 'Player Profile', classification: 'volatile_state', tokens: countTokens(profileText), reason: 'Scene-selected PC traits', included: true, position: 'system_dynamic', preview: profileText });
     if (inventoryText) addTrace({ source: 'Inventory', classification: 'volatile_state', tokens: countTokens(inventoryText), reason: 'Player inventory', included: true, position: 'system_dynamic', preview: inventoryText });
-    if (sceneNoteText) addTrace({ source: 'GM Scene Note', classification: 'volatile_state', tokens: countTokens(sceneNoteText), reason: 'Volatile GM guidance for this scene', included: true, position: 'system_dynamic', preview: sceneNoteText });
+    if (sceneNoteText) addTrace({ source: 'GM Scene Note', classification: 'volatile_state', tokens: sceneNoteReserve, reason: `Player note, placed at depth ${context.sceneNoteDepth ?? 3} when the request is sent`, included: true, position: `history_at_${context.sceneNoteDepth ?? 3}`, preview: sceneNoteText });
 
-    const nonHistoryTokens = stableTokens + divergenceTokens + pinnedMemoriesTokens + combinedWorldTokens + volatileTokens;
+    const nonHistoryTokens = stableTokens + divergenceTokens + pinnedMemoriesTokens + combinedWorldTokens + volatileTokens + sceneNoteReserve;
 
     // Observability: stable/summary/volatile budget buckets are advisory (only
     // `world`, `npc` and `rules` are enforced). If the enforced + unenforced sections

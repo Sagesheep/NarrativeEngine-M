@@ -142,6 +142,7 @@ export function useRetryStoryAI() {
                     modelName: provider.modelName,
                     temperature,
                     abortSignal,
+                    sceneNote: useAppStore.getState().context,
                 },
                 (chunk) => {
                     if (abortSignal.aborted) return;

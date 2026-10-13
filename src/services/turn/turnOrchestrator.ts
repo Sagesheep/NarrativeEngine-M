@@ -14,6 +14,8 @@ import { capturePendingTurnSnapshot, getActiveSnapshotId } from './pendingCommit
 import { buildWatchdogDossier } from './directorWatchdog';
 import { runDirectorBrief, lastAssistantContent } from './directorBrief';
 import { buildOneShotDirective } from '../oneshot/oneShotEvents';
+import { applySceneNote } from '../payload/sceneNote';
+import { getApiFormat } from '../../utils/llmApiHelper';
 import type { GatheredContext } from './turnContext';
 
 import type { OpenAIMessage } from '../llm/llmService';
@@ -280,7 +282,12 @@ export async function runTurn(
         callbacks.setStreamingStats?.(null);
 
         const allowTools = toolCallCount < 2 && apiRetryCount < 2;
-        const requestPayload = sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName);
+        // The Scene Note is placed at its depth on the outgoing request only, so it never
+        // enters currentPayload (tool loop, snapshot, swipes) or the saved chat.
+        const requestPayload = applySceneNote(
+            sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName),
+            context, getApiFormat(provider),
+        );
 
         // Suppress the dice tool when the player armed a manual roll — the resolved fact is
         // already in the payload; offering the tool too would let the model double-roll.

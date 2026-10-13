@@ -4,6 +4,8 @@ import { sendMessage } from '../chatEngine';
 import { sanitizePayloadForApi } from '../llm/payloadSanitizer';
 import { extractAndStripSceneStakes } from './sceneStakesTag';
 import { uid } from '../../utils/uid';
+import { applySceneNote, type SceneNoteInput } from '../payload/sceneNote';
+import { getApiFormat } from '../../utils/llmApiHelper';
 
 export const MAX_SWIPES = 5;
 export const SWIPE_BASE_TEMP_OFFSET = 0.1;
@@ -20,6 +22,8 @@ export interface SwipeGenerationOptions {
     abortSignal?: AbortSignal;
     /** Optional user guidance for this variant (e.g. "make it darker", "add more dialogue"). */
     guidance?: string;
+    /** The campaign's Scene Note, read live so an edit applies to the next swipe. */
+    sceneNote?: SceneNoteInput;
 }
 
 export interface SwipeGenerationResult {
@@ -34,10 +38,11 @@ export function generateSwipeVariant(
     opts: SwipeGenerationOptions,
     onChunk: (text: string) => void,
 ): Promise<SwipeGenerationResult> {
-    const { provider, cachedPayload, modelName, temperature, abortSignal, guidance } = opts;
+    const { provider, cachedPayload, modelName, temperature, abortSignal, guidance, sceneNote } = opts;
 
-    // Sanitize with allowTools=false (swipes 2–5 never get tools).
-    const sanitized = sanitizePayloadForApi(cachedPayload, false, modelName);
+    // Sanitize with allowTools=false (swipes 2–5 never get tools), then place the
+    // Scene Note at its depth (before the swipe tail, so depth counts as on a reply).
+    const sanitized = applySceneNote(sanitizePayloadForApi(cachedPayload, false, modelName), sceneNote, getApiFormat(provider));
 
     // Build the tail system messages: the no-tools line, then optional guidance.
     const tailMessages: OpenAIMessage[] = [
