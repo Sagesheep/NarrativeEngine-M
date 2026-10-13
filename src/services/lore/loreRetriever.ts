@@ -1,5 +1,6 @@
 import type { LoreChunk, ChatMessage } from '../../types';
 import { computeIdf, fuseRRF } from '../retrieval/lexicalFusion';
+import { isFieldLabelKeyword } from './fieldLabels';
 
 export function retrieveRelevantLore(
     chunks: LoreChunk[],
@@ -46,7 +47,10 @@ export function retrieveRelevantLore(
     }
 
     // ─── IDF computation over corpus ───
-    const idf = computeIdf(chunks.map(c => c.triggerKeywords ?? []));
+    // Field labels (`type`, `aliases`, `appearance`…) were extracted as keywords on most
+    // structured chunks; they carry no meaning and match ordinary text. Ignore them.
+    const keywordsOf = (c: LoreChunk) => (c.triggerKeywords ?? []).filter(kw => !isFieldLabelKeyword(kw));
+    const idf = computeIdf(chunks.map(keywordsOf));
 
     const chunkById = new Map(chunks.map(c => [c.id, c]));
     const semanticSet = new Set(semanticLoreIds || []);
@@ -66,7 +70,7 @@ export function retrieveRelevantLore(
         const depth = chunk.scanDepth || defaultDepth;
         const scanText = getScanText(depth);
 
-        const keywords = chunk.triggerKeywords || [];
+        const keywords = keywordsOf(chunk);
 
         let idfScore = 0;
         for (const kw of keywords) {
@@ -194,7 +198,7 @@ export function searchLoreByQuery(
     const scored = chunks
         .map((chunk) => {
             const searchText = (chunk.header + ' ' + chunk.content).toLowerCase();
-            const triggerSet = new Set((chunk.triggerKeywords || []).map(k => k.toLowerCase()));
+            const triggerSet = new Set((chunk.triggerKeywords || []).filter(k => !isFieldLabelKeyword(k)).map(k => k.toLowerCase()));
             let score = 0;
 
             for (const kw of queryKeywords) {
