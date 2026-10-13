@@ -1,4 +1,4 @@
-import type { AppSettings, NPCEntry } from '../../../types';
+import type { AppSettings, ChatMessage, NPCEntry } from '../../../types';
 import type { UtilityLLM } from '../turnTypes';
 import type { PlannerResult } from './plannerStage';
 import type { SemanticCandidates } from './retrievalTypes';
@@ -25,13 +25,15 @@ const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(
 export async function semanticCandidatesStage(params: {
     activeCampaignId: string | null;
     finalInput: string;
+    /** Conversation before this turn's message; expansion reads the last exchange. */
+    recentMessages: readonly ChatMessage[];
     npcLedger: NPCEntry[];
     settings: AppSettings;
     plannerPromise: Promise<PlannerResult | null>;
     utilityLLM: UtilityLLM;
     utilityTimeoutMs: number;
 }): Promise<{ plannerResult: PlannerResult | null; candidates: SemanticCandidates }> {
-    const { activeCampaignId, finalInput, npcLedger, settings, plannerPromise, utilityLLM, utilityTimeoutMs } = params;
+    const { activeCampaignId, finalInput, recentMessages, npcLedger, settings, plannerPromise, utilityLLM, utilityTimeoutMs } = params;
 
     let plannerResult: PlannerResult | null = null;
     const candidates: SemanticCandidates = {
@@ -51,7 +53,7 @@ export async function semanticCandidatesStage(params: {
             const [resolvedPlanner, expandedQueries] = await Promise.all([
                 plannerPromise,
                 (isCallback || isShort) && expansionEndpoint?.endpoint && tierAllows(settings.aiTier, 'expandQuery')
-                    ? expandQuery(finalInput, npcLedger, utilityLLM, utilityTimeoutMs)
+                    ? expandQuery(finalInput, recentMessages, npcLedger, utilityLLM, utilityTimeoutMs)
                     : Promise.resolve([finalInput]),
             ]);
 

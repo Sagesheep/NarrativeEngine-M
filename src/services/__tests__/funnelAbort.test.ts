@@ -68,3 +68,27 @@ describe('iterativeChapterFilter abort plumbing (AUDIT F1)', () => {
         expect(mockLlmCall).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('iterativeChapterFilter answers', () => {
+    beforeEach(() => {
+        mockLlmCall.mockClear();
+    });
+
+    it('asks with thinking off', async () => {
+        mockLlmCall.mockResolvedValue('YES');
+        await iterativeChapterFilter(ranked, 'q', messages, provider);
+        expect(mockLlmCall.mock.calls[0][2]).toMatchObject({ maxTokens: 10, thinkingEffort: 'off' });
+    });
+
+    it('treats an empty answer as a failed call (fail-open), not a NO', async () => {
+        mockLlmCall.mockResolvedValue('');
+        const confirmed = await iterativeChapterFilter(ranked, 'q', messages, provider);
+        expect(confirmed.length).toBe(MAX_CONFIRMED_CHAPTERS);
+    });
+
+    it('still rejects a real NO', async () => {
+        mockLlmCall.mockResolvedValue('NO');
+        const confirmed = await iterativeChapterFilter(ranked, 'q', messages, provider);
+        expect(confirmed).toEqual([]);
+    });
+});

@@ -52,13 +52,14 @@ export async function gatherContext(
     // and is resolved before archive recall below.
     const sem = await semanticCandidatesStage({
         activeCampaignId, finalInput, npcLedger, settings, plannerPromise, utilityLLM, utilityTimeoutMs,
+        recentMessages: state.getMessages().filter(m => m.id !== userMsgId),
     });
     let plannerResult = sem.plannerResult;
 
     // Stage 2 — LLM rerank of the scene/lore candidate sets.
     const { semanticArchiveIds, semanticArchiveHits, semanticLoreIds, semanticRuleIds } = await rerankStage({
         candidates: sem.candidates,
-        finalInput, archiveIndex, loreChunks,
+        finalInput, archiveIndex, loreChunks, npcLedger,
         rerankerEndpoint: utilityLLM.endpoint(),
         settings, utilityTimeoutMs,
     });

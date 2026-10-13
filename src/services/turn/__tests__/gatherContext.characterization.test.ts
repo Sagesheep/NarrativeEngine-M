@@ -66,6 +66,17 @@ vi.mock('../../embedding', () => ({
     semanticSearchScored: h.semanticSearchScored,
     isEmbedderReady: h.isEmbedderReady,
 }));
+// The chapter funnel is off in every tier (desktop port, 2026-10). Tests 3–4
+// still pin its code path, so they force it on through this switch.
+const tierOverride = vi.hoisted(() => ({ forceFunnel: false }));
+vi.mock('../aiTier', async (importOriginal) => {
+    const real = await importOriginal<typeof import('../aiTier')>();
+    return {
+        ...real,
+        tierAllows: (tier: Parameters<typeof real.tierAllows>[0], f: Parameters<typeof real.tierAllows>[1]) =>
+            (f === 'archiveFunnel' && tierOverride.forceFunnel) || real.tierAllows(tier, f),
+    };
+});
 
 import { gatherContext } from '../turnContext';
 
@@ -134,6 +145,7 @@ function makeCallbacks(): TurnCallbacks {
 
 beforeEach(() => {
     Object.values(h).forEach(fn => fn.mockReset());
+    tierOverride.forceFunnel = false;
     h.isEmbedderReady.mockReturnValue(true);
     h.semanticSearchScored.mockResolvedValue([{ id: '001', score: 0.9 }, { id: '002', score: 0.8 }]);
     h.semanticSearch.mockResolvedValue([]);
@@ -187,7 +199,17 @@ describe('gatherContext characterization', () => {
         expect(result.archiveRecall).toEqual([{ sceneId: '010', content: 'flat scene', tokens: 5 }]);
     });
 
+    it('2b. pro with sealed chapters: funnel off by default, archive-wide flat recall', async () => {
+        const port = makePort();
+        const result = await gatherContext(makeState({ chapters: [makeChapter('CH01')] }), makeCallbacks(), 'tell me about the gate', 'u1', port);
+
+        expect(h.recallWithChapterFunnel).not.toHaveBeenCalled();
+        expect(h.recallArchiveScenes).toHaveBeenCalled();
+        expect(result.archiveRecall).toEqual([{ sceneId: '010', content: 'flat scene', tokens: 5 }]);
+    });
+
     it('3. funnel path: parses funnel scene string, skips flat recall', async () => {
+        tierOverride.forceFunnel = true;
         h.recallWithChapterFunnel.mockResolvedValue({ scenes: '\n--- SCENE 001 ---\nThe gate fell.', usedTokens: 12 });
         const port = makePort();
         const result = await gatherContext(makeState({ chapters: [makeChapter('CH01')] }), makeCallbacks(), 'tell me about the gate', 'u1', port);
@@ -199,6 +221,7 @@ describe('gatherContext characterization', () => {
 
     it('4. funnel-timeout fallback: aborts funnel, falls back to flat recall (AUDIT F1)', async () => {
         vi.useFakeTimers();
+        tierOverride.forceFunnel = true;
         try {
             h.recallWithChapterFunnel.mockReturnValue(new Promise<never>(() => {})); // never resolves
             const port = makePort();

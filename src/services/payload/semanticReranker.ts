@@ -32,7 +32,7 @@ export async function rerankCandidates(
     const prompt = joinPromptSections(
         'You are filtering memory candidates for relevance.',
 
-        `Return a JSON array of the candidate ids most relevant to the query, in descending order of relevance. Max ${topN} ids.`,
+        `Return a JSON array of the candidate ids most relevant to the query, in descending order of relevance, each id written exactly as below as a JSON string (e.g. ["${capped[0].id}"]). Max ${topN} ids.`,
 
         JSON_ARRAY_ONLY_FOOTER,
         ANCHOR_BEFORE_INPUT,
@@ -47,12 +47,17 @@ export async function rerankCandidates(
             temperature: 0.1,
             priority: 'high',
             maxTokens: 500,
+            thinkingEffort: 'off',
             ...(opts?.timeoutMs ? { timeoutMs: opts.timeoutMs, trackingLabel: opts?.trackingLabel ?? 'reranker' } : {}),
         });
 
         let cleanContent = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
         const mdMatch = cleanContent.match(/```(?:json)?\s*([\s\S]*?)```/i);
         if (mdMatch) cleanContent = mdMatch[1];
+        // Models often answer scene ids as bare numbers ("[534, 062]"): a leading zero is
+        // not valid JSON, and a number is not a string, so the whole answer used to be
+        // dropped and the input order kept. Quote bare numbers, then match by number too.
+        cleanContent = cleanContent.replace(/([[,]\s*)(\d+)(?=\s*[,\]])/g, '$1"$2"');
 
         const bracketStart = cleanContent.indexOf('[');
         const bracketEnd = cleanContent.lastIndexOf(']');
@@ -71,12 +76,13 @@ export async function rerankCandidates(
 
         const validIds: string[] = [];
         const dropped: string[] = [];
+        const byNumber = new Map(candidates.filter(c => /^\d+$/.test(c.id)).map(c => [Number(c.id), c.id]));
         for (const item of parsed) {
-            if (typeof item === 'string' && inputIds.has(item)) {
-                validIds.push(item);
-            } else if (typeof item === 'string') {
-                dropped.push(item);
-            }
+            if (typeof item !== 'string' && typeof item !== 'number') continue;
+            const key = String(item).trim();
+            const id = inputIds.has(key) ? key : /^\d+$/.test(key) ? byNumber.get(Number(key)) : undefined;
+            if (id && !validIds.includes(id)) validIds.push(id);
+            else if (!id) dropped.push(key);
         }
 
         if (dropped.length > 0) {

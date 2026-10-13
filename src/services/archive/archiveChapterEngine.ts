@@ -198,10 +198,13 @@ async function validateChapterRelevance(
         const answer = await llmCall(provider, prompt, {
             signal: controller.signal,
             maxTokens: 10,
+            thinkingEffort: 'off',
         });
         clearTimeout(timeoutId);
         signal?.removeEventListener('abort', onExternalAbort);
-        return answer.trim().toUpperCase().startsWith('YES');
+        const verdict = answer.trim().toUpperCase();
+        // An empty answer is a failed call, not a NO (fail-open, like an error).
+        return verdict === '' || verdict.startsWith('YES');
     } catch {
         clearTimeout(timeoutId);
         signal?.removeEventListener('abort', onExternalAbort);

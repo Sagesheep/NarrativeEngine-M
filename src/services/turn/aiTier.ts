@@ -9,6 +9,12 @@ export type TierFeature =
   | 'arcTick' | 'arcSpawn'
   | 'directorBrief';
 
+// archiveFunnel and expandQuery are off in every tier (ported from desktop,
+// 2026-10). The funnel let a yes/no model call pick up to three chapters from
+// their summaries and searched scenes only inside them, discarding meaning-search
+// hits elsewhere; recall uses archive-wide hybrid search instead. Expansion on
+// its own found fewer of the right scenes than plain search on desktop's probes.
+// Both code paths stay; flip a tier here to bring one back.
 const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
     lite: {
         introEngine: false, planner: false, expandQuery: false, reranker: false, archiveFunnel: false,
@@ -21,7 +27,7 @@ const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
         directorBrief: false,
     },
     pro: {
-        introEngine: false, planner: true, expandQuery: false, reranker: false, archiveFunnel: true,
+        introEngine: false, planner: true, expandQuery: false, reranker: false, archiveFunnel: false,
         deepScan: true, recommender: true,
         importanceRating: false, witnessAux: false, npcValidate: true, npcProfileGen: true,
         npcUpdate: true, drivesBackfill: false, profileScan: false, inventoryScan: false, sealChapter: true,
@@ -31,7 +37,7 @@ const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
         directorBrief: true,
     },
     max: {
-        introEngine: true, planner: true, expandQuery: true, reranker: true, archiveFunnel: true,
+        introEngine: true, planner: true, expandQuery: false, reranker: true, archiveFunnel: false,
         deepScan: true, recommender: true,
         importanceRating: true, witnessAux: true, npcValidate: true, npcProfileGen: true,
         npcUpdate: true, drivesBackfill: true, profileScan: true, inventoryScan: true, sealChapter: true,

@@ -67,7 +67,7 @@ export async function runLoreCheck(input: LoreCheckInput): Promise<LoreCheckResu
     if (isShort) {
         try {
             const utilityLLM = realUtilityLLM(() => utilityEndpoint);
-            queries = await expandQuery(searchQuery, npcLedger, utilityLLM);
+            queries = await expandQuery(searchQuery, contextSlice, npcLedger, utilityLLM);
         } catch (err) {
             console.warn('[LoreCheck] Query expansion failed (non-fatal):', err);
         }

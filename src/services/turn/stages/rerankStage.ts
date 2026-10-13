@@ -1,7 +1,18 @@
-import type { AppSettings, ArchiveIndexEntry, LLMProvider, LoreChunk } from '../../../types';
+import type { AppSettings, ArchiveIndexEntry, LLMProvider, LoreChunk, NPCEntry } from '../../../types';
 import type { SemanticCandidates } from './retrievalTypes';
 import { rerankCandidates, type RerankCandidate } from '../../payload';
 import { tierAllows } from '../aiTier';
+
+/** What the reranker sees of a scene: what happened (event tags), who was there, and
+ *  the player's line. The player's line + 5 keywords alone was too thin to judge
+ *  relevance (port of mainApp's sceneRerankSummary). */
+export function sceneRerankSummary(entry: ArchiveIndexEntry, npcNameById: ReadonlyMap<string, string>): string {
+    const events = (entry.events ?? []).map(e => e.text).filter(Boolean).slice(0, 3);
+    const what = events.length > 0 ? events.join('; ') : entry.keywords.slice(0, 5).join(', ');
+    const witnessed = (entry.npcsWitnessed ?? []).map(id => npcNameById.get(id)).filter((n): n is string => !!n);
+    const who = (witnessed.length > 0 ? witnessed : entry.npcsMentioned ?? []).slice(0, 6).join(', ');
+    return [what, who ? `present: ${who}` : '', `player: ${entry.userSnippet}`].filter(Boolean).join(' | ');
+}
 
 /**
  * LLM cross-encoder rerank of the scene and lore candidate sets. Only fires when
@@ -14,22 +25,24 @@ export async function rerankStage(params: {
     finalInput: string;
     archiveIndex: ArchiveIndexEntry[];
     loreChunks: LoreChunk[];
+    npcLedger: NPCEntry[];
     rerankerEndpoint: LLMProvider | undefined;
     settings: AppSettings;
     utilityTimeoutMs: number;
 }): Promise<SemanticCandidates> {
-    const { candidates, finalInput, archiveIndex, loreChunks, rerankerEndpoint, settings, utilityTimeoutMs } = params;
+    const { candidates, finalInput, archiveIndex, loreChunks, npcLedger, rerankerEndpoint, settings, utilityTimeoutMs } = params;
     let { semanticArchiveIds, semanticArchiveHits, semanticLoreIds } = candidates;
     const { semanticRuleIds } = candidates;
 
     if (tierAllows(settings.aiTier, 'reranker') && rerankerEndpoint?.endpoint && (semanticArchiveIds?.length || semanticLoreIds?.length)) {
         try {
             if (semanticArchiveIds && semanticArchiveIds.length >= 5) {
+                const npcNameById = new Map(npcLedger.map(n => [n.id, n.name]));
                 const sceneCandidates: RerankCandidate[] = semanticArchiveIds.map(id => {
                     const idxEntry = archiveIndex.find(e => e.sceneId === id);
                     return {
                         id,
-                        summary: idxEntry ? `${idxEntry.userSnippet} — ${idxEntry.keywords.slice(0, 5).join(', ')}` : id,
+                        summary: idxEntry ? sceneRerankSummary(idxEntry, npcNameById) : id,
                         type: 'scene' as const,
                     };
                 });

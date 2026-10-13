@@ -20,23 +20,36 @@ describe('tierAllows — lite', () => {
     });
 });
 
+// Off in every tier since the desktop port (see aiTier.ts).
+const OFF_EVERYWHERE: TierFeature[] = ['archiveFunnel', 'expandQuery'];
+
 describe('tierAllows — max', () => {
-    it('returns true for all features', () => {
+    it('returns true for all features except the ones off everywhere', () => {
         for (const f of ALL_FEATURES) {
-            expect(tierAllows('max', f)).toBe(true);
+            expect(tierAllows('max', f)).toBe(!OFF_EVERYWHERE.includes(f));
+        }
+    });
+});
+
+describe('tierAllows — off everywhere', () => {
+    it('chapter funnel and query expansion are off in every tier', () => {
+        for (const tier of ['lite', 'pro', 'max'] as const) {
+            for (const f of OFF_EVERYWHERE) {
+                expect(tierAllows(tier, f)).toBe(false);
+            }
         }
     });
 });
 
 describe('tierAllows — pro', () => {
     const PRO_ON: TierFeature[] = [
-        'planner', 'archiveFunnel', 'recommender', 'deepScan',
+        'planner', 'recommender', 'deepScan',
         'npcValidate', 'npcProfileGen', 'npcUpdate', 'sealChapter',
         'sceneStakesClassify', 'heartbeatTick', 'timeskipRun',
         'arcTick', 'arcSpawn',
     ];
     const PRO_OFF: TierFeature[] = [
-        'introEngine', 'expandQuery', 'reranker',
+        'introEngine', 'expandQuery', 'reranker', 'archiveFunnel',
         'importanceRating', 'witnessAux', 'drivesBackfill', 'profileScan', 'inventoryScan',
     ];
 
