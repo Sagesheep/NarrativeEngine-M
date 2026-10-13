@@ -83,8 +83,13 @@ export class LLMRequestQueue {
         if (this.scheduled) return;
         if (this.queue.length === 0 || this.inflight >= this.maxConcurrent) return;
 
+        // Stagger only while a rate limit is in force. Applied unconditionally it
+        // spaced every grant 500 ms apart on a queue no provider had asked to slow
+        // down (desktop measured ~2.5 s of dead wait per turn). Once onRateLimitHit
+        // lowers the cap, the stagger applies until recovery restores it.
+        const throttled = this.maxConcurrent !== this.initialMaxConcurrent;
         const sinceLastFire = Date.now() - this.lastFireTime;
-        const delay = Math.max(0, this.staggerMs - sinceLastFire);
+        const delay = throttled ? Math.max(0, this.staggerMs - sinceLastFire) : 0;
 
         this.scheduled = true;
         setTimeout(() => {

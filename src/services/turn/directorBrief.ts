@@ -362,7 +362,10 @@ export async function runDirectorBrief(input: DirectorBriefInput): Promise<strin
 
         const raw = await llmCall(provider, prompt, {
             signal: input.signal,
-            priority: 'low',
+            // The turn waits on this call, so it goes ahead of the previous turn's
+            // post-commit jobs (NPC updates, witness and divergence passes, all 'low'),
+            // which are queued on the same endpoint at the moment the player sends.
+            priority: 'high',
             // Thinking off, as on desktop: the brief came back the same without
             // it, in 1.7 s instead of 10.3 s (Turn Prep Experiment, 2026-10).
             thinkingEffort: 'off',

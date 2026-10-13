@@ -32,8 +32,6 @@ export function ChatArea() {
         settings,
         context,
         condenser,
-        loreChunks,
-        npcLedger,
         archiveIndex,
         setArchiveIndex,
         setChapters,
@@ -68,8 +66,6 @@ export function ChatArea() {
         settings: s.settings,
         context: s.context,
         condenser: s.condenser,
-        loreChunks: s.loreChunks,
-        npcLedger: s.npcLedger,
         archiveIndex: s.archiveIndex,
         setArchiveIndex: s.setArchiveIndex,
         setChapters: s.setChapters,
@@ -190,16 +186,21 @@ export function ChatArea() {
             if (staleRetry) {
                 useAppStore.getState().updateMessage(staleRetry.id, { retryable: undefined, precontext: undefined });
             }
+            // Build the turn from the store as the commit left it. The render-time
+            // values are from before the commit, so the turn ran one commit behind:
+            // no new archive scene, the old agency/arc digest, the old condense point
+            // (desktop 7eafc7d fixed the same thing).
+            const fresh = useAppStore.getState();
             await runTurn({
             input: llmInput,
             displayInput: textToUse,
-            settings,
-            context,
-            messages: useAppStore.getState().messages,
-            condenser,
-            loreChunks,
-            npcLedger,
-            archiveIndex,
+            settings: fresh.settings,
+            context: fresh.context,
+            messages: fresh.messages,
+            condenser: fresh.condenser,
+            loreChunks: fresh.loreChunks,
+            npcLedger: fresh.npcLedger,
+            archiveIndex: fresh.archiveIndex,
             semanticFacts: useAppStore.getState().semanticFacts,
             chapters: useAppStore.getState().chapters,
             activeCampaignId,

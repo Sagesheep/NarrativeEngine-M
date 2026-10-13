@@ -1,6 +1,6 @@
 import type { ArchiveChapter, ArchiveScene, ChatMessage } from '../../../types';
 import type { SearchHit } from '../../embedding/vectorSearch';
-import type { TurnCallbacks, TurnState, UtilityLLM } from '../turnTypes';
+import type { TurnState, UtilityLLM } from '../turnTypes';
 import type { PlannerResult } from './plannerStage';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes, recallWithChapterFunnel } from '../../archive';
 import { getDivergenceSceneIds, EMPTY_REGISTER } from '../../campaign-state';
@@ -22,7 +22,6 @@ const FUNNEL_RACE_TIMEOUT_MS = 5000;
  */
 export async function archiveRecallStage(params: {
     state: TurnState;
-    callbacks: TurnCallbacks;
     finalInput: string;
     messages: ChatMessage[];
     semanticArchiveHits: SearchHit[];
@@ -30,10 +29,9 @@ export async function archiveRecallStage(params: {
     plannerFilters: PlannerResult['filters'] | undefined;
     utilityLLM: UtilityLLM;
 }): Promise<{ scenes: ArchiveScene[] }> {
-    const { state, callbacks, finalInput, messages, semanticArchiveHits, semanticArchiveIds, plannerFilters, utilityLLM } = params;
+    const { state, finalInput, messages, semanticArchiveHits, semanticArchiveIds, plannerFilters, utilityLLM } = params;
     const { settings, archiveIndex, npcLedger, activeCampaignId, chapters, semanticFacts } = state;
 
-    callbacks.setLoadingStatus?.('[3/5] Recalling Archive Memory...');
     let archiveResult = { scenes: [] as ArchiveScene[], usedTokens: 0 };
 
     // Size the recall fetch to the world budget it has to live in, so a full

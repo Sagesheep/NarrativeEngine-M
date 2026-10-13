@@ -237,7 +237,7 @@ describe('runDirectorBrief', () => {
             await runDirectorBrief(baseInput());
             const opts = mockLlmCall.mock.calls[0][2] as any;
             expect(opts.trackingLabel).toBe('director-brief');
-            expect(opts.priority).toBe('low');
+            expect(opts.priority).toBe('high'); // the turn waits on it
             expect(opts.timeoutMs).toBe(120_000);
             // Thinking off whatever the endpoint is set to (desktop's Turn Prep finding).
             expect(opts.thinkingEffort).toBe('off');

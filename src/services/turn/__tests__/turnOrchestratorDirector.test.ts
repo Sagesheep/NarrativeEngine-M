@@ -45,7 +45,6 @@ vi.mock('../turnContext', () => ({
     gatherContext: vi.fn(async () => ({
         relevantLore: undefined,
         relevantRules: undefined,
-        sceneNumber: undefined,
         archiveRecall: undefined,
         semanticArchiveHits: [],
         semanticFactText: '',
@@ -257,6 +256,22 @@ describe('runTurn — Director Brief tier gate (WO-A §3.3)', () => {
         expect(call.dossierText).toBe('');
         // lastAssistantContent is mocked to return 'LAST_GM_TEXT'.
         expect(call.lastAssistant).toBe('LAST_GM_TEXT');
+    });
+
+    it('the gather starts while the Director call is still running, and gets the call to await', async () => {
+        let finishDirector!: (brief: string | null) => void;
+        runDirectorBriefMock.mockReturnValueOnce(new Promise<string | null>(resolve => { finishDirector = resolve; }));
+        const { gatherContext } = await import('../turnContext');
+
+        const turn = runTurn(baseState('pro'), baseCallbacks(), new AbortController());
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(vi.mocked(gatherContext)).toHaveBeenCalledTimes(1);
+        const signals = vi.mocked(gatherContext).mock.calls[0][5] as any;
+        expect(signals.directorBrief).toBeInstanceOf(Promise);
+
+        finishDirector(null);
+        await expect(signals.directorBrief).resolves.toBeUndefined();
+        await turn;
     });
 
     it('an Absolute Command skips the Director, reaches the payload, and stays out of the stored message', async () => {

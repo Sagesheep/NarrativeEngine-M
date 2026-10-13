@@ -22,6 +22,13 @@ import type { OpenAIMessage } from '../llm/llmService';
 import type { PayloadTrace, ResolveLootOpts, SwipeVariant } from '../../types';
 import { buildAssistantToolCallMessage, buildToolResultMessage } from '../../types/llmMessages';
 
+// Tool handlers run synchronously, so the timer after a tool call only breaks the
+// recursion out of the current call stack; it does not need to be a delay. The lore
+// tool keeps a short dwell so its "checking notes" indicator is visible at all.
+// (Ported from desktop: the old flat 800 ms cost up to 1.6 s of dead wait a turn.)
+const TOOL_CONTINUATION_MS = 0;
+const CHECKING_NOTES_DWELL_MS = 400;
+
 // Smart Retry v1: build the collapsed-box summary for the precontext field.
 // Kept short and non-technical — the user taps to expand for details (v2).
 function buildPrecontextSummary(gathered: GatheredContext): string {
@@ -167,16 +174,17 @@ export async function runTurn(
         }
     }
 
-    callbacks.setLoadingStatus?.('[1/5] Extracting Lore & Stats...');
+    callbacks.setLoadingStatus?.('Gathering context & memories...');
 
-    callbacks.setPipelinePhase?.('building-prompt');
+    callbacks.setPipelinePhase?.('gathering-context');
 
     // ── Director stage (WO-A §3.3) ────────────────────────────────────────────
-    // Watchdog (deterministic, all tiers) + Director Brief (one blocking LLM
-    // call on pro/max). Runs after engine rolls + intro engine settle the final
-    // user input, and before gatherContext so the Brief can ride below the cache
-    // boundary in the final user message via buildPayload. Mirrors mainApp
-    // `runDirectorStage` (turnStages.ts:228-316).
+    // Watchdog (deterministic, all tiers) + Director Brief (one LLM call on
+    // pro/max). Starts after engine rolls + intro engine settle the final user
+    // input. The Brief needs nothing the gather finds, so the call runs while
+    // context is gathered and gatherContext awaits it only when it builds the
+    // payload, where the Brief rides below the cache boundary in the final user
+    // message. (mainApp `runDirectorStage` still runs it before the gather.)
     //
     // Under an Absolute Command both are skipped: they exist to steer the GM, which is
     // exactly what the player is overriding (and it saves one blocking LLM call).
@@ -193,37 +201,35 @@ export async function runTurn(
     });
     const watchdogNudge = watchdogDossier?.nudgeText ?? undefined;
 
-    let directorBrief: string | null = null;
+    let directorBrief: Promise<string | undefined> | undefined;
     if (watchdogDossier && tierAllows(settings.aiTier, 'directorBrief')) {
         callbacks.onDirectorBriefPhase?.('running');
-        try {
-            directorBrief = await runDirectorBrief({
-                provider,
-                dossierText: watchdogDossier.dossierText,
-                lastAssistant: lastAssistantContent(state.messages),
-                userMessage: finalInput,
-                npcLedger,
-                onStageNpcIds: state.onStageNpcIds,
-                timeline: state.timeline,
-                campaignId: activeCampaignId,
-                getAuxiliaryProvider: state.getFreshAuxiliaryProvider,
-                signal: abortController.signal,
-            });
-        } catch (err) {
-            // Defensive: runDirectorBrief catches internally and returns null,
-            // but if a future refactor breaks that contract we must not poison
-            // the turn. Log and proceed without a Brief.
-            console.warn('[DirectorBrief] unexpected throw (suppressed):', err);
-            directorBrief = null;
-        } finally {
-            callbacks.onDirectorBriefPhase?.('done');
-        }
+        directorBrief = runDirectorBrief({
+            provider,
+            dossierText: watchdogDossier.dossierText,
+            lastAssistant: lastAssistantContent(state.messages),
+            userMessage: finalInput,
+            npcLedger,
+            onStageNpcIds: state.onStageNpcIds,
+            timeline: state.timeline,
+            campaignId: activeCampaignId,
+            getAuxiliaryProvider: state.getFreshAuxiliaryProvider,
+            signal: abortController.signal,
+        })
+            .then(brief => brief ?? undefined)
+            .catch(err => {
+                // Defensive: runDirectorBrief catches internally and returns null,
+                // but if a future refactor breaks that contract we must not poison
+                // the turn. Log and proceed without a Brief.
+                console.warn('[DirectorBrief] unexpected throw (suppressed):', err);
+                return undefined;
+            })
+            .finally(() => callbacks.onDirectorBriefPhase?.('done'));
     }
 
-    callbacks.setPipelinePhase?.('gathering-context');
     const gathered = await gatherContext(state, callbacks, finalInput, userMsgId, undefined, {
         watchdogNudge,
-        directorBrief: directorBrief ?? undefined,
+        directorBrief,
         absoluteCommand,
     });
 
@@ -350,7 +356,7 @@ export async function runTurn(
                         }
                         callbacks.onCheckingNotes(false);
                         executeTurn(currentPayload, toolCallCount + 1);
-                    }, 800);
+                    }, CHECKING_NOTES_DWELL_MS);
                     return;
                 }
 
@@ -398,7 +404,7 @@ export async function runTurn(
                             return;
                         }
                         executeTurn(currentPayload, toolCallCount + 1);
-                    }, 800);
+                    }, TOOL_CONTINUATION_MS);
                     return;
                 }
 
@@ -444,7 +450,7 @@ export async function runTurn(
                             return;
                         }
                         executeTurn(currentPayload, toolCallCount + 1);
-                    }, 800);
+                    }, TOOL_CONTINUATION_MS);
                     return;
                 }
 

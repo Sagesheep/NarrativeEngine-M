@@ -1,5 +1,5 @@
 import { offlineStorage } from '../storage';
-import { embedText, isEmbedderReady } from './embedder';
+import { embedText, isEmbedderReady, getCurrentModelId } from './embedder';
 
 export type SearchHit = {
     id: string;
@@ -20,6 +20,38 @@ const MMR_LAMBDA = 0.7;
  * Below this the diversity benefit is negligible and we skip for speed.
  */
 const MMR_MIN_POOL = 4;
+
+/**
+ * Query vectors for the most recently searched texts. A turn embeds the player's
+ * message for the scene, lore and rule searches and again for NPC recall, and the
+ * last GM reply comes back as an NPC-recall query on the next turn. The embedder
+ * runs on the phone, so every repeat is real time. The cache holds the in-flight
+ * promise, so searches started together share one embed. Keyed by model id: a
+ * model switch must never reuse a vector of the old model's size.
+ */
+const QUERY_VECTOR_CACHE_MAX = 16;
+const queryVectorCache = new Map<string, Promise<Float32Array | null>>();
+
+function embedQuery(text: string): Promise<Float32Array | null> {
+    const key = `${getCurrentModelId()}\u0000${text}`;
+    const cached = queryVectorCache.get(key);
+    if (cached) {
+        queryVectorCache.delete(key);
+        queryVectorCache.set(key, cached);
+        return cached;
+    }
+    const pending = embedText(text).then(vec => {
+        // A failed embed is not remembered; the next search tries again.
+        if (!vec && queryVectorCache.get(key) === pending) queryVectorCache.delete(key);
+        return vec;
+    });
+    queryVectorCache.set(key, pending);
+    if (queryVectorCache.size > QUERY_VECTOR_CACHE_MAX) {
+        const oldest = queryVectorCache.keys().next().value;
+        if (oldest !== undefined) queryVectorCache.delete(oldest);
+    }
+    return pending;
+}
 
 export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): number {
     let dot = 0, normA = 0, normB = 0;
@@ -143,8 +175,7 @@ export async function semanticSearchScored(
     if (!isEmbedderReady()) return undefined;
 
     const queryVectors: number[][] = [];
-    for (const q of queries) {
-        const vec = await embedText(q);
+    for (const vec of await Promise.all(queries.map(embedQuery))) {
         if (vec) queryVectors.push(Array.from(vec));
     }
     if (queryVectors.length === 0) return undefined;

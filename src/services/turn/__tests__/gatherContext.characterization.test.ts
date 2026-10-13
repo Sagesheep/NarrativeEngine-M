@@ -25,7 +25,6 @@ const h = vi.hoisted(() => ({
     fetchArchiveScenes: vi.fn(),
     deepArchiveScan: vi.fn(),
     recallWithChapterFunnel: vi.fn(),
-    getNextSceneNumber: vi.fn(),
     recommendContext: vi.fn(),
     rerankCandidates: vi.fn(),
     queryFacts: vi.fn(),
@@ -51,7 +50,6 @@ vi.mock('../../archive', () => ({
     deepArchiveScan: h.deepArchiveScan,
     recallWithChapterFunnel: h.recallWithChapterFunnel,
 }));
-vi.mock('../../storage', () => ({ offlineStorage: { archive: { getNextSceneNumber: h.getNextSceneNumber } } }));
 vi.mock('../../payload', () => ({ recommendContext: h.recommendContext, rerankCandidates: h.rerankCandidates }));
 vi.mock('../../campaign-state', () => ({
     queryFacts: h.queryFacts,
@@ -156,7 +154,6 @@ beforeEach(() => {
     h.fetchArchiveScenes.mockResolvedValue([]);
     h.deepArchiveScan.mockResolvedValue('');
     h.recallWithChapterFunnel.mockResolvedValue({ scenes: '', usedTokens: 0 });
-    h.getNextSceneNumber.mockResolvedValue(7);
     h.recommendContext.mockResolvedValue({ relevantNPCNames: [], relevantLoreIds: [] });
     h.rerankCandidates.mockResolvedValue([]);
     h.queryFacts.mockReturnValue([]);
@@ -177,7 +174,6 @@ describe('gatherContext characterization', () => {
         expect(result.semanticArchiveHits).toEqual([]);
         expect(h.recallArchiveScenes).toHaveBeenCalled();
         expect(result.archiveRecall).toEqual([{ sceneId: '010', content: 'flat scene', tokens: 5 }]);
-        expect(result.sceneNumber).toBe('007');
         expect(result.payloadResult).toEqual({ messages: [], _sentinel: true });
     });
 
@@ -269,6 +265,44 @@ describe('gatherContext characterization', () => {
         expect(result.recommendedNPCNames).toEqual(['Astarion']);
         // lore_2 was missed by retrieval but recommended → injected into relevantLore.
         expect(result.relevantLore?.map(c => c.id)).toContain('lore_2');
+    });
+
+    it('7. recommender starts alongside the memory search, not after it', async () => {
+        let finishSearch!: (hits: unknown) => void;
+        h.semanticSearchScored.mockReturnValue(new Promise(resolve => { finishSearch = resolve; }));
+        const loreChunks = [{ id: 'lore_1', header: 'L1', content: 'a', summary: '', tokens: 40 }];
+        const port = makePort();
+
+        const p = gatherContext(makeState({ loreChunks: loreChunks as never }), makeCallbacks(), 'who is around', 'u1', port);
+        await Promise.resolve();
+        await Promise.resolve();
+        // The search has not finished, and the recommender call is already out.
+        expect(h.recommendContext).toHaveBeenCalled();
+        expect(h.recallArchiveScenes).not.toHaveBeenCalled();
+
+        finishSearch([{ id: '001', score: 0.9 }]);
+        const result = await p;
+        expect(result.archiveRecall).toEqual([{ sceneId: '010', content: 'flat scene', tokens: 5 }]);
+    });
+
+    it('8. recommender is skipped when there is nothing for it to pick', async () => {
+        const port = makePort();
+        await gatherContext(makeState({ npcLedger: [], loreChunks: [], pinnedChapterIds: [] }), makeCallbacks(), 'I wake up', 'u1', port);
+        expect(h.recommendContext).not.toHaveBeenCalled();
+    });
+
+    it('9. a still-running Director call is awaited and its Brief reaches the payload', async () => {
+        let finishDirector!: (brief: string | undefined) => void;
+        const directorBrief = new Promise<string | undefined>(resolve => { finishDirector = resolve; });
+        const port = makePort();
+
+        const p = gatherContext(makeState(), makeCallbacks(), 'tell me about the gate', 'u1', port, { directorBrief });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(h.buildPayload).not.toHaveBeenCalled();
+
+        finishDirector('WRITER BRIEF: keep the gate shut');
+        await p;
+        expect(h.buildPayload).toHaveBeenCalledWith(expect.objectContaining({ directorBrief: 'WRITER BRIEF: keep the gate shut' }));
     });
 });
 
