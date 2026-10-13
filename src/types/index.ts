@@ -474,6 +474,13 @@ export type DivergenceEntry = {
     source: 'auto' | 'manual';
     reviewFlag?: boolean;
     unrecognizedNpcNames?: string[];
+    /** Old campaigns omit this field and therefore remain active. */
+    status?: 'active' | 'superseded' | 'retracted';
+    supersededBy?: string;
+    /** Narrow deterministic state slot, e.g. `item:moon-key:holder`. */
+    stateKey?: string;
+    /** Extraction-only instruction; mergeLifecycleEntries consumes and does not persist it. */
+    supersedesFactId?: string;
 };
 
 export type TopicCluster = {

@@ -12,7 +12,7 @@ import {
     joinPromptSections,
     buildSubjectTokenRules,
 } from '../infrastructure';
-import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory, stripReasoning, normalizeSubjectToken, normalizeFaction, parseKnownByToken } from '../campaign-state';
+import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory, stripReasoning, normalizeSubjectToken, normalizeFaction, parseKnownByToken, isFactActive, isValidStateKey } from '../campaign-state';
 import { uid } from '../../utils/uid';
 import { truncateScenesToBudget } from './saveFileEngine';
 import { parseChapterSummaryOutput, type ChapterSummaryOutput } from './chapterSummaryWriter';
@@ -27,9 +27,16 @@ function buildCombinedSealPrompt(
     npcLedger: { id: string; name: string; aliases: string }[],
     indexEntries?: { sceneId: string; npcsWitnessed?: string[] }[],
     openThreads?: string[],
-    existingSubjectTokens?: string[]
+    existingSubjectTokens?: string[],
+    activeStateFacts: DivergenceEntry[] = [],
 ): string {
     const truncated = truncateScenesToBudget(scenes, COMBINED_SEAL_TOKEN_BUDGET);
+    // The register's current single-value state facts: the only ids a new fact may supersede.
+    const activeStateFactsText = activeStateFacts
+        .filter(f => isFactActive(f) && isValidStateKey(f.stateKey))
+        .slice(-40)
+        .map(f => `[ID: ${f.id}] [STATE: ${f.stateKey}] ${f.text}`)
+        .join('\n');
     const sceneContent = truncated.map(s => `--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n\n');
 
     const npcList = npcLedger.map(n =>
@@ -122,6 +129,13 @@ Output: JSON array for this slot, or [] if empty.`;
 - npcIds: list the NPC ledger IDs mentioned. If a name appears that is NOT in the ledger, put it in unrecognizedNpcNames instead.
 - Focus on: permanent changes, new information, relationship shifts, acquisitions, losses, oaths, regime changes.
 - Skip transient details, emotional narration, momentary states, and anything the archive would already surface.
+- For a fact with exactly one current value, you MAY add "stateKey" using only:
+  "item:<slug>:holder", "npc:<id>:location", "npc:<id>:status",
+  "npc:<id>:allegiance", "place:<slug>:controller", or "debt:<slug>:status".
+- Events and observations MUST omit stateKey.
+- To replace a listed CURRENT STATE FACT, set "supersedesFactId" to its ID and use
+  the exact same stateKey. Never supersede a fact not listed in the INPUT.
+- If uncertain, omit both fields and emit an additive fact.
 - If a slot is empty, output [] for that slot.`;
 
     const witnessCorrectionsRule = witnessAuditSection
@@ -189,6 +203,7 @@ TASK 2 — Extract established facts that would BREAK A FUTURE SCENE if the AI c
         `CHAPTER: "${chapterTitle || 'Untitled'}"`,
         `SCENE IDs IN THIS CHAPTER: ${sceneIds.join(', ')}`,
         `NPC LEDGER (resolve names to IDs):\n${npcList || '(no NPCs in ledger)'}`,
+        activeStateFactsText ? `CURRENT STATE FACTS (only these IDs may be superseded):\n${activeStateFactsText}` : '',
         witnessAuditSection ? witnessAuditSection.trim() : '',
         ...(openThreads && openThreads.length > 0
             ? [`OPEN THREADS FROM EARLIER CHAPTERS (verbatim — do not rephrase):\n${openThreads.map(t => '- ' + t).join('\n')}`]
@@ -359,6 +374,13 @@ function buildDivergenceEntries(
                 subjectToken = normalizeSubjectToken(rawSubjectToken);
             }
 
+            // Guarded supersession: only a valid single-value state slot may carry a
+            // supersede instruction; mergeLifecycleEntries re-checks the target.
+            const stateKey = isValidStateKey(rawItem.stateKey) ? rawItem.stateKey : undefined;
+            const supersedesFactId = stateKey && typeof rawItem.supersedesFactId === 'string'
+                ? rawItem.supersedesFactId
+                : undefined;
+
             entries.push({
                 id: `div_${uid()}`,
                 chapterId,
@@ -368,6 +390,8 @@ function buildDivergenceEntries(
                 npcIds: resolvedNpcIds,
                 knownBy,
                 subjectToken,
+                stateKey,
+                supersedesFactId,
                 pinned: false,
                 source: 'auto',
                 reviewFlag: hasReviewFlag || undefined,
@@ -535,7 +559,8 @@ export async function sealChapterCombined(
     indexEntries?: { sceneId: string; npcsWitnessed?: string[] }[],
     maxRetries = 2,
     openThreads?: string[],
-    existingSubjectTokens?: string[]
+    existingSubjectTokens?: string[],
+    activeStateFacts: DivergenceEntry[] = [],
 ): Promise<CombinedSealResult> {
     const sealEffort: ThinkingEffort = 'off';
     const maxTokens = SEAL_MAX_TOKENS;
@@ -543,7 +568,7 @@ export async function sealChapterCombined(
     console.log(`[CombinedSeal] Config: maxTokens=${maxTokens}, thinkingEffort=${sealEffort}, provider.effort=${provider.thinkingEffort ?? 'none'}, apiFormat=${provider.apiFormat ?? 'openai'}`);
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const prompt = buildCombinedSealPrompt(scenes, chapterTitle, sceneIds, npcLedger, indexEntries, openThreads, existingSubjectTokens);
+        const prompt = buildCombinedSealPrompt(scenes, chapterTitle, sceneIds, npcLedger, indexEntries, openThreads, existingSubjectTokens, activeStateFacts);
         const label = attempt === 0 ? '' : ' (retry)';
 
         console.log(`[CombinedSeal] Generating summary + divergences${label}...`, {

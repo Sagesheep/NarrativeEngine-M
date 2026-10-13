@@ -7,7 +7,7 @@ import { ChapterCard } from './ChapterCard';
 import { toast } from '../Toast';
 import { countTokens } from '../../services/infrastructure';
 import { runCombinedSeal } from '../../services/turn';
-import { mergeSealEntries } from '../../services/campaign-state';
+import { mergeLifecycleEntries } from '../../services/campaign-state';
 import type { ArchiveChapter } from '../../types';
 
 export function ChapterTab() {
@@ -145,7 +145,8 @@ export function ChapterTab() {
             }
 
             const npcLedger = useAppStore.getState().npcLedger ?? [];
-            const sealResult = await runCombinedSeal(activeCampaignId, chapter, provider, npcLedger);
+            const currentFacts = useAppStore.getState().divergenceRegister?.entries ?? [];
+            const sealResult = await runCombinedSeal(activeCampaignId, chapter, provider, npcLedger, undefined, undefined, undefined, currentFacts);
 
             if (sealResult.summary) {
                 await api.chapters.update(activeCampaignId, chapter.chapterId, {
@@ -168,7 +169,7 @@ export function ChapterTab() {
                     const sceneIds = chapter.sceneIds?.length
                         ? chapter.sceneIds
                         : [chapter.sceneRange[1]];
-                    const merged = mergeSealEntries(liveRegister, sealResult.divergences, sceneIds[sceneIds.length - 1] ?? '000');
+                    const merged = mergeLifecycleEntries(liveRegister, sealResult.divergences, sceneIds[sceneIds.length - 1] ?? '000');
                     useAppStore.getState().setDivergenceRegister(merged);
                     toast.info(`${sealResult.divergences.length} divergence facts extracted`);
                 }

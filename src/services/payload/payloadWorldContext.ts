@@ -5,6 +5,7 @@ import { relationBand, describeHex } from '../npc/agencyBands';
 import { buildReactionMenu, type ReactionContext } from '../npc/reactionMenu';
 import { applyRepressionToMenu } from '../npc/reactionRepression';
 import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
+import { isFactActive } from '../campaign-state/divergenceRegister';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
 
 /**
@@ -629,6 +630,7 @@ export function assembleWorldBlocks(opts: {
         const ledger = npcLedger ?? [];
         const isActive = (e: DivergenceEntry): boolean => {
             if (e.enabled === false) return false;
+            if (!isFactActive(e)) return false;
             if (e.pinned) return true;
             const chapterOn = divergenceRegister.chapterToggles[e.chapterId] !== false;
             if (!chapterOn) return false;

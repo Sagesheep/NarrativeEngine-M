@@ -53,6 +53,59 @@ export function stripReasoning(raw: string): string {
     return clean.trim();
 }
 
+/** State slots are intentionally limited to facts with exactly one current value. */
+const STATE_KEY_RE = /^(?:item|npc|place|debt):[a-z0-9][a-z0-9_-]*:(?:holder|location|status|allegiance|controller)$/;
+
+export function isValidStateKey(value: unknown): value is string {
+    return typeof value === 'string' && STATE_KEY_RE.test(value);
+}
+
+/** Missing lifecycle data is the backward-compatible active state for old campaigns. */
+export function isFactActive(entry: DivergenceEntry): boolean {
+    return entry.status !== 'superseded' && entry.status !== 'retracted';
+}
+
+/**
+ * Seal merge with guarded state replacement (port of mainApp 3996b50). A new fact
+ * that names `supersedesFactId` replaces that fact only when the target is active,
+ * not pinned, and in the exact same state slot (`stateKey`); anything ambiguous
+ * becomes a harmless additive fact. `mergeSealEntries` stays append-only for
+ * callers that never supersede (NPC avoidance facts).
+ */
+export function mergeLifecycleEntries(
+    register: DivergenceRegister,
+    newEntries: DivergenceEntry[],
+    sceneId: string,
+): DivergenceRegister {
+    if (newEntries.length === 0) return register;
+
+    const entries = [...register.entries];
+    for (const extracted of newEntries) {
+        // An extraction instruction, not persistent campaign data.
+        const { supersedesFactId, ...entry } = extracted;
+        const nextEntry: DivergenceEntry = { ...entry, status: 'active' };
+
+        if (supersedesFactId && isValidStateKey(nextEntry.stateKey)) {
+            const targetIndex = entries.findIndex(e => e.id === supersedesFactId);
+            const target = targetIndex >= 0 ? entries[targetIndex] : undefined;
+            if (target && isFactActive(target) && !target.pinned && target.stateKey === nextEntry.stateKey) {
+                entries[targetIndex] = { ...target, status: 'superseded', supersededBy: nextEntry.id };
+            }
+        }
+
+        entries.push(nextEntry);
+    }
+
+    return {
+        entries,
+        chapterToggles: register.chapterToggles,
+        categoryToggles: register.categoryToggles,
+        lastUpdatedSceneId: sceneId,
+        lastUpdatedAt: Date.now(),
+        version: 2,
+    };
+}
+
 export function mergeSealEntries(
     register: DivergenceRegister,
     newEntries: DivergenceEntry[],
@@ -95,6 +148,7 @@ export function renderRegisterForPayload(
         // static fact property → cast-independent → cache-safe (SAFETY RAIL holds).
         if (publicOnly && e.knownBy !== undefined) return false;
         if (e.enabled === false) return false;
+        if (!isFactActive(e)) return false;
         if (e.pinned) return true;
         const chapterOn = register.chapterToggles[e.chapterId] !== false;
         if (!chapterOn) return false;

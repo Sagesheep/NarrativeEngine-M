@@ -2,19 +2,20 @@
  * Seal stage — extracted from turnPostProcess.ts (W10).
  */
 
-import type { NPCEntry, ArchiveChapter, ArchiveIndexEntry, LLMProvider, WitnessSource } from '../../../types';
+import type { NPCEntry, ArchiveChapter, ArchiveIndexEntry, DivergenceEntry, LLMProvider, WitnessSource } from '../../../types';
 import type { TurnState, TurnCallbacks } from '../turnTypes';
 import { api } from '../../apiClient';
 import { notify } from '../../ports/notify';
 import { shouldAutoSeal, sealChapter, sealChapterCombined, type CombinedSealResult } from '../../archive';
 import { computeOpenThreads } from '../../payload/payloadWorldContext';
-import { mergeSealEntries } from '../../campaign-state';
+import { mergeLifecycleEntries } from '../../campaign-state';
 import { tierAllows } from '../aiTier';
 import { tryWithFallback } from './witnessStage';
 
 export async function runCombinedSeal(
     activeCampaignId: string, chapter: ArchiveChapter, provider: LLMProvider,
     npcLedger: NPCEntry[], archiveIndex?: ArchiveIndexEntry[], openThreads?: string[], existingSubjectTokens?: string[],
+    activeStateFacts: DivergenceEntry[] = [],
 ): Promise<CombinedSealResult> {
     const allScenes = await api.archive.getIndex(activeCampaignId);
     const startNum = parseInt(chapter.sceneRange[0], 10);
@@ -28,7 +29,7 @@ export async function runCombinedSeal(
     const sceneIds = chapter.sceneIds?.length ? chapter.sceneIds : Array.from({ length: endNum - startNum + 1 }, (_, i) => String(startNum + i).padStart(3, '0'));
     const npcInfo = npcLedger.map(n => ({ id: n.id, name: n.name, aliases: n.aliases ?? '' }));
     const indexEntries = archiveIndex ? archiveIndex.filter(e => { const sn = parseInt(e.sceneId); return sn >= startNum && sn <= endNum; }).map(e => ({ sceneId: e.sceneId, npcsWitnessed: e.npcsWitnessed })) : undefined;
-    return sealChapterCombined(provider, scenesContent, chapter.chapterId, chapter.title, sceneIds, npcInfo, indexEntries, 2, openThreads, existingSubjectTokens);
+    return sealChapterCombined(provider, scenesContent, chapter.chapterId, chapter.title, sceneIds, npcInfo, indexEntries, 2, openThreads, existingSubjectTokens, activeStateFacts);
 }
 
 export async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, activeCampaignId: string, loadChapters: (campaignId: string) => Promise<ArchiveChapter[]>): Promise<void> {
@@ -47,9 +48,10 @@ export async function handleSealChapter(state: TurnState, callbacks: TurnCallbac
                 const alreadySealedChapters = currentChapters.filter(c => c.sealedAt && c.chapterId !== sealed.chapterId);
                 const openThreadsList = computeOpenThreads(alreadySealedChapters).map(t => t.text);
                 const existingTokens = state.divergenceRegister ? Array.from(new Set(state.divergenceRegister.entries.map(e => e.subjectToken).filter((t): t is string => typeof t === 'string' && t.length > 0))) : undefined;
+                const currentFacts = state.divergenceRegister?.entries ?? [];
                 const sealResult = await tryWithFallback('SealChapter',
-                    () => runCombinedSeal(activeCampaignId, sealed, summarizerProvider ?? storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreadsList, existingTokens),
-                    () => runCombinedSeal(activeCampaignId, sealed, storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreadsList, existingTokens));
+                    () => runCombinedSeal(activeCampaignId, sealed, summarizerProvider ?? storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreadsList, existingTokens, currentFacts),
+                    () => runCombinedSeal(activeCampaignId, sealed, storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreadsList, existingTokens, currentFacts));
                 if (sealResult.summary) {
                     await api.chapters.update(activeCampaignId, sealed.chapterId, {
                         title: sealResult.summary.title, summary: sealResult.summary.summary, keywords: sealResult.summary.keywords,
@@ -96,7 +98,7 @@ export async function handleSealChapter(state: TurnState, callbacks: TurnCallbac
                 const liveRegister = state.divergenceRegister;
                 if (sealResult.divergences.length > 0 && liveRegister && callbacks.setDivergenceRegister) {
                     const sceneIds = sealed.sceneIds?.length ? sealed.sceneIds : [sealed.sceneRange[1]];
-                    const merged = mergeSealEntries(liveRegister, sealResult.divergences, sceneIds[sceneIds.length - 1] ?? '000');
+                    const merged = mergeLifecycleEntries(liveRegister, sealResult.divergences, sceneIds[sceneIds.length - 1] ?? '000');
                     callbacks.setDivergenceRegister(merged);
                 } else if (sealResult.divergenceParseError) {
                     notify.warning('Chapter sealed but divergence facts failed to parse');

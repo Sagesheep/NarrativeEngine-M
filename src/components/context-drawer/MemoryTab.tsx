@@ -10,6 +10,15 @@ import { CATEGORY_COLORS, CATEGORY_DOTS, knownByTokenLabel, knownBySummary, know
 type Tab = 'facts' | 'review';
 type FactsView = 'chapter' | 'topic' | 'subject';
 
+/** A later fact replaced this one (guarded supersession); it is no longer sent to the GM. */
+function ReplacedTag({ entry }: { entry: DivergenceEntry }) {
+    if (entry.status !== 'superseded') return null;
+    return (
+        <span className="ml-1 text-[8px] uppercase font-bold text-text-dim bg-white/5 px-1 rounded" title="A later fact replaced this one; it is no longer sent to the GM">
+            replaced
+        </span>
+    );
+}
 
 
 /** KnownBy editor popover — inline, matches existing inline-edit pattern. */
@@ -195,6 +204,7 @@ export function MemoryTab() {
 
     const activeCount = entries.filter(e => {
         if (e.enabled === false) return false;
+        if (e.status === 'superseded' || e.status === 'retracted') return false;
         if (e.pinned) return true;
         const chapterOn = reg.chapterToggles[e.chapterId] !== false;
         if (!chapterOn) return false;
@@ -514,6 +524,7 @@ export function MemoryTab() {
                                                     <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
                                                     <span className="min-w-0 flex-1">
                                                         {e.text}
+                                                        <ReplacedTag entry={e} />
                                                         <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]</span>
                                                         <span className={`text-[9px] ml-1 ${knownByChipClass(e.knownBy)}`}>(known to: {knownBySummary(e.knownBy, npcLedger ?? [])})</span>
                                                     </span>
@@ -676,6 +687,7 @@ export function MemoryTab() {
                                                                 <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
                                                                 <span className="min-w-0 flex-1">
                                                                     {e.text}
+                                                                    <ReplacedTag entry={e} />
                                                                     <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
                                                                     <span className={`text-[9px] ml-1 ${knownByChipClass(e.knownBy)}`}>(known to: {knownBySummary(e.knownBy, npcLedger ?? [])})</span>
                                                                 </span>
@@ -769,6 +781,7 @@ export function MemoryTab() {
                                                     <span className="min-w-0 flex-1">
                                                         <span className="text-text-dim/50 text-[9px]">[#{e.sceneRef}]</span>{' '}
                                                         {e.text}
+                                                        <ReplacedTag entry={e} />
                                                         {isLatest && group.entries.length > 1 && (
                                                             <span className="ml-1 text-[8px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded">latest</span>
                                                         )}
