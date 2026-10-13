@@ -232,17 +232,15 @@ describe('runDirectorBrief', () => {
             expect(DIRECTOR_BRIEF_TIMEOUT_MS).toBe(120_000);
         });
 
-        it('passes trackingLabel and priority to llmCall (no own thinkingEffort — WO-04b §3)', async () => {
+        it('passes trackingLabel and priority to llmCall, with thinking off', async () => {
             mockLlmCall.mockResolvedValueOnce(VALID_BRIEF);
             await runDirectorBrief(baseInput());
             const opts = mockLlmCall.mock.calls[0][2] as any;
             expect(opts.trackingLabel).toBe('director-brief');
             expect(opts.priority).toBe('low');
             expect(opts.timeoutMs).toBe(120_000);
-            // WO-04b §3: no own `thinkingEffort` property — llmCall inherits the
-            // chosen endpoint's configured `thinkingEffort` (llmCall.ts:95).
-            expect(Object.prototype.hasOwnProperty.call(opts, 'thinkingEffort')).toBe(false);
-            expect(opts.thinkingEffort).toBeUndefined();
+            // Thinking off whatever the endpoint is set to (desktop's Turn Prep finding).
+            expect(opts.thinkingEffort).toBe('off');
         });
 
         it('forwards the abort signal to llmCall', async () => {

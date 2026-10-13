@@ -14,7 +14,8 @@ export async function llmParseJson<T>(
     prompt: string,
     contextLabel: string,
 ): Promise<T | null> {
-    const firstResponse = await llmCall(provider, prompt, { priority: 'low' });
+    // JSON extraction: thinking off, as desktop runs its NPC calls.
+    const firstResponse = await llmCall(provider, prompt, { priority: 'low', thinkingEffort: 'off' });
     if (!firstResponse) return null;
 
     const firstClean = extractJson(firstResponse);
@@ -23,7 +24,7 @@ export async function llmParseJson<T>(
     } catch (firstErr) {
         console.warn(`[${contextLabel}] First parse failed, retrying with stricter prompt...`, firstErr);
         const retryPrompt = `${prompt}\n\nYour previous response was:\n${firstResponse}\n${RETRY_SUFFIX}`;
-        const retryResponse = await llmCall(provider, retryPrompt, { priority: 'low' });
+        const retryResponse = await llmCall(provider, retryPrompt, { priority: 'low', thinkingEffort: 'off' });
         if (!retryResponse) return null;
         const retryClean = extractJson(retryResponse);
         try {
