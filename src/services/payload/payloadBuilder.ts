@@ -5,7 +5,8 @@ import { countTokens } from '../infrastructure';
 import { computeBudgets, type BudgetMap } from './payloadBudgeter';
 import { buildStablePreamble, buildDivergenceBlock, isThinkingEnabled } from './payloadStableContent';
 import { assembleWorldBlocks, trimWorldBlocks, type WorldBlock, type NpcStrategy } from './payloadWorldContext';
-import { fitHistory, buildPinnedMemoriesBlock, pinnedExcerptsTokenCost } from './payloadHistoryFitting';
+import { fitHistory, computeHistoryBudget, buildPinnedMemoriesBlock, pinnedExcerptsTokenCost } from './payloadHistoryFitting';
+import { buildChapterRecapBlock } from './lodRenderer';
 import { queryTraits, formatTraitsForContext } from '../campaign-state';
 
 export type { BudgetMap, WorldBlock, NpcStrategy };
@@ -212,11 +213,32 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         console.warn(`[Payload] non-history content ${nonHistoryPlusUser}t exceeds context limit ${limit}t (stable=${stableTokens} divergence=${divergenceTokens} world=${combinedWorldTokens} volatile=${volatileTokens} pinned=${pinnedMemoriesTokens}) — history dropped, provider may truncate`);
     }
 
+    // Chapter recaps: the sealed chapters behind the condensed boundary, which the
+    // verbatim window no longer carries. Up to half the history budget; the verbatim
+    // window gets the rest. Deterministic, so it rides in the cached prefix.
+    const recap = buildChapterRecapBlock({
+        chapters,
+        archiveIndex,
+        messages: history,
+        condensedUpToIndex,
+        historyBudget: computeHistoryBudget(userMessage, nonHistoryTokens, limit),
+    });
+    if (recap.content) {
+        const tiers = Object.values(recap.tierByChapterId);
+        const count = (t: string) => tiers.filter(x => x === t).length;
+        const dropped = count('dropped');
+        addTrace({
+            source: 'Chapter Recaps', classification: 'summary', tokens: recap.tokens,
+            reason: `${count('summary')} summary, ${count('synopsis')} synopsis${dropped > 0 ? `, ${dropped} dropped` : ''}`,
+            included: true, position: 'history', preview: recap.content,
+        });
+    }
+
     const { fitted, historyUsed, historyBudget } = fitHistory(
         history,
         condensedUpToIndex,
         userMessage,
-        nonHistoryTokens,
+        nonHistoryTokens + recap.tokens,
         limit,
     );
 
@@ -234,6 +256,9 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     if (stableContent) messages.push({ role: 'system', content: stableContent, cache_control: { type: 'ephemeral' } });
     if (divergenceContent) messages.push({ role: 'system', content: divergenceContent, cache_control: { type: 'ephemeral' } });
     if (pinnedMemoriesContent) messages.push({ role: 'system', content: pinnedMemoriesContent, cache_control: { type: 'ephemeral' } });
+    // No breakpoint of its own (four is Claude's limit): the stamp on the last
+    // history message below covers it.
+    if (recap.content) messages.push({ role: 'system', content: recap.content });
 
     messages.push(...fitted);
 

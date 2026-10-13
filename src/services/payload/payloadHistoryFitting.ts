@@ -17,6 +17,17 @@ export function buildPinnedMemoriesBlock(pinnedExcerpts: PinnedExcerpt[], messag
 
 const THINK_TAG_REGEX = /<think>[\s\S]*?<\/think>\s*/gi;
 
+/** Tokens left for history once the non-history content and the user message are placed. */
+export function computeHistoryBudget(userMessage: string, reservedTokens: number, limit: number): number {
+    const reservedTotal = reservedTokens + countTokens(userMessage);
+    // Proportional safety margin (was a flat 200): cl100k undercounts local
+    // model tokenizers ~10-20%, so the margin scales with the limit (AUDIT F10).
+    // Clamp at 0 so a heavy preamble can't produce a negative budget that the
+    // loop would misread (AUDIT F6).
+    const margin = Math.max(200, Math.floor(limit * 0.05));
+    return Math.max(0, limit - reservedTotal - margin);
+}
+
 export function fitHistory(
     history: ChatMessage[],
     condensedUpToIndex: number | undefined,
@@ -25,13 +36,7 @@ export function fitHistory(
     limit: number,
 ): { fitted: OpenAIMessage[]; historyUsed: number; userTokens: number; historyBudget: number } {
     const userTokens = countTokens(userMessage);
-    const reservedTotal = reservedTokens + userTokens;
-    // Proportional safety margin (was a flat 200): cl100k undercounts local
-    // model tokenizers ~10-20%, so the margin scales with the limit (AUDIT F10).
-    // Clamp at 0 so a heavy preamble can't produce a negative budget that the
-    // loop would misread (AUDIT F6).
-    const margin = Math.max(200, Math.floor(limit * 0.05));
-    const historyBudget = Math.max(0, limit - reservedTotal - margin);
+    const historyBudget = computeHistoryBudget(userMessage, reservedTokens, limit);
 
     const candidateMessages = (condensedUpToIndex !== undefined && condensedUpToIndex >= 0)
         ? history.slice(condensedUpToIndex + 1)
