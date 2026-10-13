@@ -8,7 +8,7 @@ import { assembleWorldBlocks, trimWorldBlocks, type WorldBlock, type NpcStrategy
 import { fitHistory, computeHistoryBudget, buildPinnedMemoriesBlock, pinnedExcerptsTokenCost } from './payloadHistoryFitting';
 import { buildChapterRecapBlock } from './lodRenderer';
 import { buildAbsoluteCommandBlock } from '../turn/absoluteCommand';
-import { sceneNoteText as buildSceneNoteText, sceneNoteTokens } from './sceneNote';
+import { sceneNoteText as buildSceneNoteText, sceneNoteTokens, normalizeSceneNoteRole } from './sceneNote';
 import { queryTraits, formatTraitsForContext } from '../campaign-state';
 
 export type { BudgetMap, WorldBlock, NpcStrategy };
@@ -208,7 +208,11 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     if (retrievedRulesText) addTrace({ source: 'Retrieved Rules', classification: 'volatile_state', tokens: countTokens(retrievedRulesText), reason: 'RAG rules retrieved for this turn', included: true, position: 'system_dynamic', preview: retrievedRulesText });
     if (profileText) addTrace({ source: 'Player Profile', classification: 'volatile_state', tokens: countTokens(profileText), reason: 'Scene-selected PC traits', included: true, position: 'system_dynamic', preview: profileText });
     if (inventoryText) addTrace({ source: 'Inventory', classification: 'volatile_state', tokens: countTokens(inventoryText), reason: 'Player inventory', included: true, position: 'system_dynamic', preview: inventoryText });
-    if (sceneNoteText) addTrace({ source: 'GM Scene Note', classification: 'volatile_state', tokens: sceneNoteReserve, reason: `Player note, placed at depth ${context.sceneNoteDepth ?? 3} when the request is sent`, included: true, position: `history_at_${context.sceneNoteDepth ?? 3}`, preview: sceneNoteText });
+    if (sceneNoteText) {
+        const noteRole = normalizeSceneNoteRole(context.sceneNoteRole);
+        const noteDepth = noteRole === 'thinking' ? 0 : (context.sceneNoteDepth ?? 3);
+        addTrace({ source: 'GM Scene Note', classification: 'volatile_state', tokens: sceneNoteReserve, reason: `Player note as ${noteRole}, placed at depth ${noteDepth} when the request is sent`, included: true, position: `history_at_${noteDepth}`, preview: sceneNoteText });
+    }
 
     const nonHistoryTokens = stableTokens + divergenceTokens + pinnedMemoriesTokens + combinedWorldTokens + volatileTokens + sceneNoteReserve;
 

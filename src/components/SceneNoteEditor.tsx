@@ -1,7 +1,15 @@
 import React from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { StickyNote, Trash2 } from 'lucide-react';
-import { SCENE_NOTE_DEFAULT_DEPTH, SCENE_NOTE_MAX_DEPTH } from '../services/payload/sceneNote';
+import { SCENE_NOTE_DEFAULT_DEPTH, SCENE_NOTE_MAX_DEPTH, SCENE_NOTE_ROLES, normalizeSceneNoteRole } from '../services/payload/sceneNote';
+import type { SceneNoteRole } from '../types';
+
+const ROLE_HINTS: Record<SceneNoteRole, string> = {
+    system: 'An instruction to the GM.',
+    user: 'Sent as you, speaking out of character.',
+    assistant: 'Sent as the GM. At depth 0 the reply continues from your text (a prefill).',
+    thinking: "Starts the GM's reasoning with your text; always sent last. Needs a model that reasons in <think> tags.",
+};
 
 /**
  * Scene Note — the campaign's one prompt injection (like SillyTavern's author's
@@ -12,6 +20,8 @@ export const SceneNoteEditor: React.FC = () => {
     const context = useAppStore(s => s.context);
     const updateContext = useAppStore(s => s.updateContext);
     const depth = context.sceneNoteDepth ?? SCENE_NOTE_DEFAULT_DEPTH;
+    const role = normalizeSceneNoteRole(context.sceneNoteRole);
+    const isThinking = role === 'thinking';
     const hasText = !!context.sceneNote?.trim();
 
     const handleClear = () => {
@@ -61,7 +71,20 @@ export const SceneNoteEditor: React.FC = () => {
                     }`}
             />
 
-            <div className="flex items-center gap-4 bg-void-lighter border border-border p-3 md:p-2 rounded min-h-[56px] md:min-h-0">
+            <div className="flex flex-col gap-1.5 bg-void-lighter border border-border p-3 md:p-2 rounded">
+                <label htmlFor="scene-note-role" className="text-[10px] md:text-[9px] text-text-dim uppercase tracking-wider">Send as</label>
+                <select
+                    id="scene-note-role"
+                    value={role}
+                    onChange={(e) => updateContext({ sceneNoteRole: e.target.value as SceneNoteRole })}
+                    className="w-full bg-void border border-border rounded px-3 py-2 text-[16px] md:text-xs text-text-primary min-h-[44px] md:min-h-0 focus:outline-none focus:border-terminal"
+                >
+                    {SCENE_NOTE_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+                <span className="text-[9px] text-text-dim/60">{ROLE_HINTS[role]}</span>
+            </div>
+
+            <div className={`flex items-center gap-4 bg-void-lighter border border-border p-3 md:p-2 rounded min-h-[56px] md:min-h-0 ${isThinking ? 'opacity-50' : ''}`}>
                 <div className="flex-1 flex flex-col gap-1.5">
                     <label className="text-[10px] md:text-[9px] text-text-dim uppercase tracking-wider">Depth</label>
                     <input
@@ -69,22 +92,25 @@ export const SceneNoteEditor: React.FC = () => {
                         min="0"
                         max={SCENE_NOTE_MAX_DEPTH}
                         step="1"
-                        value={depth}
+                        value={isThinking ? 0 : depth}
+                        disabled={isThinking}
                         onChange={(e) => updateContext({ sceneNoteDepth: parseInt(e.target.value) })}
-                        className="w-full accent-amber cursor-pointer h-6 md:h-4"
+                        className="w-full accent-amber cursor-pointer h-6 md:h-4 disabled:cursor-not-allowed"
                         aria-label="Scene note depth"
                     />
-                    <span className="text-[9px] text-text-dim/60">0 = right after your latest message (strongest). Higher = further back.</span>
+                    <span className="text-[9px] text-text-dim/60">
+                        {isThinking ? 'Thinking is always sent last.' : '0 = right after your latest message (strongest). Higher = further back.'}
+                    </span>
                 </div>
                 <div className="text-center min-w-[40px]">
-                    <div className="text-sm md:text-xs font-bold text-amber">{depth}</div>
+                    <div className="text-sm md:text-xs font-bold text-amber">{isThinking ? 0 : depth}</div>
                     <div className="text-[9px] md:text-[8px] text-text-dim uppercase tracking-tight">msgs</div>
                 </div>
             </div>
 
             <p className="text-[9px] text-text-dim/50 italic">
                 {context.sceneNoteActive && hasText
-                    ? `✓ Sent with every reply and swipe, ${depth === 0 ? 'after your latest message' : `${depth} message${depth === 1 ? '' : 's'} from the end`}. Not saved in the chat.`
+                    ? `✓ Sent as ${SCENE_NOTE_ROLES.find(r => r.value === role)!.label} with every reply and swipe, ${isThinking || depth === 0 ? 'last' : `${depth} message${depth === 1 ? '' : 's'} from the end`}. Not saved in the chat.`
                     : 'Off. Nothing is sent.'}
             </p>
         </div>

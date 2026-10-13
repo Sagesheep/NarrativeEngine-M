@@ -14,7 +14,7 @@ import { capturePendingTurnSnapshot, getActiveSnapshotId } from './pendingCommit
 import { buildWatchdogDossier } from './directorWatchdog';
 import { runDirectorBrief, lastAssistantContent } from './directorBrief';
 import { buildOneShotDirective } from '../oneshot/oneShotEvents';
-import { applySceneNote } from '../payload/sceneNote';
+import { applySceneNote, restoreThinkingPrefill } from '../payload/sceneNote';
 import { getApiFormat } from '../../utils/llmApiHelper';
 import type { GatheredContext } from './turnContext';
 
@@ -301,8 +301,9 @@ export async function runTurn(
         await sendMessage(
             provider,
             requestPayload,
-            (fullText) => callbacks.updateLastAssistant(fullText),
-            async (finalText, toolCall, reasoningContent) => {
+            (fullText) => callbacks.updateLastAssistant(restoreThinkingPrefill(fullText, context)),
+            async (rawFinalText, toolCall, reasoningContent) => {
+                const finalText = restoreThinkingPrefill(rawFinalText, context);
                 if (toolCall && toolCall.name === 'query_campaign_lore') {
                     callbacks.onCheckingNotes(true);
                     callbacks.setPipelinePhase?.('checking-notes');

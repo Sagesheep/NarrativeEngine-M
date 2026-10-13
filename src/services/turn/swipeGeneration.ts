@@ -4,7 +4,7 @@ import { sendMessage } from '../chatEngine';
 import { sanitizePayloadForApi } from '../llm/payloadSanitizer';
 import { extractAndStripSceneStakes } from './sceneStakesTag';
 import { uid } from '../../utils/uid';
-import { applySceneNote, type SceneNoteInput } from '../payload/sceneNote';
+import { applySceneNote, restoreThinkingPrefill, type SceneNoteInput } from '../payload/sceneNote';
 import { getApiFormat } from '../../utils/llmApiHelper';
 
 export const MAX_SWIPES = 5;
@@ -40,9 +40,8 @@ export function generateSwipeVariant(
 ): Promise<SwipeGenerationResult> {
     const { provider, cachedPayload, modelName, temperature, abortSignal, guidance, sceneNote } = opts;
 
-    // Sanitize with allowTools=false (swipes 2–5 never get tools), then place the
-    // Scene Note at its depth (before the swipe tail, so depth counts as on a reply).
-    const sanitized = applySceneNote(sanitizePayloadForApi(cachedPayload, false, modelName), sceneNote, getApiFormat(provider));
+    // Sanitize with allowTools=false (swipes 2–5 never get tools).
+    const sanitized = sanitizePayloadForApi(cachedPayload, false, modelName);
 
     // Build the tail system messages: the no-tools line, then optional guidance.
     const tailMessages: OpenAIMessage[] = [
@@ -55,7 +54,10 @@ export function generateSwipeVariant(
         });
     }
 
-    const withSystemLine: OpenAIMessage[] = [...sanitized, ...tailMessages];
+    // Place the Scene Note after the tail: depth counts only player/GM messages, so
+    // depth N lands where it would on a reply, and a prefill (Assistant at depth 0,
+    // Thinking) stays the very last message.
+    const withSystemLine: OpenAIMessage[] = applySceneNote([...sanitized, ...tailMessages], sceneNote, getApiFormat(provider));
 
     const sampling: SamplingConfig = { temperature };
 
@@ -75,9 +77,10 @@ export function generateSwipeVariant(
             provider,
             withSystemLine,
             (chunk) => {
-                onChunk(chunk);
+                onChunk(restoreThinkingPrefill(chunk, sceneNote));
             },
-            (finalText, _toolCall, reasoning) => {
+            (rawFinalText, _toolCall, reasoning) => {
+                const finalText = restoreThinkingPrefill(rawFinalText, sceneNote);
                 // Swipes never accept tool calls (tools: undefined) — ignore.
                 reasoningContent = reasoning ?? '';
                 const { displayText, stakes } = extractAndStripSceneStakes(finalText);

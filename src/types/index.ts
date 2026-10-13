@@ -4,6 +4,8 @@ export type AiTier = 'lite' | 'pro' | 'max';
 
 export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 
+export type SceneNoteRole = 'system' | 'user' | 'assistant' | 'thinking';
+
 export type ReadingFont = 'mono' | 'serif' | 'sans';
 export type ReadingLeading = 'tight' | 'normal' | 'relaxed';
 
@@ -238,6 +240,8 @@ export type GameContext = {
     sceneNote: string;
     sceneNoteActive: boolean;
     sceneNoteDepth: number;
+    /** Who the Scene Note speaks as. 'thinking' is a reasoning prefill (always last). Default 'system'. */
+    sceneNoteRole?: SceneNoteRole;
     surpriseConfig?: SurpriseConfig;
     encounterConfig?: EncounterConfig;
     npcIntroConfig?: NpcIntroConfig;

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { applySceneNote, sceneNoteText, SCENE_NOTE_LABEL } from '../sceneNote';
+import { applySceneNote, sceneNoteText, restoreThinkingPrefill, SCENE_NOTE_LABEL } from '../sceneNote';
+import type { SceneNoteRole } from '../../../types';
 import { buildPayload } from '../payloadBuilder';
 import { defaultContext } from '../../../store/slices/campaignSlice';
 import { defaultSettings } from '../../../store/settingsMigration';
@@ -60,6 +61,46 @@ describe('applySceneNote', () => {
             const call = out.findIndex(m => (m as { tool_calls?: unknown[] }).tool_calls?.length);
             expect(out[call + 1].role).toBe('tool');
         }
+    });
+});
+
+describe('Scene Note roles', () => {
+    const withRole = (role: SceneNoteRole, depth = 1) => ({ ...note(depth), sceneNoteRole: role });
+
+    it('User keeps the label and its depth; it is not converted for Claude', () => {
+        const placed = applySceneNote(msgs, withRole('user'), 'claude')[6];
+        expect(placed).toEqual({ role: 'user', content: `${SCENE_NOTE_LABEL}\nKeep it explicit.` });
+    });
+
+    it('Assistant sends the text as-is; at depth 0 it is the last message (a prefill)', () => {
+        const out = applySceneNote(msgs, withRole('assistant', 0), 'openai');
+        expect(out[out.length - 1]).toEqual({ role: 'assistant', content: 'Keep it explicit.' });
+        expect(applySceneNote(msgs, withRole('assistant', 2), 'openai')[5]).toEqual({ role: 'assistant', content: 'Keep it explicit.' });
+    });
+
+    it('Thinking is a <think> prefill, always last whatever the depth', () => {
+        const out = applySceneNote(msgs, withRole('thinking', 7), 'openai');
+        expect(out[out.length - 1]).toEqual({ role: 'assistant', content: '<think>\nKeep it explicit.' });
+    });
+
+    it('an unknown role falls back to System', () => {
+        expect(applySceneNote(msgs, { ...note(1), sceneNoteRole: 'narrator' as never }, 'openai')[6].role).toBe('system');
+    });
+});
+
+describe('restoreThinkingPrefill', () => {
+    const thinking = { ...note(0), sceneNoteRole: 'thinking' as const };
+
+    it('puts the sent <think> prefix back once the reply closes its reasoning', () => {
+        expect(restoreThinkingPrefill(' so she lies.</think>The guard nods.', thinking))
+            .toBe('<think>\nKeep it explicit. so she lies.</think>The guard nods.');
+    });
+
+    it('leaves the reply alone while reasoning is still streaming, when the model ignored the prefill, or for other roles', () => {
+        expect(restoreThinkingPrefill(' so she lies', thinking)).toBe(' so she lies');
+        expect(restoreThinkingPrefill('The guard nods.', thinking)).toBe('The guard nods.');
+        expect(restoreThinkingPrefill('<think>own</think>Story', thinking)).toBe('<think>own</think>Story');
+        expect(restoreThinkingPrefill('x</think>y', { ...note(0), sceneNoteRole: 'assistant' })).toBe('x</think>y');
     });
 });
 
