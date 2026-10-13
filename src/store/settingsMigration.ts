@@ -1,6 +1,7 @@
 import type { AppSettings, AIPreset, LLMProvider, ApiFormat } from '../types';
 import { uid } from '../utils/uid';
 import { READING_DEFAULTS, clampReadingSize, normalizeReadingFont, normalizeReadingLeading } from '../components/chat/readingPrefs';
+import { DEFAULT_SLOT_THINKING, migratePresetSlotThinking } from './slices/slotThinking';
 
 export const defaultProvider: LLMProvider = {
     id: uid(),
@@ -19,6 +20,7 @@ export const defaultPreset: AIPreset = {
     summarizerAIProviderId: defaultProvider.id,
     utilityAIProviderId: '',
     auxiliaryAIProviderId: '',
+    slotThinking: { ...DEFAULT_SLOT_THINKING },
 };
 
 export const defaultSettings: AppSettings = {
@@ -186,6 +188,9 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
             preset.storyAIProviderId = providers[0].id;
         }
     }
+
+    // Thinking moved from the provider to the preset slot; seed slots that predate it.
+    presets = presets.map(preset => migratePresetSlotThinking(preset, providers));
 
     return {
         presets,

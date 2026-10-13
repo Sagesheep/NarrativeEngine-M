@@ -24,6 +24,7 @@ import { PCCreationWizard } from './pc/PCCreationWizard';
 import { RegenerateSheet } from './chat/RegenerateSheet';
 import { useSwipeVariants } from './hooks/useSwipeVariants';
 import { useRetryStoryAI } from './hooks/useRetryStoryAI';
+import { applyActiveSlotThinking } from '../store/slices/slotThinking';
 
 export function ChatArea() {
     const {
@@ -207,12 +208,14 @@ export function ChatArea() {
             getFreshProvider: () => getActiveStoryEndpoint(),
             getFreshSummarizerProvider: () => {
                 const s = getActiveSummarizerEndpoint?.();
-                return (s?.endpoint && s?.modelName) ? s : undefined;
+                // No summarizer: the story provider does the job, with the summarizer slot's thinking.
+                return (s?.endpoint && s?.modelName) ? s : applyActiveSlotThinking(useAppStore.getState().settings, 'summarizer', getActiveStoryEndpoint());
             },
             getUtilityEndpoint: () => getActiveUtilityEndpoint(),
             getFreshAuxiliaryProvider: () => {
                 const aux = getActiveAuxiliaryEndpoint?.();
-                return aux?.modelName ? aux : getActiveStoryEndpoint();
+                // A story fallback is still doing the auxiliary job, so it takes the auxiliary slot's thinking.
+                return aux?.modelName ? aux : applyActiveSlotThinking(useAppStore.getState().settings, 'auxiliary', getActiveStoryEndpoint());
             },
             getExtractionProvider: () => {
                 const hasEndpoint = (p?: LLMProvider) => !!(p?.endpoint && p?.modelName);
@@ -220,7 +223,7 @@ export function ChatArea() {
                 if (hasEndpoint(a)) return a!;
                 const s = getActiveSummarizerEndpoint?.();
                 if (hasEndpoint(s)) return s!;
-                return getActiveStoryEndpoint();
+                return applyActiveSlotThinking(useAppStore.getState().settings, 'auxiliary', getActiveStoryEndpoint());
             },
             forcedInterventions: forcedAIs,
             incrementBookkeepingTurnCounter: () => useAppStore.getState().incrementBookkeepingTurnCounter(),

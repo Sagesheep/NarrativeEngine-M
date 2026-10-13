@@ -12,6 +12,7 @@ import {
     defaultSettings,
     migrateSettings
 } from '../settingsMigration';
+import { applySlotThinking } from './slotThinking';
 
 
 export {
@@ -172,7 +173,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
         const s = get();
         const preset = s.getActivePreset();
         if (!preset) return undefined;
-        return s.settings.providers.find(p => p.id === preset.storyAIProviderId);
+        return applySlotThinking(s.settings.providers.find(p => p.id === preset.storyAIProviderId), preset, 'story');
     },
 
     getActiveSummarizerEndpoint: () => {
@@ -180,7 +181,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
         const preset = s.getActivePreset();
         if (!preset) return undefined;
         if (!preset.summarizerAIProviderId) return undefined;
-        return s.settings.providers.find(p => p.id === preset.summarizerAIProviderId);
+        return applySlotThinking(s.settings.providers.find(p => p.id === preset.summarizerAIProviderId), preset, 'summarizer');
     },
 
     getActiveUtilityEndpoint: () => {
@@ -188,7 +189,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
         const preset = s.getActivePreset();
         if (!preset) return undefined;
         if (!preset.utilityAIProviderId) return undefined;
-        return s.settings.providers.find(p => p.id === preset.utilityAIProviderId);
+        return applySlotThinking(s.settings.providers.find(p => p.id === preset.utilityAIProviderId), preset, 'utility');
     },
 
     getActiveAuxiliaryEndpoint: () => {
@@ -196,7 +197,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
         const preset = s.getActivePreset();
         if (!preset) return undefined;
         if (!preset.auxiliaryAIProviderId) return undefined;
-        return s.settings.providers.find(p => p.id === preset.auxiliaryAIProviderId);
+        return applySlotThinking(s.settings.providers.find(p => p.id === preset.auxiliaryAIProviderId), preset, 'auxiliary');
     },
 
     getActiveImageEndpoint: () => {

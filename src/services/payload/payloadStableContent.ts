@@ -1,4 +1,5 @@
 import type { AppSettings, ArchiveChapter, DivergenceRegister, PayloadTrace } from '../../types';
+import { applySlotThinking } from '../../store/slices/slotThinking';
 import { countTokens } from '../infrastructure';
 import { renderRegisterForPayload } from '../campaign-state';
 import type { BudgetMap } from './payloadBudgeter';
@@ -7,14 +8,17 @@ import type { BudgetMap } from './payloadBudgeter';
 // Replaces the previous brittle regex over model names
 // (`/deepseek-r|qwq|qwen.*think|r1/i`) — every frontier model in 2026 (GPT-5.x,
 // Claude 4.x, Gemini 2.5, DeepSeek-R) supports thinking via a request param, so
-// the user's per-provider `thinkingEffort` dropdown is the single source of
-// truth. Exported so payloadBuilder.ts can gate the per-turn CoT invocation
-// line on the same test without re-implementing the resolution.
+// the Story slot's thinking level is the single source of truth. Resolution
+// matches the role getters: slot level, then the provider's legacy value, then
+// the inline storyAI field. Exported so payloadBuilder.ts can gate the per-turn
+// CoT invocation line on the same test without re-implementing the resolution.
 export function isThinkingEnabled(settings: AppSettings): boolean {
     const activePreset = settings.presets?.find((p) => p.id === settings.activePresetId);
     const storyProviderId: string | undefined = activePreset?.storyAIProviderId;
     const storyProvider = storyProviderId ? settings.providers?.find((p) => p.id === storyProviderId) : undefined;
-    const effort = storyProvider?.thinkingEffort ?? activePreset?.storyAI?.thinkingEffort;
+    const effort = storyProvider
+        ? applySlotThinking(storyProvider, activePreset, 'story').thinkingEffort
+        : activePreset?.storyAI?.thinkingEffort;
     return effort !== undefined && effort !== 'off';
 }
 
@@ -89,9 +93,8 @@ export function buildStablePreamble(opts: {
     if (context.starterActive && context.starter) stableParts.push(context.starter);
     if (context.continuePromptActive && context.continuePrompt) stableParts.push(context.continuePrompt);
 
-    // Only inject when the active story provider has thinking mode enabled (any
-    // effort level except 'off'). The `thinkingEffort` dropdown on the provider
-    // is the single source of truth — model-name guessing is gone (WO-B §4.1).
+    // Only inject when the Story slot has thinking on (any level except 'off' or
+    // Model default) — model-name guessing is gone (WO-B §4.1).
     // `isThinkingEnabled` does its own preset+provider resolution.
     if (isThinkingEnabled(settings)) {
         stableParts.push("IMPORTANT: If you use a 'thinking' or 'reasoning' block (or any internal reasoning), you MUST still provide the full narrative response AFTER it ends. Never end a turn with only reasoning.");

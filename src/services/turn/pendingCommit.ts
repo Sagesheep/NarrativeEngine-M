@@ -8,6 +8,7 @@ import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from '../pay
 import { notify } from '../ports/notify';
 import { storeAccess, type StoreState } from '../ports/store';
 import { uid } from '../../utils/uid';
+import { applyActiveSlotThinking } from '../../store/slices/slotThinking';
 
 // ── In-memory snapshot ─────────────────────────────────────────────────
 // Lost on crash — that's OK. Relaunch reconciliation rebuilds from the live
@@ -281,12 +282,14 @@ function rebuildStateFromLiveStore(store: StoreState): TurnState {
         getFreshProvider: () => store.getActiveStoryEndpoint(),
         getFreshSummarizerProvider: () => {
             const s = store.getActiveSummarizerEndpoint?.();
-            return (s?.endpoint && s?.modelName) ? s : undefined;
+            // No summarizer: the story provider does the job, with the summarizer slot's thinking.
+            return (s?.endpoint && s?.modelName) ? s : applyActiveSlotThinking(store.settings, 'summarizer', store.getActiveStoryEndpoint());
         },
         getUtilityEndpoint: () => store.getActiveUtilityEndpoint(),
         getFreshAuxiliaryProvider: () => {
             const aux = store.getActiveAuxiliaryEndpoint?.();
-            return aux?.modelName ? aux : store.getActiveStoryEndpoint();
+            // A story fallback is still doing the auxiliary job, so it takes the auxiliary slot's thinking.
+            return aux?.modelName ? aux : applyActiveSlotThinking(store.settings, 'auxiliary', store.getActiveStoryEndpoint());
         },
         getExtractionProvider: () => {
             const hasEndpoint = (p?: { endpoint?: string; modelName?: string }) => !!(p?.endpoint && p?.modelName);
@@ -294,7 +297,7 @@ function rebuildStateFromLiveStore(store: StoreState): TurnState {
             if (hasEndpoint(a)) return a!;
             const s = store.getActiveSummarizerEndpoint?.();
             if (hasEndpoint(s)) return s!;
-            return store.getActiveStoryEndpoint();
+            return applyActiveSlotThinking(store.settings, 'auxiliary', store.getActiveStoryEndpoint());
         },
         incrementBookkeepingTurnCounter: () => storeAccess().getState().incrementBookkeepingTurnCounter(),
         autoBookkeepingInterval: storeAccess().getState().autoBookkeepingInterval,

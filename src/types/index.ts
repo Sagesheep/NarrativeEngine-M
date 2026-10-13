@@ -4,6 +4,12 @@ export type AiTier = 'lite' | 'pro' | 'max';
 
 export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 
+/** Preset slots that carry their own thinking level. Image generation has none. */
+export type ThinkingSlot = 'story' | 'summarizer' | 'utility' | 'auxiliary';
+
+/** A slot's thinking: a level, or 'default' to send nothing and let the model decide. */
+export type SlotThinking = ThinkingEffort | 'default';
+
 export type SceneNoteRole = 'system' | 'user' | 'assistant' | 'thinking';
 
 export type ReadingFont = 'mono' | 'serif' | 'sans';
@@ -17,6 +23,11 @@ export type LLMProvider = {
     modelName: string;
     streamingEnabled?: boolean;
     apiFormat?: ApiFormat;
+    /** Effective thinking level for a request. On a provider returned by the role
+     *  getters (`getActive*Endpoint`) this is the preset slot's level. On a stored
+     *  provider it is the deprecated provider-wide value: thinking is set per preset
+     *  slot (`AIPreset.slotThinking`), and the stored value only seeds the story slot
+     *  on migration. */
     thinkingEffort?: ThinkingEffort;
 };
 
@@ -58,6 +69,9 @@ export type AIPreset = {
     utilityAIProviderId?: string;
     auxiliaryAIProviderId?: string;
     imageAIProviderId?: string;
+    /** Thinking level per slot. A per-call `thinkingEffort` (e.g. 'off' on short
+     *  helper calls) still wins. */
+    slotThinking?: Partial<Record<ThinkingSlot, SlotThinking>>;
     sampling?: SamplingConfig;
     storyAI?: LLMProvider;
     summarizerAI?: LLMProvider;

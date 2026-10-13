@@ -1,9 +1,40 @@
 import { useState } from 'react';
 import { Plus, Trash2, Copy } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import type { AIPreset, SamplingConfig } from '../../types';
+import type { AIPreset, SamplingConfig, SlotThinking, ThinkingSlot } from '../../types';
 import { uid } from '../../utils/uid';
 import { SamplingPanel } from '../SamplingPanel';
+import { SLOT_THINKING_CHOICES, migratePresetSlotThinking } from '../../store/slices/slotThinking';
+
+/** One slot's thinking level, shown under its provider picker. */
+function SlotThinkingPicker({ preset, slot, onChange }: {
+    preset: AIPreset;
+    slot: ThinkingSlot;
+    onChange: (slotThinking: NonNullable<AIPreset['slotThinking']>) => void;
+}) {
+    return (
+        <div className="mt-1 flex items-center gap-2">
+            <label
+                htmlFor={`slot-thinking-${slot}`}
+                className="text-[10px] text-text-dim uppercase tracking-wider shrink-0"
+                title="How much this slot's model reasons before answering. Model default sends nothing, so the model decides (many think by default). Off asks the host to turn thinking off; models that must think drop to their lowest level. Short helper calls always run with Off."
+            >
+                Thinking
+            </label>
+            <select
+                id={`slot-thinking-${slot}`}
+                data-testid={`slot-thinking-${slot}`}
+                value={preset.slotThinking?.[slot] ?? 'default'}
+                onChange={(e) => onChange({ ...preset.slotThinking, [slot]: e.target.value as SlotThinking })}
+                className="flex-1 bg-surface border border-border px-2 py-2 md:py-1 text-[16px] md:text-xs text-text-primary focus:border-terminal focus:outline-none appearance-none"
+            >
+                {SLOT_THINKING_CHOICES.map(c => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+            </select>
+        </div>
+    );
+}
 
 export function PresetsPanel() {
     const settings = useAppStore(s => s.settings);
@@ -26,7 +57,7 @@ export function PresetsPanel() {
             auxiliaryAIProviderId: '',
             imageAIProviderId: '',
         };
-        addPreset(newPreset);
+        addPreset(migratePresetSlotThinking(newPreset, settings.providers));
         setActiveTab(newPreset.id);
     };
 
@@ -119,6 +150,7 @@ export function PresetsPanel() {
                                     <option key={p.id} value={p.id}>{p.label || p.modelName || p.endpoint}</option>
                                 ))}
                             </select>
+                            <SlotThinkingPicker preset={activePreset} slot="story" onChange={(slotThinking) => updatePreset(activePreset.id, { slotThinking })} />
                         </div>
 
                         <div>
@@ -133,6 +165,7 @@ export function PresetsPanel() {
                                     <option key={p.id} value={p.id}>{p.label || p.modelName || p.endpoint}</option>
                                 ))}
                             </select>
+                            <SlotThinkingPicker preset={activePreset} slot="summarizer" onChange={(slotThinking) => updatePreset(activePreset.id, { slotThinking })} />
                         </div>
 
                         <div>
@@ -147,6 +180,7 @@ export function PresetsPanel() {
                                     <option key={p.id} value={p.id}>{p.label || p.modelName || p.endpoint}</option>
                                 ))}
                             </select>
+                            <SlotThinkingPicker preset={activePreset} slot="utility" onChange={(slotThinking) => updatePreset(activePreset.id, { slotThinking })} />
                         </div>
 
                         <div>
@@ -161,6 +195,7 @@ export function PresetsPanel() {
                                     <option key={p.id} value={p.id}>{p.label || p.modelName || p.endpoint}</option>
                                 ))}
                             </select>
+                            <SlotThinkingPicker preset={activePreset} slot="auxiliary" onChange={(slotThinking) => updatePreset(activePreset.id, { slotThinking })} />
                         </div>
 
                         <div>

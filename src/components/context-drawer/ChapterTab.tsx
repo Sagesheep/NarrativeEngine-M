@@ -9,6 +9,7 @@ import { countTokens } from '../../services/infrastructure';
 import { runCombinedSeal } from '../../services/turn';
 import { mergeLifecycleEntries } from '../../services/campaign-state';
 import type { ArchiveChapter } from '../../types';
+import { applyActiveSlotThinking } from '../../store/slices/slotThinking';
 
 export function ChapterTab() {
     const {
@@ -137,8 +138,9 @@ export function ChapterTab() {
         if (!activeCampaignId) return;
         setIsRegenerating(chapter.chapterId);
         try {
-            const provider = useAppStore.getState().getActiveUtilityEndpoint()
-                ?? useAppStore.getState().getActiveStoryEndpoint();
+            const live = useAppStore.getState();
+            const provider = live.getActiveUtilityEndpoint()
+                ?? applyActiveSlotThinking(live.settings, 'utility', live.getActiveStoryEndpoint());
             if (!provider) {
                 toast.error('No AI provider available');
                 return;

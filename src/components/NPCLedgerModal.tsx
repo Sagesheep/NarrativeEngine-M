@@ -19,6 +19,7 @@ import { useBackHandler } from '../hooks/useBackHandler';
 import { getEntriesForNpc } from '../services/campaign-state';
 import { imageStorage } from '../services/storage/imageStorage';
 import { generateNPCPortrait } from '../services/image/portrait';
+import { applyActiveSlotThinking } from '../store/slices/slotThinking';
 
 export function NPCLedgerModal() {
   const npcLedger = useAppStore(s => s.npcLedger);
@@ -131,7 +132,7 @@ export function NPCLedgerModal() {
       messages: state.messages,
       campaignId: state.activeCampaignId,
       storyProvider: state.getActiveStoryEndpoint() ?? state.getActiveSummarizerEndpoint() ?? state.getActiveUtilityEndpoint(),
-      updateProvider: state.getActiveSummarizerEndpoint() ?? state.getActiveUtilityEndpoint() ?? state.getActiveStoryEndpoint(),
+      updateProvider: state.getActiveSummarizerEndpoint() ?? state.getActiveUtilityEndpoint() ?? applyActiveSlotThinking(state.settings, 'summarizer', state.getActiveStoryEndpoint()),
       addNPC: state.addNPC,
       updateNPC: state.updateNPC,
       matureMode: state.settings?.matureMode ?? false,
@@ -214,7 +215,7 @@ export function NPCLedgerModal() {
 
   const handleStartReview = () => {
     const state = useAppStore.getState();
-    const provider = state.getActiveUtilityEndpoint() ?? state.getActiveStoryEndpoint();
+    const provider = state.getActiveUtilityEndpoint() ?? applyActiveSlotThinking(state.settings, 'utility', state.getActiveStoryEndpoint());
     if (!provider) {
       setReviewError('No AI endpoint configured.');
       setReviewOpen(true);

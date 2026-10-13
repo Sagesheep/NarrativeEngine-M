@@ -13,6 +13,7 @@ import { DeepSearchSheet } from './chat/DeepSearchSheet';
 import { saveCampaignState, saveDivergenceRegister } from '../store/campaignStore';
 import { api } from '../services/apiClient';
 import { toast } from './Toast';
+import { applyActiveSlotThinking } from '../store/slices/slotThinking';
 
 type SelectionSnapshot = {
     messageId: string;
@@ -191,7 +192,7 @@ export function Header() {
                     messages: state.messages,
                     campaignId,
                     storyProvider: state.getActiveStoryEndpoint() ?? state.getActiveSummarizerEndpoint() ?? state.getActiveUtilityEndpoint(),
-                    updateProvider: state.getActiveSummarizerEndpoint() ?? state.getActiveUtilityEndpoint() ?? state.getActiveStoryEndpoint(),
+                    updateProvider: state.getActiveSummarizerEndpoint() ?? state.getActiveUtilityEndpoint() ?? applyActiveSlotThinking(state.settings, 'summarizer', state.getActiveStoryEndpoint()),
                     addNPC: state.addNPC,
                     updateNPC: state.updateNPC,
                     matureMode: state.settings?.matureMode ?? false,
