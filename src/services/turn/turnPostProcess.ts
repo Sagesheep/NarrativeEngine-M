@@ -53,7 +53,8 @@ export async function handlePostTurn(
 
     const extractedNames = extractNPCNames(lastAssistantContent);
     const presentHeaderNames = parsePresentHeader(lastAssistantContent);
-    if (presentHeaderNames.length > 0) {
+    if (presentHeaderNames !== null) {
+        // Trusted as written: `👥 Nobody` clears the stage instead of falling back.
         const onStageIds = resolveNPCIds(presentHeaderNames, npcLedger);
         callbacks.setOnStageNpcIds?.(onStageIds);
     } else {

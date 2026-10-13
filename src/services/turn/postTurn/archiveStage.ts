@@ -23,7 +23,9 @@ export function queueIndexPatch(state: TurnState, callbacks: TurnCallbacks, appe
     const summarizerProvider = state.getFreshSummarizerProvider?.();
     const storyProvider = state.getFreshProvider();
     const headerNames = parsePresentHeader(gmText);
-    const headerIds = resolveNPCIds(headerNames, npcLedgerSnap);
+    // A 👥 field is trusted as written, even when it names nobody on the ledger;
+    // the fallbacks below run only when the reply has no 👥 field at all.
+    const headerIds = headerNames === null ? null : resolveNPCIds(headerNames, npcLedgerSnap);
     backgroundQueue.push('Index-Patch', async () => {
         let changed = false;
         const index = await api.archive.getIndex(cid);
@@ -39,8 +41,9 @@ export function queueIndexPatch(state: TurnState, callbacks: TurnCallbacks, appe
                 if (llmImportance !== entry.importance) { entry.importance = llmImportance; changed = true; }
             } catch (e) { console.warn('[TurnPostProcess] Importance rating failed:', e); }
         }
-        if (headerIds.length > 0) {
-            entry.npcsWitnessed = headerIds; entry.witnessSource = 'header' as WitnessSource; changed = true;
+        if (headerIds !== null) {
+            entry.npcsWitnessed = headerIds.length > 0 ? headerIds : undefined;
+            entry.witnessSource = 'header' as WitnessSource; changed = true;
         } else {
             let resolvedIds: string[] = []; let source: WitnessSource = 'empty';
             const extractionProvider = state.getExtractionProvider?.();
