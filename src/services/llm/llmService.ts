@@ -1,7 +1,9 @@
 import type { LLMProvider, SamplingConfig } from '../../types';
 import type { LLMChatMessage, OpenAICompletionResponse } from '../../types/llmMessages';
 import { uid } from '../../utils/uid';
-import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent, extractStreamDelta, extractStreamToolCall } from '../../utils/llmApiHelper';
+import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent, extractStreamDelta, extractStreamToolCall, thinkingControlFor } from '../../utils/llmApiHelper';
+import { isThinkingControlRejection, markThinkingControlRefused } from '../../utils/thinkingControl';
+import { ensureModelCatalog } from './modelCatalog';
 import { isAbortError } from '../../types/llmMessages';
 import type { LLMUsage } from '../../types/llmMessages';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
@@ -15,6 +17,17 @@ const STORY_CHUNK_EXTEND_MS = 30000;
 const STORY_CHUNK_EXTEND_THRESHOLD_MS = 30000;
 
 export type OpenAIMessage = LLMChatMessage;
+
+/**
+ * When the host refused the story request's thinking fields, remembers that
+ * and returns true so the caller sends the request again without them.
+ */
+function refusedThinking(provider: LLMProvider, status: number, errText: string): boolean {
+    if (!isThinkingControlRejection(status, errText, thinkingControlFor(provider))) return false;
+    markThinkingControlRefused(provider);
+    console.warn(`[story-gen] ${provider.modelName} refused the thinking setting (${status}); retrying without it`);
+    return true;
+}
 
 /**
  * Native story turn over CapacitorHttp (bypasses WebView CORS). Non-streaming: the
@@ -66,6 +79,10 @@ async function nativeNonStreamStory(
             settled = true;
             nativeCall.settleError('error', `API error ${nativeRes.status}`);
             console.warn(`[story-gen] http error ${nativeRes.status} after ${Date.now() - nativeStartedAt}ms (native non-stream)`);
+            if (refusedThinking(provider, nativeRes.status, JSON.stringify(nativeRes.data))) {
+                await nativeNonStreamStory(provider, messages, format, headers, tools, sampling, onChunk, onDone, onError);
+                return;
+            }
             onError(`API error ${nativeRes.status}: ${JSON.stringify(nativeRes.data)}`);
             return;
         }
@@ -117,6 +134,8 @@ export async function sendMessage(
     };
 
     try {
+        await ensureModelCatalog(provider.endpoint);
+
         // On native with streaming OFF: use CapacitorHttp to bypass WebView CORS restrictions.
         if (Capacitor.isNativePlatform() && !useStreaming) {
             await nativeNonStreamStory(provider, messages, format, headers, tools, sampling, onChunk, onDone, onError);
@@ -188,6 +207,10 @@ export async function sendMessage(
             const errBody = await res.text();
             settleError('error', `API error ${res.status}`);
             console.warn(`[story-gen] http error ${res.status} after ${Date.now() - startedAt}ms: ${errBody.slice(0, 200)}`);
+            if (refusedThinking(provider, res.status, errBody)) {
+                await sendMessage(provider, messages, onChunk, onDone, onError, tools, abortController, sampling);
+                return;
+            }
             onError(`API error ${res.status}: ${errBody}`);
             return;
         }

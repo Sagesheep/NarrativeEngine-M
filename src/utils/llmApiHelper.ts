@@ -1,33 +1,14 @@
 import type { LLMProvider, ApiFormat, SamplingConfig, ThinkingEffort } from '../types';
+import { resolveThinkingControl, type ThinkingControl } from './thinkingControl';
+import { lookupCatalogModel } from '../services/llm/modelCatalog';
 
 type AnyProvider = LLMProvider;
-
-const OPENAI_EFFORT_MAP: Record<Exclude<ThinkingEffort, 'off'>, string> = {
-    low: 'low',
-    medium: 'medium',
-    high: 'high',
-    max: 'xhigh',
-};
-
-const DEEPSEEK_EFFORT_MAP: Record<Exclude<ThinkingEffort, 'off'>, string> = {
-    low: 'high',
-    medium: 'high',
-    high: 'high',
-    max: 'max',
-};
 
 export const CLAUDE_BUDGET_MAP: Record<Exclude<ThinkingEffort, 'off'>, number> = {
     low: 2048,
     medium: 8192,
     high: 16384,
     max: 32768,
-};
-
-const GEMINI_LEVEL_MAP: Record<Exclude<ThinkingEffort, 'off'>, string> = {
-    low: 'LOW',
-    medium: 'MEDIUM',
-    high: 'HIGH',
-    max: 'HIGH',
 };
 
 // Headroom for formats whose thinking spend is not a fixed number (OpenAI,
@@ -59,6 +40,16 @@ export function withThinkingReserve(
 
 export function getApiFormat(provider: AnyProvider): ApiFormat {
     return provider.apiFormat || 'openai';
+}
+
+/**
+ * The thinking fields buildChatBody sends for this provider and effort
+ * (`effort` defaults to the provider's own setting). Callers use it to decide
+ * whether a refused request is worth sending again without them.
+ */
+export function thinkingControlFor(provider: AnyProvider, effort?: ThinkingEffort): ThinkingControl {
+    const resolved = effort !== undefined ? effort : provider.thinkingEffort;
+    return resolveThinkingControl(provider, getApiFormat(provider), resolved, id => lookupCatalogModel(provider.endpoint, id));
 }
 
 function isBareHost(url: string): boolean {
@@ -309,8 +300,9 @@ export function buildChatBody(
         };
         if (systemInstruction) body.systemInstruction = systemInstruction;
 
+        const control = thinkingControlFor(provider, effort);
         const genConfig: Record<string, unknown> = {};
-        genConfig.maxOutputTokens = withThinkingReserve(format, effort, options?.sampling?.max_tokens ?? options?.max_tokens ?? 16384);
+        genConfig.maxOutputTokens = withThinkingReserve(format, control.reserveEffort, options?.sampling?.max_tokens ?? options?.max_tokens ?? 16384);
         if (options?.temperature !== undefined) genConfig.temperature = options.temperature;
         else if (options?.sampling?.temperature !== undefined) genConfig.temperature = options.sampling.temperature;
         if (options?.sampling?.top_p !== undefined) genConfig.topP = options.sampling.top_p;
@@ -318,9 +310,7 @@ export function buildChatBody(
         if (options?.sampling?.frequency_penalty !== undefined) genConfig.frequencyPenalty = options.sampling.frequency_penalty;
         if (options?.sampling?.presence_penalty !== undefined) genConfig.presencePenalty = options.sampling.presence_penalty;
 
-        if (effort && effort !== 'off') {
-            genConfig.thinkingConfig = { thinkingLevel: GEMINI_LEVEL_MAP[effort] };
-        }
+        Object.assign(genConfig, control.fields);
 
         body.generationConfig = genConfig;
 
@@ -335,8 +325,9 @@ export function buildChatBody(
         ? transformOllamaMessages(messages)
         : messages.map(({ cache_control: _cache_control, ...rest }) => rest);
 
+    const control = thinkingControlFor(provider, effort);
     const body: Record<string, unknown> = {
-        model: provider.modelName,
+        model: control.model ?? provider.modelName,
         messages: sanitizedMessages,
         stream,
     };
@@ -349,7 +340,7 @@ export function buildChatBody(
     }
 
     const resolvedMaxTokens = options?.sampling?.max_tokens ?? options?.max_tokens;
-    if (resolvedMaxTokens !== undefined) body.max_tokens = withThinkingReserve(format, effort, resolvedMaxTokens);
+    if (resolvedMaxTokens !== undefined) body.max_tokens = withThinkingReserve(format, control.reserveEffort, resolvedMaxTokens);
 
     if (options?.temperature !== undefined) body.temperature = options.temperature;
     else if (options?.sampling?.temperature !== undefined) body.temperature = options.sampling.temperature;
@@ -371,19 +362,8 @@ export function buildChatBody(
         body.tools = options.tools;
     }
 
-    if (effort && effort !== 'off') {
-        if (isOllama) {
-            body.think = effort;
-        } else {
-            const isDeepSeek = /deepseek/i.test(provider.endpoint);
-            if (isDeepSeek) {
-                body.reasoning_effort = DEEPSEEK_EFFORT_MAP[effort];
-                body.thinking = { type: 'enabled' };
-            } else {
-                body.reasoning_effort = OPENAI_EFFORT_MAP[effort];
-            }
-        }
-    }
+    // Thinking on or off, spelled the way this host reads it (thinkingControl.ts).
+    Object.assign(body, control.fields);
 
     return body;
 }

@@ -218,14 +218,15 @@ export function ProvidersPanel() {
                                     </button>
                                 </div>
                                 <div>
-                                    <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1" title="Requests reasoning from the model when supported. 'Max' maps to xhigh on OpenAI, max on DeepSeek V4, HIGH on Gemini.">
+                                    <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1" title="Model default sends no thinking setting, so the model decides (many think by default). Off asks the host to turn thinking off, in the form that host reads; models that must think drop to their lowest level. Helper calls always ask for Off.">
                                         Thinking effort
                                     </label>
                                     <select
-                                        value={config.thinkingEffort || 'off'}
-                                        onChange={(e) => handleFieldChange('thinkingEffort', e.target.value === 'off' ? undefined : (e.target.value as ThinkingEffort))}
+                                        value={config.thinkingEffort ?? 'default'}
+                                        onChange={(e) => handleFieldChange('thinkingEffort', e.target.value === 'default' ? undefined : (e.target.value as ThinkingEffort))}
                                         className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary focus:border-terminal focus:outline-none appearance-none"
                                     >
+                                        <option value="default">Model default</option>
                                         <option value="off">Off</option>
                                         <option value="low">Low</option>
                                         <option value="medium">Medium</option>

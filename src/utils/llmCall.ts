@@ -1,6 +1,8 @@
 import type { LLMProvider, ThinkingEffort } from '../types';
 import { getQueueForEndpoint, type LLMCallPriority } from '../services/llm/llmRequestQueue';
-import { getApiFormat, getChatUrl, buildChatHeaders, buildChatBody, extractContent } from './llmApiHelper';
+import { getApiFormat, getChatUrl, buildChatHeaders, buildChatBody, extractContent, thinkingControlFor } from './llmApiHelper';
+import { isThinkingControlRejection, markThinkingControlRefused } from './thinkingControl';
+import { ensureModelCatalog } from '../services/llm/modelCatalog';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { startUtilityCall } from '../services/llm/utilityCallTracker';
 import { recordCacheUsage } from '../services/llm/cacheTelemetry';
@@ -87,13 +89,29 @@ async function runInner(
     const format = getApiFormat(provider);
     const resolvedEffort = opts?.thinkingEffort !== undefined ? opts.thinkingEffort : provider.thinkingEffort;
 
-    const body = buildChatBody(
-        provider,
-        [{ role: 'user', content: prompt }],
-        { stream: false, max_tokens: opts?.maxTokens, thinkingEffort: resolvedEffort }
-    );
+    await ensureModelCatalog(provider.endpoint);
+    const makeBody = () => {
+        const b = buildChatBody(
+            provider,
+            [{ role: 'user', content: prompt }],
+            { stream: false, max_tokens: opts?.maxTokens, thinkingEffort: resolvedEffort }
+        );
+        if (opts?.temperature !== undefined) b.temperature = opts.temperature;
+        return b;
+    };
+    let body = makeBody();
 
-    if (opts?.temperature !== undefined) body.temperature = opts.temperature;
+    // A host that refuses the thinking fields gets the request once more without
+    // them; thinkingControl remembers the refusal for the rest of the session.
+    let thinkingRetried = false;
+    const retryWithoutThinking = (status: number, errText: string): boolean => {
+        if (thinkingRetried || !isThinkingControlRejection(status, errText, thinkingControlFor(provider, resolvedEffort))) return false;
+        thinkingRetried = true;
+        markThinkingControlRefused(provider);
+        console.warn(`[llmCall] ${provider.modelName} refused the thinking setting (${status}); retrying without it`);
+        body = makeBody();
+        return true;
+    };
 
     const priority = opts?.priority ?? 'normal';
     const queue = getQueueForEndpoint(provider.endpoint);
@@ -135,6 +153,10 @@ async function runInner(
                 }
 
                 if (nativeRes.status < 200 || nativeRes.status >= 300) {
+                    if (retryWithoutThinking(nativeRes.status, JSON.stringify(nativeRes.data))) {
+                        attempt--;
+                        continue;
+                    }
                     throw new Error(`LLM API error ${nativeRes.status}: ${JSON.stringify(nativeRes.data)} (max_tokens=${opts?.maxTokens ?? 'default'}, thinkingEffort=${resolvedEffort ?? 'default'})`);
                 }
 
@@ -170,6 +192,10 @@ async function runInner(
             queue.releaseSlot();
             if (!res.ok) {
                 const errBody = await res.text();
+                if (retryWithoutThinking(res.status, errBody)) {
+                    attempt--;
+                    continue;
+                }
                 throw new Error(`LLM API error ${res.status}: ${errBody} (max_tokens=${opts?.maxTokens ?? 'default'}, thinkingEffort=${resolvedEffort ?? 'default'})`);
             }
             const data = await res.json();
