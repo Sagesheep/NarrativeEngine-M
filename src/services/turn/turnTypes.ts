@@ -21,6 +21,7 @@ import type {
 } from '../../types';
 import type { LLMCallPriority } from '../../utils/llmCall';
 import type { ArmedLoot } from '../../store/slices/uiSlice';
+import type { OneShotEventId } from '../oneshot/oneShotEvents';
 
 // ── UtilityLLM port (Plan 4 — the single injection point for utility LLM access) ──
 // Wraps llmCall + utility-endpoint lookup so retrieval stages can be tested with
@@ -121,4 +122,6 @@ export type TurnState = {
     // suppresses the Director Brief, watchdog nudge and GM_REMINDER, and rides last in
     // the prompt. Never stored on the user message. null/undefined = normal turn.
     absoluteCommand?: string | null;
+    // One-Shot Event Injector: event type whose directive rides this turn's input.
+    armedOneShot?: OneShotEventId | null;
 };

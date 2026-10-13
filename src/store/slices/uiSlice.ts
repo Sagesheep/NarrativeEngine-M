@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { PayloadTrace, PipelinePhase, StreamingStats, ManualRollRequest } from '../../types';
+import type { OneShotEventId } from '../../services/oneshot/oneShotEvents';
 
 /** Loot Engine WO-05: armed loot drop config, resolved at send time. Mirrors armedRoll. */
 export type ArmedLoot = {
@@ -61,6 +62,9 @@ export type UISlice = {
     /** Absolute Command: a binding out-of-character instruction for the next send only. null = not armed. */
     armedAbsoluteCommand: string | null;
     setArmedAbsoluteCommand: (text: string | null) => void;
+    /** One-Shot Event Injector: the event type that fires on the next send. null = not armed. */
+    armedOneShot: OneShotEventId | null;
+    setArmedOneShot: (id: OneShotEventId | null) => void;
     embeddingsReindexing: ReindexState;
     setEmbeddingsReindexing: (state: ReindexState) => void;
 };
@@ -100,6 +104,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     clearArmedLoot: () => set({ armedLoot: null }),
     armedAbsoluteCommand: null,
     setArmedAbsoluteCommand: (text) => set({ armedAbsoluteCommand: text }),
+    armedOneShot: null,
+    setArmedOneShot: (id) => set({ armedOneShot: id }),
     embeddingsReindexing: { active: false, total: 0, done: 0, reason: null },
     setEmbeddingsReindexing: (state) => set({ embeddingsReindexing: state }),
 });

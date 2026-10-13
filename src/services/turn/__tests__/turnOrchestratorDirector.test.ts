@@ -271,4 +271,13 @@ describe('runTurn — Director Brief tier gate (WO-A §3.3)', () => {
         expect(userMsg.content).not.toContain('Skip to morning.');
         expect(userMsg.displayContent).toContain('Absolute command issued');
     });
+
+    it('an armed one-shot event rides this turn input and shows on the player bubble', async () => {
+        const added: any[] = [];
+        const callbacks = { ...baseCallbacks(), addMessage: (m: any) => added.push(m) } as any as TurnCallbacks;
+        await runTurn({ ...baseState('lite'), armedOneShot: 'mystery' } as any as TurnState, callbacks, new AbortController());
+        const userMsg = added.find(m => m.role === 'user');
+        expect(userMsg.content).toContain('[INJECTED EVENT — MYSTERY.');
+        expect(userMsg.displayContent).toContain('⚡ Event injected (mystery)');
+    });
 });

@@ -62,7 +62,7 @@ export function fitHistory(
 
         let content = msg.content ?? null;
         if (msg.role === 'user' && typeof content === 'string') {
-            content = content.replace(/\n?\[(?:DICE OUTCOMES:|SURPRISE EVENT:|ENCOUNTER EVENT:|WORLD_EVENT:|LOOT DROP:)[^\]]*\]/g, '');
+            content = content.replace(/\n?\[(?:DICE OUTCOMES:|SURPRISE EVENT:|ENCOUNTER EVENT:|WORLD_EVENT:|LOOT DROP:|INJECTED EVENT —)[^\]]*\]/g, '');
         }
         if (msg.role === 'assistant' && typeof content === 'string') {
             content = content.replace(THINK_TAG_REGEX, '').trim() || content;

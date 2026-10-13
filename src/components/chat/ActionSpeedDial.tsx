@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { MoreHorizontal, Zap, Pin, OctagonAlert } from 'lucide-react';
+import { MoreHorizontal, Zap, Pin, OctagonAlert, Sparkles } from 'lucide-react';
 import { ArcInjectorButton } from './ArcInjectorButton';
 import { AbsoluteCommandSheet } from './AbsoluteCommandSheet';
+import { OneShotSheet } from './OneShotSheet';
 import { useAppStore } from '../../store/useAppStore';
 
 type ActionSpeedDialProps = {
@@ -14,7 +15,9 @@ type ActionSpeedDialProps = {
 export function ActionSpeedDial({ onTrim, pinnedCount, onOpenPins, trimDisabled }: ActionSpeedDialProps) {
     const [open, setOpen] = useState(false);
     const [absoluteOpen, setAbsoluteOpen] = useState(false);
+    const [oneShotOpen, setOneShotOpen] = useState(false);
     const absoluteArmed = useAppStore(s => s.armedAbsoluteCommand !== null);
+    const armedOneShot = useAppStore(s => s.armedOneShot);
     const isStreaming = useAppStore(s => s.pipelinePhase !== 'idle');
     const ref = useRef<HTMLDivElement>(null);
 
@@ -39,9 +42,11 @@ export function ActionSpeedDial({ onTrim, pinnedCount, onOpenPins, trimDisabled 
                 aria-label="Action menu"
             >
                 <MoreHorizontal size={18} />
-                {absoluteArmed && (
+                {absoluteArmed ? (
                     <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-danger animate-pulse" aria-label="Absolute command armed" />
-                )}
+                ) : armedOneShot ? (
+                    <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-violet-400 animate-pulse" aria-label="Event armed" />
+                ) : null}
             </button>
             {open && (
                 <div className="absolute bottom-full left-0 mb-2 flex flex-col gap-1.5 z-50">
@@ -53,6 +58,17 @@ export function ActionSpeedDial({ onTrim, pinnedCount, onOpenPins, trimDisabled 
                         <Zap size={13} /> TRIM
                     </button>
                     <ArcInjectorButton onDone={() => setOpen(false)} />
+                    <button
+                        onClick={() => { setOneShotOpen(true); setOpen(false); }}
+                        disabled={isStreaming}
+                        className={`shrink-0 flex items-center gap-1.5 bg-void border text-[10px] uppercase tracking-wider px-3 py-1.5 min-h-[40px] rounded transition-all whitespace-nowrap disabled:opacity-40 ${
+                            armedOneShot
+                                ? 'border-violet-400 text-violet-400 animate-pulse'
+                                : 'border-violet-400/30 text-violet-400/80 hover:border-violet-400/60'
+                        }`}
+                    >
+                        <Sparkles size={13} /> {armedOneShot ? `EVENT: ${armedOneShot.toUpperCase()}` : 'EVENT'}
+                    </button>
                     <button
                         onClick={() => { setAbsoluteOpen(true); setOpen(false); }}
                         disabled={isStreaming}
@@ -78,6 +94,7 @@ export function ActionSpeedDial({ onTrim, pinnedCount, onOpenPins, trimDisabled 
                 </div>
             )}
             <AbsoluteCommandSheet open={absoluteOpen} onClose={() => setAbsoluteOpen(false)} />
+            <OneShotSheet open={oneShotOpen} onClose={() => setOneShotOpen(false)} />
         </div>
     );
 }

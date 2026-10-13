@@ -13,6 +13,7 @@ import { extractAndStripSceneStakes } from './sceneStakesTag';
 import { capturePendingTurnSnapshot, getActiveSnapshotId } from './pendingCommit';
 import { buildWatchdogDossier } from './directorWatchdog';
 import { runDirectorBrief, lastAssistantContent } from './directorBrief';
+import { buildOneShotDirective } from '../oneshot/oneShotEvents';
 import type { GatheredContext } from './turnContext';
 
 import type { OpenAIMessage } from '../llm/llmService';
@@ -109,6 +110,18 @@ export async function runTurn(
                 `do NOT change its identity, inflate it, or add items beyond this list.]`;
             // Player-facing reveal — shows the drop on their own turn bubble.
             displayInputFinal += `\n\n💰 Loot drop armed (${armedLoot.rolls})`;
+        }
+    }
+
+    // One-Shot Event Injector: player-armed event directive for this turn only.
+    // Mirrors the dice/loot blocks above; older history messages have the tag
+    // stripped (payloadHistoryFitting), so it never steers a later turn.
+    const armedOneShot = state.armedOneShot;
+    if (armedOneShot) {
+        const directive = buildOneShotDirective(armedOneShot);
+        if (directive) {
+            finalInput += directive;
+            displayInputFinal += `\n\n⚡ Event injected (${armedOneShot})`;
         }
     }
 
