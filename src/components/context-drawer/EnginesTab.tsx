@@ -592,6 +592,7 @@ const ENTRY_TYPE_OPTIONS: { value: CharacterIntroEntry['type']; label: string }[
 
 function NpcAppearanceSection({ context, updateContext }: NpcAppearanceSectionProps) {
     const aiTier = useAppStore((s) => s.settings.aiTier);
+    const npcLedger = useAppStore((s) => s.npcLedger);
     const active = context.npcIntroEngineActive ?? true;
     const config: NpcIntroConfig = context.npcIntroConfig ?? NPC_INTRO_DEFAULTS;
     const characters = config.characters;
@@ -615,6 +616,11 @@ function NpcAppearanceSection({ context, updateContext }: NpcAppearanceSectionPr
     const [newType, setNewType] = useState<CharacterIntroEntry['type']>('wandering');
     const [newLocation, setNewLocation] = useState('');
     const [newBoost, setNewBoost] = useState('');
+
+    const pooledNames = new Set(characters.map(c => c.name.toLowerCase()));
+    const availableNpcs = [...npcLedger]
+        .filter(n => !pooledNames.has(n.name.toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
     const handleAdd = () => {
         const name = newName.trim();
@@ -715,13 +721,16 @@ function NpcAppearanceSection({ context, updateContext }: NpcAppearanceSectionPr
                 <div className="pt-2 border-t border-border/40 space-y-2">
                     <label className="text-[10px] text-text-dim uppercase tracking-wider">Add Candidate</label>
                     <div className="grid grid-cols-2 gap-2">
-                        <input
-                            type="text"
+                        <select
                             value={newName}
                             onChange={(e) => setNewName(e.target.value)}
-                            placeholder="Name"
                             className="bg-surface border border-border px-2 py-1.5 text-[16px] md:text-[11px] font-mono text-text-primary focus:border-terminal outline-none transition-colors min-h-[44px] md:min-h-0"
-                        />
+                        >
+                            <option value="">Select NPC…</option>
+                            {availableNpcs.map(n => (
+                                <option key={n.id} value={n.name}>{n.name}</option>
+                            ))}
+                        </select>
                         <select
                             value={newType}
                             onChange={(e) => setNewType(e.target.value as CharacterIntroEntry['type'])}

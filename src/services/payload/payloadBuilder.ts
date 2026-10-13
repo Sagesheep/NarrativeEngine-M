@@ -3,7 +3,7 @@ import { CORE_FLOOR_TRAITS } from '../../types';
 import type { OpenAIMessage } from '../llm/llmService';
 import { countTokens } from '../infrastructure';
 import { computeBudgets, type BudgetMap } from './payloadBudgeter';
-import { buildStablePreamble, buildDivergenceBlock } from './payloadStableContent';
+import { buildStablePreamble, buildDivergenceBlock, isThinkingEnabled } from './payloadStableContent';
 import { assembleWorldBlocks, trimWorldBlocks, type WorldBlock, type NpcStrategy } from './payloadWorldContext';
 import { fitHistory, buildPinnedMemoriesBlock, pinnedExcerptsTokenCost } from './payloadHistoryFitting';
 import { queryTraits, formatTraitsForContext } from '../campaign-state';
@@ -31,6 +31,12 @@ export interface BuildPayloadOptions {
     semanticallyRecalledNpcIds?: string[];
     pinnedExcerpts?: PinnedExcerpt[];
     plannerEventTypes?: SceneEventType[];
+    /** Director Watchdog nudge (WO-A §3.5): deterministic NPC-agency signal.
+     *  Suppressed when a `directorBrief` is present (the Brief supersedes it). */
+    watchdogNudge?: string;
+    /** Director Brief (WO-A §3.5): LLM-authored Writer Brief rendered as a
+     *  [DIRECTOR BRIEF] block in the volatile region of the final user message. */
+    directorBrief?: string;
 }
 
 export { pinnedExcerptsTokenCost };
@@ -56,6 +62,8 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         semanticallyRecalledNpcIds,
         pinnedExcerpts,
         plannerEventTypes,
+        watchdogNudge,
+        directorBrief,
     } = opts;
 
     const trace: PayloadTrace[] = [];
@@ -238,9 +246,34 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     }
 
     const volatileBlock = [combinedWorldContent, volatileContent].filter(Boolean).join('\n\n');
-    const finalUserContent = volatileBlock
-        ? `${volatileBlock}\n\n---\n\n${userMessage}`
-        : userMessage;
+
+    // ── Director Watchdog + Director Brief + Writer CoT (WO-A §3.5 / WO-B §4.4) ──
+    // All three ride in the volatile region of the final user message (below the
+    // cache boundary) so they never perturb the cached prefix. The Brief
+    // supersedes the deterministic watchdog nudge (WO-A §3.5 supersession rule).
+    // Mobile has no Absolute Command, so the `!hasAbsolute` term from mainApp is
+    // dropped here.
+    const GM_REMINDER = '[GM REMINDER: NPCs push back when their wants/boundaries are crossed. Do not default to facilitation.]';
+    const watchdogNudgeActive = watchdogNudge && !directorBrief ? watchdogNudge : '';
+    const directorBriefBlock = directorBrief ? `[DIRECTOR BRIEF]\n${directorBrief}` : '';
+
+    // Per-turn CoT invocation line (thinking-mode only). Rides in the final user
+    // message (below the cache boundary) — kept out of the cached stable prefix
+    // so thinking-off turns stay byte-identical to the pre-CoT payload.
+    const writerCotNudge = !isThinkingEnabled(settings)
+        ? ''
+        : 'Work through the [WRITER REASONING FRAMEWORK] in your reasoning before writing.';
+
+    // Ordering: volatileBlock → writerCotNudge → directorBriefBlock → GM_REMINDER
+    // → watchdogNudgeActive → userMessage. The Brief lands BEFORE GM_REMINDER so
+    // the GM reads the audit directives first, then the standing reminder, then
+    // the (possibly suppressed) deterministic nudge. Everything upstream of this
+    // point is cache-stable.
+    const finalUserContent = [
+        volatileBlock, writerCotNudge, directorBriefBlock, GM_REMINDER,
+        watchdogNudgeActive, userMessage,
+    ].filter(Boolean).join('\n\n');
+
     // Trace the THREE buckets distinctly so debug differentiates them:
     //   - world_context rows (incl. Arc Digest = injection) are traced upstream in trimWorldBlocks
     //   - volatile_state row (Profile/Inventory/SceneNote) traced above
@@ -251,6 +284,39 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     // carries any engine-event tags rollEngines appended onto the typed text upstream
     // (surprise/encounter/world-rumour) — that's the spillage to watch.
     addTrace({ source: 'Player Input', classification: 'player_input', tokens: countTokens(userMessage), reason: 'This turn\'s typed input (+ any engine-event tags appended by rollEngines)', included: true, position: 'user', preview: userMessage });
+
+    // Trace the watchdog so debug mode shows the dossier. Only recorded when the
+    // nudge is actually surfaced — a suppressed nudge (Brief present) or absent
+    // input is not a payload contributor this turn.
+    if (watchdogNudgeActive) {
+        addTrace({
+            source: 'Watchdog',
+            classification: 'world_context',
+            tokens: countTokens(watchdogNudgeActive),
+            reason: 'Deterministic NPC-agency nudge (highest-priority signal from buildWatchdogDossier)',
+            included: true,
+            position: 'user',
+            preview: watchdogNudgeActive,
+        });
+    }
+
+    // Trace the Director Brief so debug mode shows the LLM-authored directives.
+    // Only recorded when the Brief is actually present — a null/empty Brief
+    // (timeout, parse failure, lite tier) is not a payload contributor this turn.
+    // When the Brief is present the watchdog trace above is skipped, so exactly
+    // one of the two traces appears.
+    if (directorBriefBlock) {
+        addTrace({
+            source: 'Director',
+            classification: 'world_context',
+            tokens: countTokens(directorBriefBlock),
+            reason: 'LLM-authored Writer Brief from runDirectorBrief (supersedes the deterministic watchdog nudge)',
+            included: true,
+            position: 'user',
+            preview: directorBriefBlock,
+        });
+    }
+
     messages.push({ role: 'user', content: finalUserContent });
 
     return { messages, trace: isDebug ? trace : undefined, activeNpcIds };

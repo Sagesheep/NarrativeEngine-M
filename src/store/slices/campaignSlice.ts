@@ -136,6 +136,17 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
     setActiveCampaign: async (id) => {
         abortForCampaignSwitch();
 
+        // Director Brief cache (WO-A §3.6, invariant 7): clear the once-per-input
+        // cache on campaign switch so a Brief computed for campaign A never leaks
+        // into campaign B. Dynamic-import + try/catch so a failure here can't
+        // break campaign switching.
+        try {
+            const { clearDirectorBriefCache } = await import('../../services/turn/directorBrief');
+            clearDirectorBriefCache();
+        } catch (e) {
+            console.warn('[CampaignSwitch] clearDirectorBriefCache failed:', e);
+        }
+
         // Swipe Generation v1: commit any pending swipe turn before switching
         // campaigns. The pending turn belongs to the OUTGOING campaign; once
         // we hydrate the new campaign's messages, the pending GM bubble is
@@ -168,6 +179,9 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
 
         if (!id) {
             set({ activeCampaignId: null } as Partial<CampaignDeps>);
+            // Deep Search leak guard: a query staged in campaign A must never
+            // fire into campaign B. Clear arm + query on campaign switch.
+            set({ deepArmed: false, deepSearchQuery: '' } as Partial<CampaignDeps>);
             return;
         }
 
@@ -207,6 +221,10 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             semanticFacts,
             timeline,
             entities,
+            // Deep Search leak guard: clear arm + query so a staged query from the
+            // outgoing campaign never fires into the newly-loaded campaign.
+            deepArmed: false,
+            deepSearchQuery: '',
         } as Partial<CampaignDeps>);
 
         import('../../services/embedding').then(async ({ warmupEmbedder, getCurrentModelId }) => {

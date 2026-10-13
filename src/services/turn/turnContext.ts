@@ -34,6 +34,7 @@ export async function gatherContext(
     finalInput: string,
     userMsgId: string,
     utilityLLM: UtilityLLM = realUtilityLLM(() => state.getUtilityEndpoint?.()),
+    directorSignals: { watchdogNudge?: string; directorBrief?: string } = {},
 ): Promise<GatheredContext> {
     const { settings, loreChunks, npcLedger, archiveIndex, activeCampaignId } = state;
     const utilityTimeoutMs = (settings.utilityTimeoutSeconds ?? 45) * 1000;
@@ -128,6 +129,8 @@ export async function gatherContext(
         semanticallyRecalledNpcIds,
         pinnedExcerpts: state.pinnedExcerpts,
         plannerEventTypes: plannerResult?.filters?.eventTypes as SceneEventType[] | undefined,
+        watchdogNudge: directorSignals.watchdogNudge,
+        directorBrief: directorSignals.directorBrief,
     });
 
     return { relevantLore, relevantRules, sceneNumber, archiveRecall: finalArchiveRecall, semanticArchiveHits, semanticFactText, recommendedNPCNames, deepContextSummary, payloadResult };

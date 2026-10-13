@@ -1,12 +1,12 @@
 import type { TurnCallbacks, TurnState, UtilityLLM } from '../turnTypes';
-import { deepArchiveScan } from '../../archive';
+import { deepArchiveScanV2 } from '../../archive';
 import { tierAllows } from '../aiTier';
 
 /**
- * Deep Archive Scan — a one-shot, opt-in (GM long-presses Send) multi-round LLM
- * sweep over sealed chapters that returns a continuity brief. Gated on the
- * deepScan tier + an explicit request. Returns undefined when not requested,
- * gated off, or on failure (the turn falls back to standard recall).
+ * Deep Archive Scan — a one-shot, opt-in (armed via the Deep Search sheet)
+ * multi-round LLM sweep over sealed chapters that returns a continuity brief.
+ * Gated on the deepScan tier + an explicit request. Returns undefined when not
+ * requested, gated off, or on failure (the turn falls back to standard recall).
  */
 export async function deepScanStage(params: {
     state: TurnState;
@@ -24,7 +24,7 @@ export async function deepScanStage(params: {
             try {
                 const sealedChapters = (state.chapters ?? []).filter(c => c.sealedAt !== undefined);
                 const deepBudget = Math.floor((settings.contextLimit || 8192) * 0.45);
-                const brief = await deepArchiveScan(
+                const brief = await deepArchiveScanV2(
                     utilityForDeep,
                     archiveIndex,
                     sealedChapters,
@@ -33,6 +33,7 @@ export async function deepScanStage(params: {
                     finalInput,
                     deepBudget,
                     (msg) => callbacks.setLoadingStatus?.(msg),
+                    state.deepSearchQuery,
                 );
                 if (brief) return brief;
             } catch (err) {

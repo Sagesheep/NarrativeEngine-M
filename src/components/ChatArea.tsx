@@ -52,7 +52,8 @@ export function ChatArea() {
         updateLastMessage,
         setTimeline,
         deepArmed,
-        setDeepArmed,
+        deepSearchQuery,
+        setDeepSearch,
         armedRoll,
         setArmedRoll,
         armedLoot,
@@ -87,7 +88,8 @@ export function ChatArea() {
         updateLastMessage: s.updateLastMessage,
         setTimeline: s.setTimeline,
         deepArmed: s.deepArmed,
-        setDeepArmed: s.setDeepArmed,
+        deepSearchQuery: s.deepSearchQuery,
+        setDeepSearch: s.setDeepSearch,
         armedRoll: s.armedRoll,
         setArmedRoll: s.setArmedRoll,
         armedLoot: s.armedLoot,
@@ -147,7 +149,8 @@ export function ChatArea() {
         if (turnAbort.signal.aborted) { setStreaming(false); return; }
 
         const useDeepScan = deepArmed && !!settings.enableDeepArchiveSearch;
-        setDeepArmed(false);
+        const useDeepQuery = deepSearchQuery;
+        setDeepSearch(false, '');
 
         // Consume the armed dice mode (cleared whether or not a roll was set this turn).
         const useArmedRoll = armedRoll;
@@ -220,6 +223,7 @@ export function ChatArea() {
             pinnedChapterIds: useAppStore.getState().pinnedChapterIds,
             clearPinnedChapters: () => useAppStore.getState().clearPinnedChapters(),
             deepContextSearch: useDeepScan,
+            deepSearchQuery: useDeepQuery || undefined,
             armedRoll: useArmedRoll,
             armedLoot: useArmedLoot,
             divergenceRegister: useAppStore.getState().divergenceRegister,

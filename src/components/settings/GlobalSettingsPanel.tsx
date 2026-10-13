@@ -256,7 +256,7 @@ export function GlobalSettingsPanel() {
                 {[
                     { label: 'Debug Mode', setting: 'debugMode' as const, sub: 'Show raw API payloads' },
                     { label: 'Show Reasoning', setting: 'showReasoning' as const, sub: 'Display model thinking blocks' },
-                    { label: 'Deep Archive Search', setting: 'enableDeepArchiveSearch' as const, sub: 'Long-press Send for AI full-archive scan. Requires utility endpoint. ~1-2 min per use.' },
+                    { label: 'Deep Archive Search', setting: 'enableDeepArchiveSearch' as const, sub: 'Header button opens a search sheet; armed search runs on your next send. ~1–2 min per use. Requires utility endpoint; semantic index recommended.' },
                     { label: 'Auto-Gen Rule Keywords', setting: 'autoGenerateRuleKeywords' as const, sub: 'Use LLM to extract rule chunk keywords at index time. Disable to use header+bold derivation only (free, no API calls).' },
                 ].map(({ label, setting, sub }) => (
                     <div key={setting} className="flex items-center justify-between bg-void p-4 border border-border rounded">

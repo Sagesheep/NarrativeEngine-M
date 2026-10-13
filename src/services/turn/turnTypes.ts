@@ -70,6 +70,10 @@ export type TurnCallbacks = {
     updateMessageDivergence?: (messageId: string, divergenceIds: string[]) => void;
     applyPressurePatch?: (id: string, p: NPCPressure) => void;
     setOnStageNpcIds?: (ids: string[]) => void;
+    /** Director Brief (WO-A §3.7): toggles the UI's "Director drafting brief…"
+     *  state + Skip affordance. Fired 'running' before the blocking LLM call,
+     *  'done' after it resolves (success, timeout, abort, or error). */
+    onDirectorBriefPhase?: (phase: 'running' | 'done') => void;
 };
 
 export type TurnState = {
@@ -100,6 +104,8 @@ export type TurnState = {
     pinnedChapterIds: string[];
     clearPinnedChapters: () => void;
     deepContextSearch?: boolean;
+    /** Optional user query staged from the Deep Search sheet; undefined = classic keying. */
+    deepSearchQuery?: string;
     divergenceRegister?: DivergenceRegister;
     onStageNpcIds?: string[];
     npcPressure?: Record<string, NPCPressure>;

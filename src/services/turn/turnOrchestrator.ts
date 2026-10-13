@@ -11,6 +11,8 @@ import { gatherContext } from './turnContext';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool } from './toolHandlers';
 import { extractAndStripSceneStakes } from './sceneStakesTag';
 import { capturePendingTurnSnapshot, getActiveSnapshotId } from './pendingCommit';
+import { buildWatchdogDossier } from './directorWatchdog';
+import { runDirectorBrief, lastAssistantContent } from './directorBrief';
 import type { GatheredContext } from './turnContext';
 
 import type { OpenAIMessage } from '../llm/llmService';
@@ -144,8 +146,59 @@ export async function runTurn(
 
     callbacks.setLoadingStatus?.('[1/5] Extracting Lore & Stats...');
 
+    callbacks.setPipelinePhase?.('building-prompt');
+
+    // ── Director stage (WO-A §3.3) ────────────────────────────────────────────
+    // Watchdog (deterministic, all tiers) + Director Brief (one blocking LLM
+    // call on pro/max). Runs after engine rolls + intro engine settle the final
+    // user input, and before gatherContext so the Brief can ride below the cache
+    // boundary in the final user message via buildPayload. Mirrors mainApp
+    // `runDirectorStage` (turnStages.ts:228-316).
+    //
+    // Mobile has no Absolute Command and no `context.playerCharacter` field —
+    // the watchdog's `playerCharacter` slot is left undefined (the one-directional
+    // heuristic falls back to a legacy `isPC` row in the ledger, which is empty
+    // post-migration; the PC is treated as never-named, so any NPC that appears
+    // as the first subject in an assistant message counts as initiating).
+    const watchdogDossier = buildWatchdogDossier({
+        messages: state.messages,
+        npcLedger,
+        onStageNpcIds: state.onStageNpcIds ?? [],
+    });
+    const watchdogNudge = watchdogDossier.nudgeText ?? undefined;
+
+    let directorBrief: string | null = null;
+    if (tierAllows(settings.aiTier, 'directorBrief')) {
+        callbacks.onDirectorBriefPhase?.('running');
+        try {
+            directorBrief = await runDirectorBrief({
+                provider,
+                dossierText: watchdogDossier.dossierText,
+                lastAssistant: lastAssistantContent(state.messages),
+                userMessage: finalInput,
+                npcLedger,
+                onStageNpcIds: state.onStageNpcIds,
+                timeline: state.timeline,
+                campaignId: activeCampaignId,
+                getAuxiliaryProvider: state.getFreshAuxiliaryProvider,
+                signal: abortController.signal,
+            });
+        } catch (err) {
+            // Defensive: runDirectorBrief catches internally and returns null,
+            // but if a future refactor breaks that contract we must not poison
+            // the turn. Log and proceed without a Brief.
+            console.warn('[DirectorBrief] unexpected throw (suppressed):', err);
+            directorBrief = null;
+        } finally {
+            callbacks.onDirectorBriefPhase?.('done');
+        }
+    }
+
     callbacks.setPipelinePhase?.('gathering-context');
-    const gathered = await gatherContext(state, callbacks, finalInput, userMsgId);
+    const gathered = await gatherContext(state, callbacks, finalInput, userMsgId, undefined, {
+        watchdogNudge,
+        directorBrief: directorBrief ?? undefined,
+    });
 
     callbacks.setPipelinePhase?.('building-prompt');
     const { payloadResult } = gathered;

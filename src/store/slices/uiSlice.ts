@@ -42,6 +42,10 @@ export type UISlice = {
     deepArmed: boolean;
     setDeepArmed: (val: boolean) => void;
     toggleDeepArmed: () => void;
+    /** Optional user query staged from the Deep Search sheet. '' = classic keying. */
+    deepSearchQuery: string;
+    /** Atomic arm + query set; setDeepSearch(false, '') disarms and clears. */
+    setDeepSearch: (armed: boolean, query: string) => void;
     // Player-called dice ("dice me"): the armed roll request, resolved at send time. null = not armed.
     // Accepts the new ManualRollRequest shape OR legacy '1d20'|'adv'|'disadv' string.
     armedRoll: ManualRollRequest | string | null;
@@ -81,6 +85,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     deepArmed: false,
     setDeepArmed: (val) => set({ deepArmed: val }),
     toggleDeepArmed: () => set((s) => ({ deepArmed: !s.deepArmed })),
+    deepSearchQuery: '',
+    setDeepSearch: (armed, query) => set({ deepArmed: armed, deepSearchQuery: query }),
     armedRoll: null,
     setArmedRoll: (mode) => set({ armedRoll: mode }),
     diceRollModalOpen: false,

@@ -476,7 +476,7 @@ export function assembleWorldBlocks(opts: {
 
     if (deepContextSummary) {
         const text = `[DEEP ARCHIVE CONTEXT — AI-synthesized from full campaign history]\n${deepContextSummary}\n[END DEEP ARCHIVE CONTEXT]`;
-        worldBlocks.push({ source: 'Deep Archive Brief', content: text, tokens: countTokens(text), reason: 'Deep archive scan (GM long-press)' });
+        worldBlocks.push({ source: 'Deep Archive Brief', content: text, tokens: countTokens(text), reason: 'Deep archive scan (Deep Search sheet)' });
     }
 
     if (relevantLore && relevantLore.length > 0) {

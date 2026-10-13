@@ -838,6 +838,10 @@ export type NPCEntry = {
      * behavior as the backward-compatible default.
      */
     fieldTags?: Record<string, SceneEventType[]>;
+    /** Director Watchdog/Brief: when true, this NPC is excluded from on-stage
+     *  agency signals and the Director's NPC summary (mirrors mainApp). Optional
+     *  field — no migration needed, no other code reads it yet. */
+    archived?: boolean;
 };
 
 

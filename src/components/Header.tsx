@@ -9,6 +9,7 @@ import type { AiTier } from '../types';
 const TIER_CYCLE: Record<AiTier, AiTier> = { lite: 'pro', pro: 'max', max: 'lite' };
 
 import { TokenGauge } from './TokenGauge';
+import { DeepSearchSheet } from './chat/DeepSearchSheet';
 import { saveCampaignState, saveDivergenceRegister } from '../store/campaignStore';
 import { api } from '../services/apiClient';
 import { toast } from './Toast';
@@ -31,7 +32,6 @@ export function Header() {
         activeCampaignId,
         setActiveCampaign,
         deepArmed,
-        toggleDeepArmed,
         armedRoll,
         setArmedRoll,
         openDiceRollModal,
@@ -48,7 +48,6 @@ export function Header() {
         activeCampaignId: s.activeCampaignId,
         setActiveCampaign: s.setActiveCampaign,
         deepArmed: s.deepArmed,
-        toggleDeepArmed: s.toggleDeepArmed,
         armedRoll: s.armedRoll,
         setArmedRoll: s.setArmedRoll,
         openDiceRollModal: s.openDiceRollModal,
@@ -74,6 +73,7 @@ export function Header() {
     const npcProcessingRef = useRef(false);
     const [overflowOpen, setOverflowOpen] = useState(false);
     const overflowRef = useRef<HTMLDivElement>(null);
+    const [deepSearchSheetOpen, setDeepSearchSheetOpen] = useState(false);
 
     const captureFromBubble = (selector: string): SelectionSnapshot | null => {
         const sel = window.getSelection();
@@ -237,6 +237,7 @@ export function Header() {
     };
 
     return (
+        <>
         <header className="bg-surface border-b border-border flex items-center px-2 sm:px-4 gap-1 shrink-0 safe-top min-h-9 md:min-h-10 py-0">
             <h1 className="hidden md:block text-terminal text-sm font-bold tracking-[0.3em] uppercase glow-green shrink-0">
                 Narrative Engine
@@ -313,14 +314,14 @@ export function Header() {
 
                 {settings.enableDeepArchiveSearch && (
                     <button
-                        onClick={toggleDeepArmed}
+                        onClick={() => setDeepSearchSheetOpen(true)}
                         className={`transition-colors p-1 touch-btn ${
                             deepArmed
                                 ? 'text-amber-400 animate-pulse'
                                 : 'text-text-dim hover:text-terminal'
                         }`}
-                        title={deepArmed ? 'Deep Search armed — send to activate' : 'Arm Deep Archive Search'}
-                        aria-label="Toggle Deep Archive Search"
+                        title={deepArmed ? 'Deep Search armed — send to activate, tap to edit' : 'Deep Archive Search'}
+                        aria-label="Open Deep Archive Search"
                     >
                         <ScanSearch size={16} />
                     </button>
@@ -433,5 +434,7 @@ export function Header() {
             </div>
 
         </header>
-    );
+
+        <DeepSearchSheet open={deepSearchSheetOpen} onClose={() => setDeepSearchSheetOpen(false)} />
+        </>);
 }

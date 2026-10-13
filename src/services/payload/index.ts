@@ -8,7 +8,7 @@ export {
 } from './payloadBuilder';
 
 export { computeBudgets } from './payloadBudgeter';
-export { buildStablePreamble, buildDivergenceBlock } from './payloadStableContent';
+export { buildStablePreamble, buildDivergenceBlock, isThinkingEnabled } from './payloadStableContent';
 export { assembleWorldBlocks, trimWorldBlocks, buildReservedNamesBlock } from './payloadWorldContext';
 export { fitHistory, buildPinnedMemoriesBlock } from './payloadHistoryFitting';
 

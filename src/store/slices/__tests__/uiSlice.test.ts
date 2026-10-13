@@ -31,3 +31,27 @@ describe('uiSlice keyboardVisible', () => {
         expect(get().keyboardVisible).toBe(false);
     });
 });
+
+describe('uiSlice deepSearch', () => {
+    it('defaults to false and empty string', () => {
+        const { get } = makeSlice();
+        expect(get().deepArmed).toBe(false);
+        expect(get().deepSearchQuery).toBe('');
+    });
+
+    it('setDeepSearch(true, "my query") sets armed and query', () => {
+        const { get } = makeSlice();
+        get().setDeepSearch(true, 'my query');
+        expect(get().deepArmed).toBe(true);
+        expect(get().deepSearchQuery).toBe('my query');
+    });
+
+    it('setDeepSearch(false, "") clears armed and query', () => {
+        const { get } = makeSlice();
+        get().setDeepSearch(true, 'my query');
+        get().setDeepSearch(false, '');
+        expect(get().deepArmed).toBe(false);
+        expect(get().deepSearchQuery).toBe('');
+    });
+});
+

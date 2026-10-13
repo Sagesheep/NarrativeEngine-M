@@ -6,9 +6,10 @@ import { chunkLoreFile } from '../loreChunker';
 import { parseNPCsFromLore } from '../loreNPCParser';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// Path from mobileApp/src/services/lore/__tests__ up to the Naruto lore file.
-// Walk up: __tests__ -> lore -> services -> src -> mobileApp -> Automated_system -> AI DM Project -> World_compendium
-const LORE_PATH = resolve(__dirname, '../../../../../../World_compendium/Naruto/Naruto_AI_optimized.md');
+// Use the repo's own copy of the Naruto lore so the test is self-contained
+// (the old path escaped the repo and broke when the app moved directories).
+// Walk up: __tests__ -> lore -> services -> src -> repo root.
+const LORE_PATH = resolve(__dirname, '../../../../Example_Setup/World_compendium/Naruto/Naruto_AI_optimized.md');
 
 describe('Naruto lore — end-to-end parse of canon NPC blocks', () => {
     it('extracts Naruto, Sasuke, and Sakura with their authored hex + traits', () => {
