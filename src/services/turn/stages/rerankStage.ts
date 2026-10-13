@@ -36,7 +36,9 @@ export async function rerankStage(params: {
 
     if (tierAllows(settings.aiTier, 'reranker') && rerankerEndpoint?.endpoint && (semanticArchiveIds?.length || semanticLoreIds?.length)) {
         try {
-            if (semanticArchiveIds && semanticArchiveIds.length >= 5) {
+            // The two reranks are independent model calls; run them side by side.
+            const rerankScenes = async () => {
+                if (!semanticArchiveIds || semanticArchiveIds.length < 5) return;
                 const npcNameById = new Map(npcLedger.map(n => [n.id, n.name]));
                 const sceneCandidates: RerankCandidate[] = semanticArchiveIds.map(id => {
                     const idxEntry = archiveIndex.find(e => e.sceneId === id);
@@ -51,9 +53,10 @@ export async function rerankStage(params: {
                 semanticArchiveHits = rerankedIds.map((id, i) => ({ id, score: scoreLookup.get(id) ?? (1 - i * 0.05) }));
                 semanticArchiveIds = rerankedIds;
                 console.log(`[Reranker] Scene candidates: ${rerankedIds.length} after rerank`);
-            }
+            };
 
-            if (semanticLoreIds && semanticLoreIds.length >= 5) {
+            const rerankLore = async () => {
+                if (!semanticLoreIds || semanticLoreIds.length < 5) return;
                 const loreCandidates: RerankCandidate[] = semanticLoreIds.map(id => {
                     const chunk = loreChunks.find(c => c.id === id);
                     return {
@@ -65,7 +68,9 @@ export async function rerankStage(params: {
                 const rerankedLoreIds = await rerankCandidates(finalInput, loreCandidates, rerankerEndpoint, { maxCandidates: 25, topN: 10, timeoutMs: utilityTimeoutMs, trackingLabel: 'rerank-lore' });
                 semanticLoreIds = rerankedLoreIds;
                 console.log(`[Reranker] Lore candidates: ${rerankedLoreIds.length} after rerank`);
-            }
+            };
+
+            await Promise.all([rerankScenes(), rerankLore()]);
         } catch (err) {
             console.warn('[Reranker] Failed, using semantic order:', err);
         }

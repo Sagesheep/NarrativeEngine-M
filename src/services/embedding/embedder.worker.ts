@@ -59,12 +59,36 @@ async function ensureWarm(): Promise<EmbedderPipeline> {
     return loading;
 }
 
-async function embedSingle(text: string): Promise<number[] | null> {
+// Search queries are urgent: the turn waits on them. Background work (a scene
+// being archived at commit, NPC and lore indexing, backfill) yields before each
+// model pass while an urgent embed is waiting. Messages are handled concurrently,
+// so without this a few-word query queued behind every window of a long scene,
+// ~1 s each on a phone (measured 2026-10-13: ~10 s per turn).
+let urgentWaiting = 0;
+let urgentClear: Promise<void> = Promise.resolve();
+let releaseUrgent: () => void = () => {};
+
+function beginUrgent(): void {
+    if (urgentWaiting++ === 0) urgentClear = new Promise(resolve => { releaseUrgent = resolve; });
+}
+
+function endUrgent(): void {
+    if (--urgentWaiting === 0) releaseUrgent();
+}
+
+async function runModel(model: EmbedderPipeline, text: string, urgent: boolean) {
+    if (!urgent) {
+        while (urgentWaiting > 0) await urgentClear;
+    }
+    return model(text, { pooling: 'mean', normalize: true });
+}
+
+async function embedSingle(text: string, urgent = false): Promise<number[] | null> {
     try {
         const model = await ensureWarm();
 
         if (text.length <= SINGLE_PASS_LIMIT) {
-            const output = await model(text, { pooling: 'mean', normalize: true });
+            const output = await runModel(model, text, urgent);
             return Array.from(output.data as Float32Array);
         }
 
@@ -78,7 +102,7 @@ async function embedSingle(text: string): Promise<number[] | null> {
 
         const vectors: number[][] = [];
         for (const window of windows) {
-            const output = await model(window, { pooling: 'mean', normalize: true });
+            const output = await runModel(model, window, urgent);
             vectors.push(Array.from(output.data as Float32Array));
         }
 
@@ -113,7 +137,7 @@ async function embedSingle(text: string): Promise<number[] | null> {
 type WorkerInMessage =
     | { type: 'init'; id: string; modelId: string; allowRemote: boolean }
     | { type: 'warmup'; id: string }
-    | { type: 'embed'; id: string; text: string }
+    | { type: 'embed'; id: string; text: string; urgent?: boolean }
     | { type: 'embedBatch'; id: string; texts: string[] };
 
 self.onmessage = async (e: MessageEvent<WorkerInMessage>) => {
@@ -140,8 +164,14 @@ self.onmessage = async (e: MessageEvent<WorkerInMessage>) => {
                 break;
 
             case 'embed': {
-                const vector = await embedSingle(msg.text);
-                self.postMessage({ type: 'result', id: msg.id, vector });
+                const urgent = msg.urgent === true;
+                if (urgent) beginUrgent();
+                try {
+                    const vector = await embedSingle(msg.text, urgent);
+                    self.postMessage({ type: 'result', id: msg.id, vector });
+                } finally {
+                    if (urgent) endUrgent();
+                }
                 break;
             }
 

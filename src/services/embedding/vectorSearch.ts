@@ -25,7 +25,8 @@ const MMR_MIN_POOL = 4;
  * Query vectors for the most recently searched texts. A turn embeds the player's
  * message for the scene, lore and rule searches and again for NPC recall, and the
  * last GM reply comes back as an NPC-recall query on the next turn. The embedder
- * runs on the phone, so every repeat is real time. The cache holds the in-flight
+ * runs on the phone, so every repeat is real time. Query embeds are urgent, so
+ * the worker runs them ahead of background embedding. The cache holds the in-flight
  * promise, so searches started together share one embed. Keyed by model id: a
  * model switch must never reuse a vector of the old model's size.
  */
@@ -40,7 +41,7 @@ function embedQuery(text: string): Promise<Float32Array | null> {
         queryVectorCache.set(key, cached);
         return cached;
     }
-    const pending = embedText(text).then(vec => {
+    const pending = embedText(text, { urgent: true }).then(vec => {
         // A failed embed is not remembered; the next search tries again.
         if (!vec && queryVectorCache.get(key) === pending) queryVectorCache.delete(key);
         return vec;

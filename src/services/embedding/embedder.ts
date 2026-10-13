@@ -187,9 +187,11 @@ export async function switchEmbeddingModel(
     onProgressCallback = null;
 }
 
-export async function embedText(text: string): Promise<Float32Array | null> {
+/** `urgent`: a search query the turn is waiting on. The worker runs it ahead of
+ *  background embedding (archiving, indexing, backfill). */
+export async function embedText(text: string, opts?: { urgent?: boolean }): Promise<Float32Array | null> {
     try {
-        return await request<Float32Array | null>({ type: 'embed', id: `embed-${Date.now()}-${Math.random().toString(36).slice(2)}`, text });
+        return await request<Float32Array | null>({ type: 'embed', id: `embed-${Date.now()}-${Math.random().toString(36).slice(2)}`, text, urgent: opts?.urgent === true });
     } catch (e) {
         console.warn('[Embedder] embedText failed:', e);
         return null;
