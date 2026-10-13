@@ -117,4 +117,8 @@ export type TurnState = {
     // Loot Engine WO-05: armed loot drop config resolved at send time. The walker
     // runs and the result is appended to the GM turn as a fact. null/undefined = normal turn.
     armedLoot?: ArmedLoot | null;
+    // Absolute Command: binding out-of-character instruction for this turn only. It
+    // suppresses the Director Brief, watchdog nudge and GM_REMINDER, and rides last in
+    // the prompt. Never stored on the user message. null/undefined = normal turn.
+    absoluteCommand?: string | null;
 };

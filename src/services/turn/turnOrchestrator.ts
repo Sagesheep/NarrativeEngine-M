@@ -112,6 +112,14 @@ export async function runTurn(
         }
     }
 
+    // Absolute Command: player-facing reveal only. The command block travels as a
+    // buildPayload parameter (placed after the user message) and is never appended to
+    // finalInput, so it stays out of the stored user message and chat history.
+    const absoluteCommand = state.absoluteCommand?.trim() || undefined;
+    if (absoluteCommand) {
+        displayInputFinal += `\n\n⛔ Absolute command issued`;
+    }
+
     const userMsgId = uid();
     callbacks.addMessage({
         id: userMsgId,
@@ -155,20 +163,23 @@ export async function runTurn(
     // boundary in the final user message via buildPayload. Mirrors mainApp
     // `runDirectorStage` (turnStages.ts:228-316).
     //
-    // Mobile has no Absolute Command and no `context.playerCharacter` field —
-    // the watchdog's `playerCharacter` slot is left undefined (the one-directional
-    // heuristic falls back to a legacy `isPC` row in the ledger, which is empty
+    // Under an Absolute Command both are skipped: they exist to steer the GM, which is
+    // exactly what the player is overriding (and it saves one blocking LLM call).
+    //
+    // Mobile has no `context.playerCharacter` field — the watchdog's
+    // `playerCharacter` slot is left undefined (the one-directional heuristic
+    // falls back to a legacy `isPC` row in the ledger, which is empty
     // post-migration; the PC is treated as never-named, so any NPC that appears
     // as the first subject in an assistant message counts as initiating).
-    const watchdogDossier = buildWatchdogDossier({
+    const watchdogDossier = absoluteCommand ? null : buildWatchdogDossier({
         messages: state.messages,
         npcLedger,
         onStageNpcIds: state.onStageNpcIds ?? [],
     });
-    const watchdogNudge = watchdogDossier.nudgeText ?? undefined;
+    const watchdogNudge = watchdogDossier?.nudgeText ?? undefined;
 
     let directorBrief: string | null = null;
-    if (tierAllows(settings.aiTier, 'directorBrief')) {
+    if (watchdogDossier && tierAllows(settings.aiTier, 'directorBrief')) {
         callbacks.onDirectorBriefPhase?.('running');
         try {
             directorBrief = await runDirectorBrief({
@@ -198,6 +209,7 @@ export async function runTurn(
     const gathered = await gatherContext(state, callbacks, finalInput, userMsgId, undefined, {
         watchdogNudge,
         directorBrief: directorBrief ?? undefined,
+        absoluteCommand,
     });
 
     callbacks.setPipelinePhase?.('building-prompt');

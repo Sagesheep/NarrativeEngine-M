@@ -7,6 +7,7 @@ import { buildStablePreamble, buildDivergenceBlock, isThinkingEnabled } from './
 import { assembleWorldBlocks, trimWorldBlocks, type WorldBlock, type NpcStrategy } from './payloadWorldContext';
 import { fitHistory, computeHistoryBudget, buildPinnedMemoriesBlock, pinnedExcerptsTokenCost } from './payloadHistoryFitting';
 import { buildChapterRecapBlock } from './lodRenderer';
+import { buildAbsoluteCommandBlock } from '../turn/absoluteCommand';
 import { queryTraits, formatTraitsForContext } from '../campaign-state';
 
 export type { BudgetMap, WorldBlock, NpcStrategy };
@@ -38,6 +39,9 @@ export interface BuildPayloadOptions {
     /** Director Brief (WO-A §3.5): LLM-authored Writer Brief rendered as a
      *  [DIRECTOR BRIEF] block in the volatile region of the final user message. */
     directorBrief?: string;
+    /** Absolute Command: binding out-of-character instruction for THIS turn only.
+     *  Placed after the user message; suppresses the Brief, watchdog nudge and GM_REMINDER. */
+    absoluteCommand?: string;
 }
 
 export { pinnedExcerptsTokenCost };
@@ -65,6 +69,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         plannerEventTypes,
         watchdogNudge,
         directorBrief,
+        absoluteCommand,
     } = opts;
 
     const trace: PayloadTrace[] = [];
@@ -276,28 +281,39 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     // All three ride in the volatile region of the final user message (below the
     // cache boundary) so they never perturb the cached prefix. The Brief
     // supersedes the deterministic watchdog nudge (WO-A §3.5 supersession rule).
-    // Mobile has no Absolute Command, so the `!hasAbsolute` term from mainApp is
-    // dropped here.
-    const GM_REMINDER = '[GM REMINDER: NPCs push back when their wants/boundaries are crossed. Do not default to facilitation.]';
-    const watchdogNudgeActive = watchdogNudge && !directorBrief ? watchdogNudge : '';
-    const directorBriefBlock = directorBrief ? `[DIRECTOR BRIEF]\n${directorBrief}` : '';
+    // An Absolute Command suppresses all three steering blocks for its turn: the
+    // player is overriding exactly that steering.
+    const absoluteBlock = buildAbsoluteCommandBlock(absoluteCommand);
+    const hasAbsolute = absoluteBlock !== '';
+    const GM_REMINDER = hasAbsolute ? '' : '[GM REMINDER: NPCs push back when their wants/boundaries are crossed. Do not default to facilitation.]';
+    const watchdogNudgeActive = watchdogNudge && !directorBrief && !hasAbsolute ? watchdogNudge : '';
+    const directorBriefBlock = directorBrief && !hasAbsolute ? `[DIRECTOR BRIEF]\n${directorBrief}` : '';
 
     // Per-turn CoT invocation line (thinking-mode only). Rides in the final user
     // message (below the cache boundary) — kept out of the cached stable prefix
-    // so thinking-off turns stay byte-identical to the pre-CoT payload.
+    // so thinking-off turns stay byte-identical to the pre-CoT payload. Under an
+    // Absolute Command the framework is subordinated to the command, not dropped
+    // (the framework itself lives in the cached prefix).
     const writerCotNudge = !isThinkingEnabled(settings)
         ? ''
-        : 'Work through the [WRITER REASONING FRAMEWORK] in your reasoning before writing.';
+        : hasAbsolute
+            ? 'Work through the [WRITER REASONING FRAMEWORK] only where it does not conflict with [USER ABSOLUTE COMMAND]. Where they conflict, discard the framework step and follow the command.'
+            : 'Work through the [WRITER REASONING FRAMEWORK] in your reasoning before writing.';
 
     // Ordering: volatileBlock → writerCotNudge → directorBriefBlock → GM_REMINDER
-    // → watchdogNudgeActive → userMessage. The Brief lands BEFORE GM_REMINDER so
-    // the GM reads the audit directives first, then the standing reminder, then
-    // the (possibly suppressed) deterministic nudge. Everything upstream of this
-    // point is cache-stable.
+    // → watchdogNudgeActive → userMessage → absoluteBlock. The Brief lands BEFORE
+    // GM_REMINDER so the GM reads the audit directives first, then the standing
+    // reminder, then the (possibly suppressed) deterministic nudge. The Absolute
+    // Command goes last, at maximum recency. Everything upstream of this point is
+    // cache-stable.
     const finalUserContent = [
         volatileBlock, writerCotNudge, directorBriefBlock, GM_REMINDER,
-        watchdogNudgeActive, userMessage,
+        watchdogNudgeActive, userMessage, absoluteBlock,
     ].filter(Boolean).join('\n\n');
+
+    if (absoluteBlock) {
+        addTrace({ source: 'Absolute Command', classification: 'player_input', tokens: countTokens(absoluteBlock), reason: 'Binding out-of-character instruction for this turn; Director, watchdog and GM reminder suppressed', included: true, position: 'user', preview: absoluteBlock });
+    }
 
     // Trace the THREE buckets distinctly so debug differentiates them:
     //   - world_context rows (incl. Arc Digest = injection) are traced upstream in trimWorldBlocks

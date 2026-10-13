@@ -258,4 +258,17 @@ describe('runTurn — Director Brief tier gate (WO-A §3.3)', () => {
         // lastAssistantContent is mocked to return 'LAST_GM_TEXT'.
         expect(call.lastAssistant).toBe('LAST_GM_TEXT');
     });
+
+    it('an Absolute Command skips the Director, reaches the payload, and stays out of the stored message', async () => {
+        const added: any[] = [];
+        const callbacks = { ...baseCallbacks(), addMessage: (m: any) => added.push(m) } as any as TurnCallbacks;
+        const { gatherContext } = await import('../turnContext');
+        await runTurn({ ...baseState('max'), absoluteCommand: 'Skip to morning.' } as any as TurnState, callbacks, new AbortController());
+        expect(runDirectorBriefMock).not.toHaveBeenCalled();
+        const signals = vi.mocked(gatherContext).mock.calls[0][5] as any;
+        expect(signals).toMatchObject({ absoluteCommand: 'Skip to morning.', watchdogNudge: undefined, directorBrief: undefined });
+        const userMsg = added.find(m => m.role === 'user');
+        expect(userMsg.content).not.toContain('Skip to morning.');
+        expect(userMsg.displayContent).toContain('Absolute command issued');
+    });
 });

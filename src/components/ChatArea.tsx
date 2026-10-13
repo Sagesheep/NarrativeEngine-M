@@ -161,6 +161,10 @@ export function ChatArea() {
         const useArmedLoot = armedLoot;
         clearArmedLoot();
 
+        // Absolute Command: consumed by this send only, like the dice and loot above.
+        const useAbsoluteCommand = useAppStore.getState().armedAbsoluteCommand;
+        useAppStore.getState().setArmedAbsoluteCommand(null);
+
         if (!overrideText) {
             setInput('');
             resetTextareaHeight();
@@ -226,6 +230,7 @@ export function ChatArea() {
             deepSearchQuery: useDeepQuery || undefined,
             armedRoll: useArmedRoll,
             armedLoot: useArmedLoot,
+            absoluteCommand: useAbsoluteCommand,
             divergenceRegister: useAppStore.getState().divergenceRegister,
             onStageNpcIds: useAppStore.getState().onStageNpcIds,
             pinnedExcerpts: useAppStore.getState().pinnedExcerpts,

@@ -58,6 +58,9 @@ export type UISlice = {
     armedLoot: ArmedLoot | null;
     armLoot: (payload: ArmedLoot) => void;
     clearArmedLoot: () => void;
+    /** Absolute Command: a binding out-of-character instruction for the next send only. null = not armed. */
+    armedAbsoluteCommand: string | null;
+    setArmedAbsoluteCommand: (text: string | null) => void;
     embeddingsReindexing: ReindexState;
     setEmbeddingsReindexing: (state: ReindexState) => void;
 };
@@ -95,6 +98,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     armedLoot: null,
     armLoot: (payload) => set({ armedLoot: payload }),
     clearArmedLoot: () => set({ armedLoot: null }),
+    armedAbsoluteCommand: null,
+    setArmedAbsoluteCommand: (text) => set({ armedAbsoluteCommand: text }),
     embeddingsReindexing: { active: false, total: 0, done: 0, reason: null },
     setEmbeddingsReindexing: (state) => set({ embeddingsReindexing: state }),
 });
