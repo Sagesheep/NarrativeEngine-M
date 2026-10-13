@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, RotateCcw, Trash2, Save, Clock, Loader2 } from 'lucide-react';
+import { X, RotateCcw, Trash2, Save, Clock, Loader2, Pencil, Check } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { useBackHandler } from '../hooks/useBackHandler';
 import { appConfirm } from './ConfirmSheet';
@@ -16,6 +16,8 @@ export function BackupModal() {
     const [creating, setCreating] = useState(false);
     const [restoringTs, setRestoringTs] = useState<number | null>(null);
     const [label, setLabel] = useState('');
+    const [editingTs, setEditingTs] = useState<number | null>(null);
+    const [editingLabel, setEditingLabel] = useState('');
 
     useEffect(() => {
         if (backupModalOpen && activeCampaignId) loadBackups();
@@ -59,6 +61,18 @@ export function BackupModal() {
             toast.error('Failed to create backup');
         }
         setCreating(false);
+    }
+
+    async function handleSaveLabel(ts: number) {
+        if (!activeCampaignId) return;
+        const meta = await api.backup.rename(activeCampaignId, ts, editingLabel);
+        if (meta) {
+            toast.success(meta.isAuto && meta.label ? 'Backup named — it will be kept' : 'Backup renamed');
+            setEditingTs(null);
+            await loadBackups();
+        } else {
+            toast.error('Failed to rename backup');
+        }
     }
 
     async function handleRestore(ts: number) {
@@ -171,12 +185,47 @@ export function BackupModal() {
                                                 {new Date(b.timestamp).toLocaleString()}
                                             </span>
                                             {triggerBadge(b.trigger)}
-                                            {b.isAuto && (
+                                            {b.isAuto && b.label?.trim() ? (
+                                                <span className="text-[10px] text-amber-400/80">named (kept)</span>
+                                            ) : b.isAuto ? (
                                                 <span className="text-[10px] text-blue-400/60">auto</span>
-                                            )}
+                                            ) : null}
                                         </div>
-                                        {b.label && (
-                                            <p className="text-xs text-text truncate">{b.label}</p>
+                                        {editingTs === b.timestamp ? (
+                                            <div className="flex items-center gap-1.5 my-1">
+                                                <input
+                                                    type="text"
+                                                    value={editingLabel}
+                                                    onChange={e => setEditingLabel(e.target.value)}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') handleSaveLabel(b.timestamp);
+                                                        if (e.key === 'Escape') setEditingTs(null);
+                                                    }}
+                                                    placeholder="Name this backup..."
+                                                    className="flex-1 min-w-0 bg-void border border-border rounded px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-terminal"
+                                                    autoFocus
+                                                />
+                                                <button onClick={() => handleSaveLabel(b.timestamp)} className="touch-btn p-1 text-terminal" title="Save name">
+                                                    <Check size={14} />
+                                                </button>
+                                                <button onClick={() => setEditingTs(null)} className="touch-btn p-1 text-text-dim" title="Cancel">
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-1.5">
+                                                <p className="text-xs text-text truncate">
+                                                    {b.label || <span className="italic text-text-dim/50">Unnamed backup</span>}
+                                                </p>
+                                                <button
+                                                    onClick={() => { setEditingTs(b.timestamp); setEditingLabel(b.label || ''); }}
+                                                    className="touch-btn p-0.5 text-text-dim hover:text-terminal shrink-0"
+                                                    title="Rename (a named auto backup is kept)"
+                                                    aria-label="Rename backup"
+                                                >
+                                                    <Pencil size={12} />
+                                                </button>
+                                            </div>
                                         )}
                                         <p className="text-[10px] text-text-dim/60">
                                             {b.fileCount} files · {b.campaignName}

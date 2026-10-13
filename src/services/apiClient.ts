@@ -88,6 +88,9 @@ export const api = {
         restore: async (campaignId: string, timestamp: number): Promise<{ ok: boolean } | null> => {
             return offlineStorage.backup.restore(campaignId, timestamp);
         },
+        rename: async (campaignId: string, timestamp: number, label: string): Promise<BackupMeta | null> => {
+            return offlineStorage.backup.updateLabel(campaignId, timestamp, label);
+        },
         delete: async (campaignId: string, timestamp: number): Promise<void> => {
             await offlineStorage.backup.delete(campaignId, timestamp);
         },

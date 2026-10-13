@@ -11,6 +11,9 @@ export type BackupData = {
     chatState: unknown;
 };
 
+/** Only unnamed auto backups rotate out (newest 10 kept). Naming one protects it. */
+const isPrunable = (b: { meta: BackupMeta }) => b.meta.isAuto && !b.meta.label?.trim();
+
 export const backupStorage = {
     async create(cid: string, opts: { label?: string; trigger?: string; isAuto?: boolean }): Promise<BackupCreateResult> {
         const scenes: SceneRecord[] = await getList(k(cid, 'scenes'));
@@ -26,7 +29,7 @@ export const backupStorage = {
         const backups = await getList<{ timestamp: number; meta: BackupMeta; data: BackupData }>(k(cid, 'backups'));
 
         if (opts.isAuto) {
-            const autoBackups = backups.filter(b => b.meta.isAuto).sort((a, b) => b.timestamp - a.timestamp);
+            const autoBackups = backups.filter(isPrunable).sort((a, b) => b.timestamp - a.timestamp);
             if (autoBackups.length > 0 && autoBackups[0].meta.hash === hash) {
                 return { skipped: true };
             }
@@ -46,7 +49,7 @@ export const backupStorage = {
         backups.push({ timestamp: now, meta, data: { scenes, index, chapters, facts, timeline, chatState } });
 
         if (opts.isAuto) {
-            const autoBackups = backups.filter(b => b.meta.isAuto).sort((a, b) => b.timestamp - a.timestamp);
+            const autoBackups = backups.filter(isPrunable).sort((a, b) => b.timestamp - a.timestamp);
             for (let i = 10; i < autoBackups.length; i++) {
                 const idx = backups.findIndex(b => b.timestamp === autoBackups[i].timestamp);
                 if (idx >= 0) backups.splice(idx, 1);
@@ -87,6 +90,16 @@ export const backupStorage = {
         if (d.chatState) await idbSet(`state_${cid}`, d.chatState);
 
         return { ok: true };
+    },
+
+    /** Rename a backup. A named auto backup is no longer auto-deleted. */
+    async updateLabel(cid: string, ts: number, label: string): Promise<BackupMeta | null> {
+        const backups = await getList<{ timestamp: number; meta: BackupMeta; data: BackupData }>(k(cid, 'backups'));
+        const target = backups.find(b => b.timestamp === ts);
+        if (!target) return null;
+        target.meta = { ...target.meta, label: label.trim() };
+        await setList(k(cid, 'backups'), backups);
+        return target.meta;
     },
 
     async delete(cid: string, ts: number): Promise<void> {
