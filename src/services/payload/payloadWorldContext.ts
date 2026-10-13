@@ -6,6 +6,7 @@ import { buildReactionMenu, type ReactionContext } from '../npc/reactionMenu';
 import { applyRepressionToMenu } from '../npc/reactionRepression';
 import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
 import { isFactActive } from '../campaign-state/divergenceRegister';
+import { renderSignatureKit } from '../npc/signatureKit';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
 
 /**
@@ -176,6 +177,11 @@ function buildCoreDirective(npc: NPCEntry, reactionCtx: ReactionContext): string
         const sw = npc.drives.sceneWant;
         parts.push(`NOW: ${sw.length > 40 ? sw.substring(0, 40) + '…' : sw}`);
     }
+
+    // Signature Kit — the durable loadout rides here so scene filtering can never
+    // drop it; the anti-drift analogue of personalityHex.
+    const kit = renderSignatureKit(npc.signatureKit);
+    if (kit) parts.push(kit);
 
     // Phase 2 §9.1 — engine-built reaction menu. The enforcement clause
     // prevents the story AI from inventing a softer, out-of-character reaction

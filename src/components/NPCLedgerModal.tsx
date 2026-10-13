@@ -14,6 +14,7 @@ import { NPCEditForm } from './npc-ledger/NPCEditForm';
 import { NPCSuggestionsPanel } from './npc-ledger/NPCSuggestionsPanel';
 import { NPCReviewModal, type NPCReviewAction } from './NPCReviewModal';
 import { uid } from '../utils/uid';
+import { sanitizeSignatureKit } from '../services/npc/signatureKit';
 import { useBackHandler } from '../hooks/useBackHandler';
 import { getEntriesForNpc } from '../services/campaign-state';
 import { imageStorage } from '../services/storage/imageStorage';
@@ -96,13 +97,16 @@ export function NPCLedgerModal() {
 
   const handleSave = () => {
     if (!form.name?.trim()) return;
+    // Drop blank kit rows and apply the kit's bounds; an empty kit clears the field.
+    const toSave: Partial<NPCEntry> = { ...form, signatureKit: sanitizeSignatureKit(form.signatureKit) };
     if (selectedId) {
-      updateNPC(selectedId, form);
+      updateNPC(selectedId, toSave);
     } else {
       const newId = uid();
-      addNPC({ ...form, id: newId } as NPCEntry);
+      addNPC({ ...toSave, id: newId } as NPCEntry);
       setSelectedId(newId);
     }
+    setForm(toSave);
     setIsEditing(false);
   };
 

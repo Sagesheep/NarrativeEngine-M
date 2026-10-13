@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Trash2, Save, Loader2, Sparkles, Users, ScrollText, X, ChevronUp, ChevronDown, Search } from 'lucide-react';
-import type { NPCEntry, NPCBehavioralTrigger, DivergenceCategory, DivergenceEntry, HexAxis } from '../../types';
+import type { NPCEntry, NPCBehavioralTrigger, NPCSignatureKit, DivergenceCategory, DivergenceEntry, HexAxis } from '../../types';
+import { KIT_MAX_ENTRIES, KIT_ENTRY_MAXLEN, KIT_ELEMENT_MAXLEN } from '../../services/npc/signatureKit';
 import { CATEGORY_LABELS } from '../../services/campaign-state';
 import { useAppStore } from '../../store/useAppStore';
 import { NPCPortraitSection } from './NPCPortraitSection';
@@ -83,6 +84,25 @@ export function NPCEditForm({
         const list = [...(form[field] || [])];
         list.splice(index, 1);
         setForm({ ...form, [field]: list });
+    };
+
+    // Signature Kit rows may be blank while editing; handleSave sanitizes on save.
+    const setKit = (patch: Partial<NPCSignatureKit>) => {
+        const kit: NPCSignatureKit = { equipment: [], abilities: [], ...form.signatureKit, ...patch };
+        setForm({ ...form, signatureKit: kit });
+    };
+    const updateKitEntry = (channel: 'equipment' | 'abilities', index: number, value: string) => {
+        const list = [...(form.signatureKit?.[channel] ?? [])];
+        list[index] = value;
+        setKit({ [channel]: list });
+    };
+    const addKitEntry = (channel: 'equipment' | 'abilities') => {
+        setKit({ [channel]: [...(form.signatureKit?.[channel] ?? []), ''] });
+    };
+    const removeKitEntry = (channel: 'equipment' | 'abilities', index: number) => {
+        const list = [...(form.signatureKit?.[channel] ?? [])];
+        list.splice(index, 1);
+        setKit({ [channel]: list });
     };
 
 
@@ -734,6 +754,51 @@ export function NPCEditForm({
                         ))}
                     </div>
                  </div>
+
+                {/* Signature Kit — durable gear + powers, sent to the GM every turn the NPC is in play */}
+                <div className="bg-void p-4 rounded border border-border space-y-3">
+                    <div>
+                        <span className="text-text-primary font-bold uppercase tracking-widest text-xs">Signature Kit</span>
+                        <p className="text-[10px] text-text-dim mt-0.5">Gear and powers this character is known for. Kept consistent every scene.</p>
+                    </div>
+                    {(['equipment', 'abilities'] as const).map(channel => {
+                        const list = form.signatureKit?.[channel] ?? [];
+                        return (
+                            <div key={channel}>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-ice text-[10px] uppercase tracking-wider">{channel === 'equipment' ? 'Equipment' : 'Powers'} ({list.length}/{KIT_MAX_ENTRIES})</label>
+                                    {isEditing && list.length < KIT_MAX_ENTRIES && <button onClick={() => addKitEntry(channel)} className="text-[9px] text-terminal hover:text-terminal/80 uppercase tracking-wider">+ Add</button>}
+                                </div>
+                                {list.map((item, i) => (
+                                    <div key={i} className="flex gap-2 items-center mb-1">
+                                        <input
+                                            type="text"
+                                            value={item}
+                                            maxLength={KIT_ENTRY_MAXLEN}
+                                            onChange={e => updateKitEntry(channel, i, e.target.value)}
+                                            disabled={!isEditing}
+                                            placeholder={channel === 'equipment' ? 'e.g. Excalibur (holy longsword)' : 'e.g. fire magic'}
+                                            className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-void focus:outline-none focus:border-ice/50"
+                                        />
+                                        {isEditing && <button onClick={() => removeKitEntry(channel, i)} className="text-danger/60 hover:text-danger p-1 shrink-0"><Trash2 size={11} /></button>}
+                                    </div>
+                                ))}
+                            </div>
+                        );
+                    })}
+                    <div>
+                        <label className="block text-text-dim text-[10px] uppercase tracking-wider mb-1">Element</label>
+                        <input
+                            type="text"
+                            value={form.signatureKit?.element ?? ''}
+                            maxLength={KIT_ELEMENT_MAXLEN}
+                            onChange={e => setKit({ element: e.target.value })}
+                            disabled={!isEditing}
+                            placeholder="optional, e.g. fire"
+                            className="w-full bg-surface border border-border rounded px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-void focus:outline-none focus:border-ice/50"
+                        />
+                    </div>
+                </div>
 
                 {/* Character role */}
                 <div className="bg-void p-4 rounded border border-border space-y-3">

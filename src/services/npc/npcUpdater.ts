@@ -8,6 +8,7 @@ import { relationBand, describeHex } from './agencyBands';
 import { applyRelationTone, isRelationTone } from './relationMeter';
 import { hexDelta } from './agencyDrift';
 import { legacyAffinityDescriptor, llmParseJson } from './npcShared';
+import { sanitizeSignatureKit } from './signatureKit';
 import {
     APPEARANCE_UPDATE_RULES, JSON_ONLY_FOOTER, ANCHOR_BEFORE_INPUT,
     INPUT_DELIMITER, TTRPG_PERSONA_STATE_ANALYZER, joinPromptSections,
@@ -36,6 +37,11 @@ export async function updateExistingNPCs(
         if (npc.personalityHex) { data += `PersonalityHex: ${describeHex(npc.personalityHex)}\n`; }
         if (npc.traits && npc.traits.length > 0) { data += `Traits: ${npc.traits.join(', ')}\n`; }
         if (npc.region) { data += `Region: ${npc.region}\n`; }
+        // Signature Kit — show the current loadout so the model can tell whether a narrated event changed it.
+        if (npc.signatureKit) {
+            const k = npc.signatureKit;
+            data += `SignatureKit: gear=[${k.equipment.join(', ') || 'none'}] powers=[${k.abilities.join(', ') || 'none'}]${k.element ? ` element=${k.element}` : ''}\n`;
+        }
         if (npc.behavioralTriggers && npc.behavioralTriggers.length > 0) { data += `Triggers: ${npc.behavioralTriggers.map(t => `"${t.keyword}" → ${t.shift}`).join('; ')}\n`; }
         return data;
     }).join('\n\n');
@@ -49,7 +55,7 @@ CHANNEL 1 — "updates" (only when something fundamentally changed; usually empt
 Each update MUST include "name" and only the fields that fundamentally changed. Allowed changes keys:
   status, disposition, goals, storyRelevance, personality, voice, appearance,
   wants (medium/long text only — NEVER include "short"; short is engine-managed),
-  personalityHex, traits, region, faction, relations, secondaryGroup.
+  personalityHex, traits, region, faction, relations, secondaryGroup, signatureKit.
 DO NOT include attributes that stayed the same. If nothing fundamental changed, "updates" is [].
 CHANNEL 2 — "tones" (MANDATORY: one entry for EVERY NPC listed below, every time):
 {"tones": [{"name": "<NPC name>", "tone": "<friendly|tense|neutral|bonding|betrayal>"}]}
@@ -57,6 +63,18 @@ Judge how THIS scene felt for each NPC toward the player.
 FORBIDDEN keys in "changes": "drives", "affinity", "pcRelation" — these are engine-owned.
 PERSONALITY HEX DRIFT: "personalityHex" is a DELTA MAP, not a full overwrite. Send ONLY the axes that drifted, as small integers.`,
         `GENERAL RULES:\n- Valid statuses: Alive, Deceased, Missing, Unknown.\n- Do NOT change personality or voice unless the scene contains a genuinely transformative event.`,
+        `SIGNATURE KIT RULES:
+  - "signatureKit" is this NPC's durable loadout: {"equipment": string[], "abilities": string[], "element": string}. It keeps gear and powers CONSISTENT across the campaign.
+  - Only send it when the scene NARRATES a real change: the NPC gains/loses/breaks a signature item, learns or loses a power, or is transformed. An NPC merely *using* gear they already have is NOT a change — send nothing.
+  - Send ONLY the channel that changed. To update gear, send just "equipment" (the full new signature list, max 8); to update powers, send just "abilities". Never re-emit an unchanged channel.
+  - Default is NO change. Most turns have no signatureKit update.
+
+GOOD — NPC's signature weapon changed on-screen (only the gear channel; powers untouched):
+{"updates": [{"name": "Rick", "changes": {"signatureKit": {"equipment": ["iron spear"]}}}]}
+
+BAD — re-emitting the unchanged kit because the NPC simply swung their existing sword:
+{"updates": [{"name": "Rick", "changes": {"signatureKit": {"equipment": ["Excalibur (holy longsword)"], "abilities": ["fire magic"]}}}]}
+Corrected: the loadout did not change — send no signatureKit at all.`,
         APPEARANCE_UPDATE_RULES,
         JSON_ONLY_FOOTER, ANCHOR_BEFORE_INPUT, INPUT_DELIMITER,
         `[RECENT CONTEXT]\n${recentContext}\n[END CONTEXT]`,
@@ -154,6 +172,14 @@ PERSONALITY HEX DRIFT: "personalityHex" is a DELTA MAP, not a full overwrite. Se
                     }
                     if (Array.isArray(changes.hardBoundaries)) { changes.hardBoundaries = changes.hardBoundaries.map(String).filter(Boolean); }
                     if (Array.isArray(changes.softBoundaries)) { changes.softBoundaries = changes.softBoundaries.map(String).filter(Boolean); }
+
+                    // Signature Kit — sanitize + per-channel merge: the model sends only the channel
+                    // that changed, so the untouched one is kept. A fully cleared kit removes the field.
+                    if (changes.signatureKit !== undefined) {
+                        const merged = sanitizeSignatureKit(changes.signatureKit, targetNpc.signatureKit);
+                        if (merged) changes.signatureKit = merged;
+                        else delete (changes as Partial<NPCEntry>).signatureKit;
+                    }
 
                     updateNPCStore(targetNpc.id, changes);
                     console.log(`[NPC Updater] Applied changes to ${targetNpc.name}:`, changes);

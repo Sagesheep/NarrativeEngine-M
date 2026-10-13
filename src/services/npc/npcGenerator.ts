@@ -16,6 +16,7 @@ import { COMBAT_TIER_ARCHETYPE_RUBRIC } from './npcDetector';
 import { KNOWN_TRAITS, offeredTraitNames, defaultLongWant } from './npcValidator';
 import { llmParseJson, checkNameCollision, buildDefaultFieldTags } from './npcShared';
 import { embedAndStoreNPC } from './npcEmbedding';
+import { sanitizeSignatureKit } from './signatureKit';
 import {
     ANCHOR_BEFORE_INPUT, INPUT_DELIMITER, JSON_ONLY_FOOTER,
     TTRPG_PERSONA_GM_ASSISTANT, joinPromptSections,
@@ -91,9 +92,14 @@ function buildRenderPrompt(opts: RenderPromptOpts): string {
   "behavioralTriggers": [{"keyword": "String", "shift": "String"}],
   "hardBoundaries": ["String"], "softBoundaries": ["String"],
   "tier": "String", "combatTier": "String", "archetype": "String",
-  "longWant": "String", "region": "String"
+  "longWant": "String", "region": "String",
+  "signatureKit": {"equipment": ["String"], "abilities": ["String"], "element": "String"}
 }
 IMPORTANT: Do NOT emit a "personalityHex" field, numeric axis values, or a "traits" array. The engine has already rolled the personality hexagon and chosen the traits; you only render flavour. Numeric personality output will be discarded.`,
+        `SIGNATURE KIT RULES:
+- "signatureKit" is this NPC's durable loadout — the gear and powers that should stay consistent whenever they appear. It is NOT a full inventory.
+- Only give equipment/abilities this character is actually established or strongly implied to have in the context — do not invent a full arsenal. Stay inside this world's genre and tech level. A mundane character may have an empty kit (omit "signatureKit" or send empty arrays).
+- Each entry is a short noun phrase (e.g. "Excalibur (holy longsword)", "fire magic"). Max 8 entries per array. "element" is a single optional tag (e.g. "fire").`,
         `CONTROLLED TRAIT VOCABULARY — for reference only: ${offeredTraitNames(matureMode).join(', ')}.`,
         COMBAT_TIER_ARCHETYPE_RUBRIC,
         JSON_ONLY_FOOTER, ANCHOR_BEFORE_INPUT, INPUT_DELIMITER,
@@ -206,6 +212,8 @@ export async function generateNPCProfile(
             newEntry.primaryGroup = primary;
             newEntry.secondaryGroup = secondary;
             newEntry.region = typeof finalParsed.region === 'string' ? finalParsed.region.trim() : '';
+            // Signature Kit — seeded at generation; an empty kit (undefined) is fine for plain characters.
+            newEntry.signatureKit = sanitizeSignatureKit(finalParsed.signatureKit);
             newEntry.populated = true;
             if (newEntry.pcRelation === undefined) { newEntry.pcRelation = affinityToPcRelation(newEntry.affinity ?? 50); }
             newEntry.fieldTags = buildDefaultFieldTags(newEntry);

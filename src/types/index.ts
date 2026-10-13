@@ -754,6 +754,13 @@ export type NPCPressure = {
     history: NPCPressureHistory[];
 };
 
+/** Durable NPC loadout (port of mainApp's Signature Kit): injected every turn so gear and powers don't drift. */
+export type NPCSignatureKit = {
+    equipment: string[];   // signature gear; <=8 entries; each a short noun phrase, e.g. "Excalibur (holy longsword)"
+    abilities: string[];   // signature powers/techniques; <=8 entries, e.g. "fire magic", "regeneration"
+    element?: string;      // optional single affinity/damage-type tag, e.g. "fire"
+};
+
 export type NPCEntry = {
     id: string;
     name: string;
@@ -770,6 +777,7 @@ export type NPCEntry = {
     exampleOutput: string;
     affinity: number;
     drives?: NPCDrives;
+    signatureKit?: NPCSignatureKit;
     behavioralTriggers?: NPCBehavioralTrigger[];
     hardBoundaries?: string[];
     softBoundaries?: string[];
