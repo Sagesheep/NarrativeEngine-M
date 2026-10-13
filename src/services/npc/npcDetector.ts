@@ -252,7 +252,7 @@ When in doubt, REJECT. If none are valid names, return [].`,
     );
 
     try {
-        const raw = await llmCall(provider, prompt, { priority: 'normal', maxTokens: 500 });
+        const raw = await llmCall(provider, prompt, { priority: 'normal', maxTokens: 500, thinkingEffort: 'off' });
 
         if (raw) {
             const cleanStr = extractJson(raw);

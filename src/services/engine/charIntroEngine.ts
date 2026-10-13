@@ -34,6 +34,7 @@ async function resolveLocation(
             temperature: 0.1,
             priority: 'high',
             maxTokens: 100,
+            thinkingEffort: 'off',
         });
         return extractLocationFromResponse(raw);
     } catch (err) {

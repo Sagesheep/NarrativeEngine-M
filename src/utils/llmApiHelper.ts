@@ -30,6 +30,33 @@ const GEMINI_LEVEL_MAP: Record<Exclude<ThinkingEffort, 'off'>, string> = {
     max: 'HIGH',
 };
 
+// Headroom for formats whose thinking spend is not a fixed number (OpenAI,
+// DeepSeek, Gemini thinkingLevel). Capped at THINKING_CEILING.
+const THINKING_RESERVE: Record<ThinkingEffort, number> = {
+    off: 0, low: 4096, medium: 8192, high: 16384, max: 32768,
+};
+const THINKING_CEILING = 8192;
+
+/**
+ * Turns an answer budget into the request's token cap. Providers bill thinking
+ * against `max_tokens` (Claude rejects a cap at or below `budget_tokens`), so a
+ * caller asking for a 200-token answer with thinking on got an empty answer or a
+ * 400. `maxTokens` now means answer tokens; thinking is added on top.
+ *
+ * Claude adds its exact budget. Other formats add a reserve capped at 8192, and
+ * never lower what the caller asked for. Thinking off and Ollama are unchanged.
+ * Port of mainApp's `withThinkingReserve` (llmApiHelper.ts).
+ */
+export function withThinkingReserve(
+    format: ApiFormat,
+    effort: ThinkingEffort | undefined,
+    answerTokens: number,
+): number {
+    if (!effort || effort === 'off' || format === 'ollama') return answerTokens;
+    if (format === 'claude') return answerTokens + CLAUDE_BUDGET_MAP[effort];
+    return Math.max(answerTokens, Math.min(answerTokens + THINKING_RESERVE[effort], THINKING_CEILING));
+}
+
 export function getApiFormat(provider: AnyProvider): ApiFormat {
     return provider.apiFormat || 'openai';
 }
@@ -248,13 +275,15 @@ export function buildChatBody(
 ): Record<string, unknown> {
     const format = getApiFormat(provider);
     const stream = options?.stream ?? false;
+    const effort = options?.thinkingEffort !== undefined ? options.thinkingEffort : provider.thinkingEffort;
 
     if (format === 'claude') {
         const { system, messages: convMessages } = transformClaudeMessages(messages);
+        const answerTokens = options?.sampling?.max_tokens ?? options?.max_tokens ?? 16384;
         const body: Record<string, unknown> = {
             model: provider.modelName,
             messages: convMessages,
-            max_tokens: options?.sampling?.max_tokens ?? options?.max_tokens ?? 16384,
+            max_tokens: withThinkingReserve(format, effort, answerTokens),
             stream,
         };
         if (system) body.system = system;
@@ -266,7 +295,6 @@ export function buildChatBody(
 
         if (options?.tools && options.tools.length > 0) body.tools = options.tools;
 
-        const effort = options?.thinkingEffort !== undefined ? options.thinkingEffort : provider.thinkingEffort;
         if (effort && effort !== 'off') {
             body.thinking = { type: 'enabled', budget_tokens: CLAUDE_BUDGET_MAP[effort] };
         }
@@ -282,7 +310,7 @@ export function buildChatBody(
         if (systemInstruction) body.systemInstruction = systemInstruction;
 
         const genConfig: Record<string, unknown> = {};
-        genConfig.maxOutputTokens = options?.sampling?.max_tokens ?? options?.max_tokens ?? 16384;
+        genConfig.maxOutputTokens = withThinkingReserve(format, effort, options?.sampling?.max_tokens ?? options?.max_tokens ?? 16384);
         if (options?.temperature !== undefined) genConfig.temperature = options.temperature;
         else if (options?.sampling?.temperature !== undefined) genConfig.temperature = options.sampling.temperature;
         if (options?.sampling?.top_p !== undefined) genConfig.topP = options.sampling.top_p;
@@ -290,7 +318,6 @@ export function buildChatBody(
         if (options?.sampling?.frequency_penalty !== undefined) genConfig.frequencyPenalty = options.sampling.frequency_penalty;
         if (options?.sampling?.presence_penalty !== undefined) genConfig.presencePenalty = options.sampling.presence_penalty;
 
-        const effort = options?.thinkingEffort !== undefined ? options.thinkingEffort : provider.thinkingEffort;
         if (effort && effort !== 'off') {
             genConfig.thinkingConfig = { thinkingLevel: GEMINI_LEVEL_MAP[effort] };
         }
@@ -322,7 +349,7 @@ export function buildChatBody(
     }
 
     const resolvedMaxTokens = options?.sampling?.max_tokens ?? options?.max_tokens;
-    if (resolvedMaxTokens !== undefined) body.max_tokens = resolvedMaxTokens;
+    if (resolvedMaxTokens !== undefined) body.max_tokens = withThinkingReserve(format, effort, resolvedMaxTokens);
 
     if (options?.temperature !== undefined) body.temperature = options.temperature;
     else if (options?.sampling?.temperature !== undefined) body.temperature = options.sampling.temperature;
@@ -344,7 +371,6 @@ export function buildChatBody(
         body.tools = options.tools;
     }
 
-    const effort = options?.thinkingEffort !== undefined ? options.thinkingEffort : provider.thinkingEffort;
     if (effort && effort !== 'off') {
         if (isOllama) {
             body.think = effort;

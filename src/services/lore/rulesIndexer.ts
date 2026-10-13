@@ -118,6 +118,7 @@ async function extractKeywordsViaLLM(
             temperature: 0.1,
             priority: 'normal',
             maxTokens: 150,
+            thinkingEffort: 'off',
         });
 
         let clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');

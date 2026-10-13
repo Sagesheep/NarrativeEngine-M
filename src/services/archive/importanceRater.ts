@@ -38,7 +38,7 @@ export async function rateImportance(
     const prompt = `${IMPORTANCE_PROMPT_STATIC}\n\n${dynamicSection}`;
 
     try {
-        const raw = await llmCall(provider, prompt, { priority: 'low', maxTokens: 15 });
+        const raw = await llmCall(provider, prompt, { priority: 'low', maxTokens: 15, thinkingEffort: 'off' });
         const match = raw.trim().match(/\b([1-9]|10)\b/);
         if (match) return parseInt(match[1], 10);
     } catch (err) {

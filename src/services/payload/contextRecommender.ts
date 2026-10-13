@@ -144,6 +144,7 @@ export async function recommendContext(
         rawContent = await llmCall(utilityEndpoint, userContent, {
             temperature: 0.1,
             priority: 'high',
+            thinkingEffort: 'off',
             ...(timeoutMs ? { timeoutMs, trackingLabel: 'recommender' } : {}),
         });
     } catch (err) {

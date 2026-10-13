@@ -81,6 +81,7 @@ export async function runPlannerCall(
             temperature: 0.1,
             priority: 'high',
             maxTokens: 400,
+            thinkingEffort: 'off',
             timeoutMs,
             trackingLabel: 'planner',
         });
