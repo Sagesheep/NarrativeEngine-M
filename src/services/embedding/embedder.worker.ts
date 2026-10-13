@@ -78,6 +78,11 @@ function endUrgent(): void {
 
 async function runModel(model: EmbedderPipeline, text: string, urgent: boolean) {
     if (!urgent) {
+        // Give queued messages a turn first. A model pass resolves through
+        // microtasks only, so without a task break here a query that arrived
+        // mid-job is not even received until every window of this job is done
+        // (seen on device: the gate below alone saved nothing).
+        await new Promise(resolve => setTimeout(resolve, 0));
         while (urgentWaiting > 0) await urgentClear;
     }
     return model(text, { pooling: 'mean', normalize: true });

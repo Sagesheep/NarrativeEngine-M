@@ -7,16 +7,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 type Pass = { text: string; finish: () => void };
 
 const h = vi.hoisted(() => ({
+    /** instant: a pass resolves through microtasks only, as a real model pass does. */
+    instant: true,
     passes: [] as { text: string; finish: () => void }[],
     order: [] as string[],
 }));
 
 vi.mock('@huggingface/transformers', () => ({
     env: { backends: { onnx: { wasm: {} } } },
-    pipeline: async () => (text: string) => new Promise(resolve => {
+    pipeline: async () => (text: string) => {
         h.order.push(text);
-        h.passes.push({ text, finish: () => resolve({ data: new Float32Array([1, 0]) }) });
-    }),
+        const out = { data: new Float32Array([1, 0]) };
+        if (h.instant) return Promise.resolve(out);
+        return new Promise(resolve => {
+            h.passes.push({ text, finish: () => resolve(out) });
+        });
+    },
 }));
 
 const posted: { type: string; id: string }[] = [];
@@ -29,8 +35,10 @@ await import('../embedder.worker');
 const send = (data: unknown) =>
     (self.onmessage as (e: MessageEvent) => Promise<void>)({ data } as MessageEvent);
 
-/** Let pending promise chains run. */
-const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+/** Let pending tasks and promise chains run. */
+async function flush(): Promise<void> {
+    for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 0));
+}
 
 /** Finish the oldest unfinished model pass, then let the worker react. */
 async function finishNext(): Promise<Pass> {
@@ -40,17 +48,33 @@ async function finishNext(): Promise<Pass> {
     return pass;
 }
 
+// > 1500 chars → 1000-char windows at a 700 stride: 4 passes.
+const SCENE = 'S'.repeat(2600);
+
 beforeEach(() => {
+    h.instant = true;
     h.passes.length = 0;
     h.order.length = 0;
     posted.length = 0;
 });
 
 describe('embedder worker — urgent query embeds', () => {
-    it('a query runs before the remaining windows of a scene already being embedded', async () => {
-        // > 1500 chars → 1000-char windows at a 700 stride: 4 passes.
-        const scene = 'S'.repeat(2600);
-        const bg = send({ type: 'embed', id: 'scene', text: scene });
+    it('a query that arrives while a scene is being embedded is received before the scene finishes', async () => {
+        const bg = send({ type: 'embed', id: 'scene', text: SCENE });
+        // The query arrives as its own message (a separate task), as on the phone.
+        const q = new Promise<void>(resolve => setTimeout(() => {
+            void send({ type: 'embed', id: 'query', text: 'who is at the gate', urgent: true }).then(resolve);
+        }, 0));
+        await Promise.all([bg, q]);
+
+        expect(h.order).toHaveLength(5);
+        expect(h.order.indexOf('who is at the gate')).toBeLessThanOrEqual(1);
+        expect(posted.map(m => m.id).sort()).toEqual(['query', 'scene']);
+    });
+
+    it('background windows wait while a query is in flight, then resume', async () => {
+        h.instant = false;
+        const bg = send({ type: 'embed', id: 'scene', text: SCENE });
         await flush();
         expect(h.order).toHaveLength(1);           // first scene window in flight
 
@@ -71,11 +95,8 @@ describe('embedder worker — urgent query embeds', () => {
     });
 
     it('background embeds run normally when no query is waiting', async () => {
-        const p = send({ type: 'embed', id: 'npc', text: 'Wen Huang, archivist' });
-        await flush();
+        await send({ type: 'embed', id: 'npc', text: 'Wen Huang, archivist' });
         expect(h.order).toEqual(['Wen Huang, archivist']);
-        await finishNext();
-        await p;
         expect(posted.find(m => m.id === 'npc')?.type).toBe('result');
     });
 });
