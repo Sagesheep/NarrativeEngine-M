@@ -11,6 +11,7 @@ import { useMessageEditor } from './hooks/useMessageEditor';
 import { useCondenser } from './hooks/useCondenser';
 import { toast } from './Toast';
 import { MessageBubble } from './chat/MessageBubble';
+import { readingStyleVars } from './chat/readingPrefs';
 
 import { PinnedMemoriesPanel } from './chat/PinnedMemoriesPanel';
 
@@ -410,7 +411,7 @@ export function ChatArea() {
                 </div>
             )}
 
-            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3 relative">
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3 relative" style={readingStyleVars(settings)}>
                 {messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-center space-y-4">

@@ -1,5 +1,6 @@
 import type { AppSettings, AIPreset, LLMProvider, ApiFormat } from '../types';
 import { uid } from '../utils/uid';
+import { READING_DEFAULTS, clampReadingSize, normalizeReadingFont, normalizeReadingLeading } from '../components/chat/readingPrefs';
 
 export const defaultProvider: LLMProvider = {
     id: uid(),
@@ -31,6 +32,7 @@ export const defaultSettings: AppSettings = {
     theme: 'system',
     showReasoning: true,
     uiScale: 1.0,
+    ...READING_DEFAULTS,
     enableDeepArchiveSearch: false,
     autoExtractDivergences: true,
     divergenceTokenBudget: 2000,
@@ -196,6 +198,9 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         theme: (raw.theme as 'light' | 'dark' | 'system') ?? 'system',
         showReasoning: (raw.showReasoning as boolean) ?? true,
         uiScale: (raw.uiScale as number) ?? 1.0,
+        readingFont: normalizeReadingFont(raw.readingFont),
+        readingSize: clampReadingSize(raw.readingSize),
+        readingLeading: normalizeReadingLeading(raw.readingLeading),
         enableDeepArchiveSearch: (raw.enableDeepArchiveSearch as boolean) ?? false,
         autoExtractDivergences: (raw.autoExtractDivergences as boolean) ?? true,
         divergenceTokenBudget: (raw.divergenceTokenBudget as number) ?? 2000,

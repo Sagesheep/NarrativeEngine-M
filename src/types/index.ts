@@ -4,6 +4,9 @@ export type AiTier = 'lite' | 'pro' | 'max';
 
 export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 
+export type ReadingFont = 'mono' | 'serif' | 'sans';
+export type ReadingLeading = 'tight' | 'normal' | 'relaxed';
+
 export type LLMProvider = {
     id: string;
     label: string;
@@ -73,6 +76,10 @@ export type AppSettings = {
     theme?: 'light' | 'dark' | 'system';
     showReasoning?: boolean; // Toggles visibility of LLM thinking blocks
     uiScale?: number;  // 0.75 to 1.25, default 1.0
+    /** Story text typography, separate from uiScale (components/chat/readingPrefs.ts). */
+    readingFont?: ReadingFont;
+    readingSize?: number; // px, 12-22, default 14
+    readingLeading?: ReadingLeading;
 
     enableDeepArchiveSearch?: boolean;
     autoExtractDivergences?: boolean;

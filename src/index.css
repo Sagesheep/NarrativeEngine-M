@@ -220,7 +220,11 @@
 
 /* ─── Prose overrides for readable AI output ─── */
 .gm-prose {
-  line-height: 1.75;
+  /* Story text settings (components/chat/readingPrefs.ts); the fallbacks are the
+     pre-setting look: prose-sm size, relaxed leading, the app's mono face. */
+  font-size: var(--reading-size, 0.875rem);
+  line-height: var(--reading-leading, 1.75);
+  font-family: var(--reading-font, var(--font-mono));
   color: var(--color-text-primary);
 }
 

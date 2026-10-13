@@ -1,5 +1,9 @@
 import { useAppStore } from '../../store/useAppStore';
 import type { CondenseAggressiveness, AiTier } from '../../types';
+import {
+    READING_DEFAULTS, READING_FONTS, READING_LEADINGS, READING_SIZE_MIN, READING_SIZE_MAX,
+    clampReadingSize, normalizeReadingFont, normalizeReadingLeading, readingStyleVars,
+} from '../chat/readingPrefs';
 
 export function GlobalSettingsPanel() {
     const settings = useAppStore(s => s.settings);
@@ -290,6 +294,57 @@ export function GlobalSettingsPanel() {
                             className={`py-3 text-[11px] font-mono font-bold border rounded transition-colors min-h-[48px] ${Math.round((settings.uiScale ?? 1) * 100) === Math.round(v * 100) ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:border-terminal/50'}`}
                         >
                             {Math.round(v * 100)}%
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Story Text — the story's own typography, separate from UI Scale (readingPrefs.ts) */}
+            <div className="flex flex-col bg-void p-4 border border-border rounded gap-3">
+                <div className="flex items-center justify-between">
+                    <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">Story Text</label>
+                    <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs">
+                        {clampReadingSize(settings.readingSize)}px
+                    </span>
+                </div>
+                <p className="text-[10px] text-text-dim -mt-1">Size, spacing and font of the story only. UI Scale still applies on top.</p>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => updateSettings({ readingSize: clampReadingSize((settings.readingSize ?? READING_DEFAULTS.readingSize) - 1) })}
+                        disabled={clampReadingSize(settings.readingSize) <= READING_SIZE_MIN}
+                        className="w-12 min-h-[48px] text-[16px] font-mono font-bold border rounded bg-surface border-border text-text-dim hover:border-terminal/50 disabled:opacity-40"
+                        aria-label="Smaller story text"
+                    >A−</button>
+                    <div className="flex-1 text-center text-text-primary" style={readingStyleVars(settings)}>
+                        <span style={{ fontSize: 'var(--reading-size)', fontFamily: 'var(--reading-font)' }}>The rain kept falling.</span>
+                    </div>
+                    <button
+                        onClick={() => updateSettings({ readingSize: clampReadingSize((settings.readingSize ?? READING_DEFAULTS.readingSize) + 1) })}
+                        disabled={clampReadingSize(settings.readingSize) >= READING_SIZE_MAX}
+                        className="w-12 min-h-[48px] text-[16px] font-mono font-bold border rounded bg-surface border-border text-text-dim hover:border-terminal/50 disabled:opacity-40"
+                        aria-label="Larger story text"
+                    >A+</button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                    {READING_FONTS.map(f => (
+                        <button
+                            key={f.value}
+                            onClick={() => updateSettings({ readingFont: f.value })}
+                            className={`py-2 text-[11px] font-bold border rounded transition-colors min-h-[44px] ${normalizeReadingFont(settings.readingFont) === f.value ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:border-terminal/50'}`}
+                            style={{ fontFamily: f.family }}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                    {READING_LEADINGS.map(l => (
+                        <button
+                            key={l.value}
+                            onClick={() => updateSettings({ readingLeading: l.value })}
+                            className={`py-2 text-[11px] font-mono font-bold border rounded transition-colors min-h-[44px] ${normalizeReadingLeading(settings.readingLeading) === l.value ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:border-terminal/50'}`}
+                        >
+                            {l.label}
                         </button>
                     ))}
                 </div>
