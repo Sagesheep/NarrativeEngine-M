@@ -48,6 +48,36 @@ describe('fitHistory budget clamp (AUDIT F6)', () => {
     });
 });
 
+describe('fitHistory window start (prompt-cache stability)', () => {
+    const turn = (i: number): ChatMessage[] => [
+        { id: `u${i}`, role: 'user', content: `I act ${i}. ` + 'move '.repeat(20), timestamp: i },
+        { id: `a${i}`, role: 'assistant', content: `Scene ${i}. ` + 'the story goes on '.repeat(40), timestamp: i },
+    ];
+    const historyOf = (turns: number) => Array.from({ length: turns }, (_, i) => turn(i)).flat();
+    const limit = 16_000;
+    const reserved = 6_000;
+
+    it('keeps the same first message while history grows within a block', () => {
+        const firsts = [30, 31, 32].map(n => fitHistory(historyOf(n), undefined, 'next', reserved, limit).fitted[0].content);
+        expect(new Set(firsts).size).toBe(1);
+    });
+
+    it('stays within the history budget and keeps the newest message', () => {
+        for (const n of [30, 35, 40, 45]) {
+            const history = historyOf(n);
+            const { fitted, historyUsed, historyBudget } = fitHistory(history, undefined, 'next', reserved, limit);
+            expect(historyUsed).toBeLessThanOrEqual(historyBudget);
+            expect(fitted[fitted.length - 1].content).toBe(history[history.length - 1].content.trim());
+        }
+    });
+
+    it('sends the whole history when it fits', () => {
+        const history = historyOf(3);
+        const { fitted } = fitHistory(history, undefined, 'next', reserved, limit);
+        expect(fitted).toHaveLength(history.length);
+    });
+});
+
 describe('fitHistory — assistant message with tool_calls + story content', () => {
     // Regression: when the GM emits story text TOGETHER WITH an update_scene_notebook
     // tool call, the assistant message is persisted with BOTH content and tool_calls.

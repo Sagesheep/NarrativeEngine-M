@@ -28,6 +28,16 @@ export function computeHistoryBudget(userMessage: string, reservedTokens: number
     return Math.max(0, limit - reservedTotal - margin);
 }
 
+/**
+ * Granularity of the history window's oldest edge, as a share of the context limit.
+ * Once history outgrows its budget, the window drops old messages a block at a time
+ * instead of one or two per turn, so its first message (and with it the provider's
+ * prompt cache over the history) stays put for several turns. Measured against the
+ * context limit, not the per-turn history budget, so the block edges don't move
+ * when the world blocks change size from turn to turn.
+ */
+const HISTORY_ANCHOR_PCT = 0.10;
+
 export function fitHistory(
     history: ChatMessage[],
     condensedUpToIndex: number | undefined,
@@ -42,11 +52,8 @@ export function fitHistory(
         ? history.slice(condensedUpToIndex + 1)
         : history;
 
-    const fitted: OpenAIMessage[] = [];
-    let historyUsed = 0;
-    for (let i = candidateMessages.length - 1; i >= 0; i--) {
-        const msg = candidateMessages[i];
-
+    const entries: { msg: OpenAIMessage; cost: number }[] = [];
+    for (const msg of candidateMessages) {
         if (msg.role === 'tool') continue;
         // An assistant message with tool_calls but NO content is a pure tool-call
         // envelope — skip it (its matching tool result is skipped on the line above).
@@ -68,10 +75,6 @@ export function fitHistory(
             content = content.replace(THINK_TAG_REGEX, '').trim() || content;
         }
 
-        const textToEstimate = content || '';
-        const cost = countTokens(textToEstimate);
-        if (historyUsed + cost > historyBudget) break;
-
         const openAIMsg = {
             role: msg.role as 'system' | 'user' | 'assistant' | 'tool',
             content,
@@ -79,13 +82,42 @@ export function fitHistory(
             ...(msg.tool_call_id ? { tool_call_id: msg.tool_call_id } : {}),
         } as OpenAIMessage;
 
-        fitted.unshift(openAIMsg);
-        historyUsed += cost;
+        entries.push({ msg: openAIMsg, cost: countTokens(content || '') });
     }
+
+    // Newest-first fill: the oldest message that still fits.
+    let start = entries.length;
+    let budgetLeft = historyBudget;
+    while (start > 0 && entries[start - 1].cost <= budgetLeft) {
+        start--;
+        budgetLeft -= entries[start].cost;
+    }
+    if (start > 0) start = snapToAnchor(entries, start, Math.max(1, Math.floor(limit * HISTORY_ANCHOR_PCT)));
+
+    const kept = entries.slice(start);
+    const fitted = kept.map(e => e.msg);
+    const historyUsed = kept.reduce((sum, e) => sum + e.cost, 0);
 
     while (fitted.length > 0 && fitted[0].role === 'tool') fitted.shift();
 
     return { fitted, historyUsed, userTokens, historyBudget };
+}
+
+/**
+ * Moves a window start forward to the first message that opens a new
+ * `blockTokens`-sized block, counting from the oldest candidate message. Block
+ * edges depend only on the messages themselves, so the same start is chosen turn
+ * after turn until the window has to move past it. Returns `start` unchanged when
+ * no block opens before the newest message.
+ */
+function snapToAnchor(entries: { cost: number }[], start: number, blockTokens: number): number {
+    let before = 0;
+    for (let i = 0; i < entries.length; i++) {
+        const block = Math.floor(before / blockTokens);
+        if (i >= start && (i === 0 || block > Math.floor((before - entries[i - 1].cost) / blockTokens))) return i;
+        before += entries[i].cost;
+    }
+    return start;
 }
 
 export function pinnedExcerptsTokenCost(pinnedExcerpts: PinnedExcerpt[]): number {
