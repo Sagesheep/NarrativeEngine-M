@@ -47,16 +47,31 @@ let voicesReady = false;
 const isNativePlatform = Capacitor.isNativePlatform();
 let nativeTTSAvailable: boolean | null = isNativePlatform ? null : false;
 
+// Android binds its TTS engine asynchronously, so a probe at app boot can fail
+// (throw or report unsupported) only because the engine is not bound yet. One
+// such failure used to mark native TTS unavailable for the whole session and
+// hide the speaker button. Retry for a few seconds before giving up; the flag
+// stays null (button shown) while retrying.
+const PROBE_ATTEMPTS = 6;
+const PROBE_RETRY_MS = 1000;
+
 async function probeNativeTTS(): Promise<boolean> {
     if (!isNativePlatform) return false;
     if (nativeTTSAvailable !== null) return nativeTTSAvailable;
-    try {
-        const { supported } = await NativeTTS.isLanguageSupported({ lang: 'en-US' });
-        nativeTTSAvailable = supported;
-    } catch {
-        nativeTTSAvailable = false;
+    for (let attempt = 1; attempt <= PROBE_ATTEMPTS; attempt++) {
+        try {
+            const { supported } = await NativeTTS.isLanguageSupported({ lang: 'en-US' });
+            if (supported) {
+                nativeTTSAvailable = true;
+                return true;
+            }
+        } catch {
+            // engine not bound yet, or no engine; retry below
+        }
+        if (attempt < PROBE_ATTEMPTS) await new Promise(r => setTimeout(r, PROBE_RETRY_MS));
     }
-    return nativeTTSAvailable;
+    nativeTTSAvailable = false;
+    return false;
 }
 
 /** True if either Web Speech or native Capacitor TTS is available. */
