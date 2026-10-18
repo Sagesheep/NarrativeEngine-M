@@ -10,6 +10,8 @@ import { debouncedSaveSettings } from './settingsSlice';
 import { runFullReindex, abortForCampaignSwitch } from '../../services/embedding';
 import { embeddingStorage } from '../../services/storage/embeddingStorage';
 import { EMPTY_REGISTER } from '../../services/campaign-state';
+import { parseNPCsFromLore } from '../../services/lore/loreNPCParser';
+import { markCanonFromLore } from '../../services/npc/npcCanon';
 import {
     DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES,
     DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES,
@@ -193,7 +195,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             loadDivergenceRegister, loadChapters, loadSemanticFacts, loadTimeline, loadEntities,
         } = await import('../../store/campaignStore');
 
-        const [campaignState, loreChunks, npcLedger, archiveIndex, divReg] = await Promise.all([
+        const [campaignState, loreChunks, loadedLedger, archiveIndex, divReg] = await Promise.all([
             loadCampaignState(id),
             getLoreChunks(id),
             getNPCLedger(id),
@@ -206,6 +208,14 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             loadTimeline(id).catch(() => []),
             loadEntities(id).catch(() => []),
         ]);
+
+        // Canon migration: tag ledger entries that match a lore character (saves from before
+        // the canon flag existed). Never overrides an entry the player marked non-canon.
+        const npcLedger = markCanonFromLore(loadedLedger, parseNPCsFromLore(loreChunks));
+        if (npcLedger !== loadedLedger) {
+            const { saveNPCLedger } = await import('../../store/campaignStore');
+            saveNPCLedger(id, npcLedger).catch(e => console.warn('[Campaign] Canon migration save failed:', e));
+        }
 
         set({
             activeCampaignId: id,

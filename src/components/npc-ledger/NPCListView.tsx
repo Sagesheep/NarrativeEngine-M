@@ -41,6 +41,7 @@ export function NPCListView({ npcLedger, selectedId, selectMode, checkedIds, onS
                                     {npc.name}
                                 </p>
                                 <div className="flex items-center gap-1 text-[10px] mt-0.5 text-text-dim truncate">
+                                    {npc.canon === true && <span className="bg-amber-400/10 text-amber-400 px-1 rounded uppercase" title="Canon character — identity locked to source">Canon</span>}
                                     {npc.faction && <span className="bg-terminal/10 text-terminal px-1 rounded uppercase">{npc.faction}</span>}
                                     {npc.aliases && <span className="truncate">{npc.aliases}</span>}
                                 </div>

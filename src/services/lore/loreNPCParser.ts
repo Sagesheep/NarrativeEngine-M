@@ -236,9 +236,14 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
             ? { short: wantsShort ?? [], medium: wantsMedium ?? [], long: wantsLong ?? '' }
             : undefined;
 
+        const personalityHex = getHex('PersonalityHex');
+
         npcs.push({
             id: uid(),
             name,
+            // Every lore character is canon: identity locked, hex anchored to the authored values.
+            canon: true,
+            canonHex: personalityHex ? { ...personalityHex } : undefined,
             aliases: get('Aliases'),
             appearance: getAny(['Appearance', 'VisualForAI']),
             disposition,
@@ -253,7 +258,7 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
             // Lore-authored agency fields. When present, populateAgencyFields' existing
             // guards skip the LLM inference / pool-draw calls — canon NPCs keep their
             // authored personality instead of being re-inferred from the disposition string.
-            personalityHex: getHex('PersonalityHex'),
+            personalityHex,
             traits: getTraits('Traits'),
             tier: getTier(),
             region: get('Region') || undefined,

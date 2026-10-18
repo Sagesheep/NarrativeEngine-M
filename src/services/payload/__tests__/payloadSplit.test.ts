@@ -234,6 +234,30 @@ describe('payloadSplit — T1', () => {
             expect(npcBlock).toBeDefined();
             expect(npcBlock!.content).not.toContain('REACTIONS');
         });
+
+        it('omits the reaction menu on a combat-tagged scene too', () => {
+            const combatNpc = makeNpc('npc_fighter', 'Bram', {
+                personalityHex: { drive: 0, diligence: 0, boldness: 2, warmth: -1, empathy: -1, composure: -1 },
+                traits: ['impulsive', 'proud'],
+                pcRelation: 0,
+                goals: 'win',
+            });
+            const blocks = assembleWorldBlocks({
+                context: stubContext,
+                history: [{ id: 'm1', role: 'user', content: 'Bram attack!', timestamp: 0 }] as ChatMessage[],
+                userMessage: 'Bram attack!',
+                npcLedger: [combatNpc],
+                onStageNpcIds: ['npc_fighter'],
+                plannerEventTypes: ['combat'],
+                addTrace: noTrace,
+            });
+
+            const npcBlock = blocks.find(b => b.source === 'Active NPCs');
+            expect(npcBlock).toBeDefined();
+            // The menu was dropped for every scene type: story models read the hex,
+            // wants and relation band directly.
+            expect(npcBlock!.content).not.toContain('REACTIONS');
+        });
     });
 
     describe('Phase 2 — NPC budget decoupling (5% floor)', () => {

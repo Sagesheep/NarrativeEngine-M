@@ -7,6 +7,7 @@ import type { LLMProvider, ChatMessage, NPCEntry, HexAxis, RelationGraph } from 
 import { relationBand, describeHex } from './agencyBands';
 import { applyRelationTone, isRelationTone } from './relationMeter';
 import { hexDelta } from './agencyDrift';
+import { isCanon, anchorCanonHex, stripCanonLockedFields } from './npcCanon';
 import { legacyAffinityDescriptor, llmParseJson } from './npcShared';
 import { sanitizeSignatureKit } from './signatureKit';
 import {
@@ -30,7 +31,8 @@ export async function updateExistingNPCs(
         const pcRelationBand = npc.pcRelation !== undefined
             ? `${relationBand(npc.pcRelation)} (${npc.pcRelation >= 0 ? '+' : ''}${npc.pcRelation})`
             : (npc.affinity !== undefined ? `${legacyAffinityDescriptor(npc.affinity)} (${npc.affinity}/100 legacy)` : 'Neutral (0)');
-        let data = `[NPC: ${npc.name}]\nStatus: ${npc.status || 'Alive'}\nAppearance: ${npc.appearance || 'Unknown'}\nDisposition: ${npc.disposition || 'Unknown'}\nGoals: ${npc.goals || 'Unknown'}\nFeeling toward PC: ${pcRelationBand}\nPersonality: ${npc.personality || npc.disposition || 'Unknown'}\nVoice: ${npc.voice || 'not defined'}\nFaction: ${npc.faction || 'Unknown'}\nStory Relevance: ${npc.storyRelevance || 'Unknown'}\n`;
+        const canonTag = isCanon(npc) ? ' (CANON — identity fixed to source: never send personality, voice, disposition, exampleOutput, traits, hardBoundaries or primaryGroup; personalityHex may only nudge slightly)' : '';
+        let data = `[NPC: ${npc.name}]${canonTag}\nStatus: ${npc.status || 'Alive'}\nAppearance: ${npc.appearance || 'Unknown'}\nDisposition: ${npc.disposition || 'Unknown'}\nGoals: ${npc.goals || 'Unknown'}\nFeeling toward PC: ${pcRelationBand}\nPersonality: ${npc.personality || npc.disposition || 'Unknown'}\nVoice: ${npc.voice || 'not defined'}\nFaction: ${npc.faction || 'Unknown'}\nStory Relevance: ${npc.storyRelevance || 'Unknown'}\n`;
         if (npc.wants && (npc.wants.long || npc.wants.medium?.length)) {
             data += `LongWant: ${npc.wants.long || 'Unknown'}\nMediumWants: ${npc.wants.medium?.join(' | ') || 'none'}\n`;
         }
@@ -108,7 +110,7 @@ Corrected: the loadout did not change — send no signatureKit at all.`,
                 if (!update.name || !update.changes) continue;
                 const targetNpc = findTarget(update.name);
                 if (targetNpc) {
-                    const changes = { ...update.changes };
+                    const changes = stripCanonLockedFields(targetNpc, { ...update.changes });
                     delete (changes as Partial<NPCEntry>).drives;
                     delete (changes as Partial<NPCEntry>).affinity;
                     delete (changes as Partial<NPCEntry>).pcRelation;
@@ -144,7 +146,7 @@ Corrected: the loadout did not change — send no signatureKit at all.`,
                                 merged = hexDelta(merged, axis, incoming[axis]);
                             }
                         }
-                        changes.personalityHex = merged;
+                        changes.personalityHex = anchorCanonHex(targetNpc, merged);
                     } else {
                         delete (changes as Partial<NPCEntry>).personalityHex;
                     }

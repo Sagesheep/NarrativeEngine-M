@@ -9,6 +9,7 @@ import {
 import { chunkLoreFile, extractEngineSeeds, parseNPCsFromLore, loadLootTree } from '../services/lore';
 import { defaultContext } from '../store/slices/campaignSlice';
 import { dedupeNPCLedger } from '../store/slices/npcSlice';
+import { mergeLoreNPCs } from '../services/npc/npcCanon';
 import { api } from '../services/apiClient';
 import { downloadBundle, importBundle, readFileChunked } from '../services/campaignBundle';
 import { useBackHandler } from '../hooks/useBackHandler';
@@ -180,7 +181,8 @@ export function CampaignHub() {
             const loreNPCs = parseNPCsFromLore(chunks);
             if (loreNPCs.length > 0) {
                 const existingNpcs = await getNPCLedger(campaign.id);
-                const merged = dedupeNPCLedger([...existingNpcs, ...loreNPCs]);
+                // Re-import refreshes canon identity but keeps each NPC's id and play state.
+                const merged = dedupeNPCLedger(mergeLoreNPCs(existingNpcs, loreNPCs));
                 await saveNPCLedger(campaign.id, merged);
             }
         }
