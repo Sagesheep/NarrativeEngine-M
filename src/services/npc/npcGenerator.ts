@@ -3,7 +3,7 @@
  * NPC profile generation: propose → roll → render.
  */
 
-import type { LLMProvider, ChatMessage, NPCEntry } from '../../types';
+import type { LLMProvider, ChatMessage, NPCEntry, PersonalityHex } from '../../types';
 import { uid } from '../../utils/uid';
 import { drawUnusedName, lookupCultures, genderOf } from './nameBank';
 import { drawShortWants, drawMediumWants } from './agencyWantDraw';
@@ -13,7 +13,7 @@ import { GROUP_KEYS } from './dispositionGroups';
 import { rollHex, pickGroups, drawConsistentTraits, rollLooksTier } from './hexRoll';
 import { buildVoiceDirective } from './hexVoiceGuide';
 import { COMBAT_TIER_ARCHETYPE_RUBRIC } from './npcDetector';
-import { KNOWN_TRAITS, offeredTraitNames, defaultLongWant } from './npcValidator';
+import { KNOWN_TRAITS, offeredTraitNames, defaultLongWant, validatePersonalityHex, HEX_AXIS_LEGEND } from './npcValidator';
 import { llmParseJson, checkNameCollision, buildDefaultFieldTags } from './npcShared';
 import { embedAndStoreNPC } from './npcEmbedding';
 import { sanitizeSignatureKit } from './signatureKit';
@@ -22,7 +22,13 @@ import {
     TTRPG_PERSONA_GM_ASSISTANT, joinPromptSections,
 } from '../infrastructure';
 
-type ProposeResult = { candidateGroups: string[]; anchorTraits: string[] };
+type ProposeResult = {
+    candidateGroups: string[];
+    anchorTraits: string[];
+    /** Set when the model recognised the NPC as a known character from the setting's source:
+     *  the source-true hex replaces the engine roll. */
+    canonHex?: PersonalityHex;
+};
 
 type RenderPromptOpts = {
     npcName: string;
@@ -34,10 +40,12 @@ type RenderPromptOpts = {
     hexBandLine: string;
     looksTier: 'attractive' | 'plain' | 'ugly';
     voiceDirective: string;
+    canon: boolean;
 };
 
 async function proposeGroupsAndTraits(
     provider: LLMProvider,
+    npcName: string,
     recentHistory: string,
     existingLedger: NPCEntry[] | undefined,
     matureMode: boolean,
@@ -50,9 +58,14 @@ async function proposeGroupsAndTraits(
         `${TTRPG_PERSONA_GM_ASSISTANT} Your job is to propose a set of scene-appropriate SOCIAL archetype groups for a new NPC, plus 2 anchor personality traits. You are NOT writing the NPC's profile — only picking abstract groups + traits the engine will roll inside.`,
         `SOCIAL ARCHETYPE GROUPS (pick 2–4 that plausibly appear in this scene; these are SETTING-AGNOSTIC personality templates, NOT combat roles): ${Array.from(GROUP_KEYS).join(', ')}.`,
         `ANCHOR TRAITS (pick exactly 2 from this controlled vocabulary${matureMode ? ' (mature allowed)' : ' (mature tier NOT allowed)'}): ${offeredTraitNames(matureMode).join(', ')}.`,
+        `CANON CHECK: if this NPC is a known character from the established source material this story is set in (a novel, anime, film, game, etc.), set "canon": true and give their source-true "personalityHex" (each axis an integer -3..+3), with traits and groups that match how they are in the source. An original character invented for this story is "canon": false — omit "personalityHex".
+${HEX_AXIS_LEGEND}`,
         `OUTPUT FORMAT — a single JSON object, no other text:
-{"candidateGroups": ["group1", "group2", ...], "anchorTraits": ["trait1", "trait2"]}`,
+{"canon": false, "candidateGroups": ["group1", "group2", ...], "anchorTraits": ["trait1", "trait2"]}
+or, for a canon character:
+{"canon": true, "personalityHex": {"drive":0,"diligence":0,"boldness":0,"warmth":0,"empathy":0,"composure":0}, "candidateGroups": [...], "anchorTraits": [...]}`,
         JSON_ONLY_FOOTER, ANCHOR_BEFORE_INPUT, INPUT_DELIMITER,
+        `NPC NAME: "${npcName}"`,
         rosterLine,
         `[RECENT SCENE]\n${recentHistory}\n[END SCENE]`,
     );
@@ -65,7 +78,10 @@ async function proposeGroupsAndTraits(
         const anchorTraits = Array.isArray(parsed.anchorTraits)
             ? (parsed.anchorTraits as unknown[]).map(g => String(g).toLowerCase().trim()).filter(Boolean)
             : [];
-        return { candidateGroups, anchorTraits };
+        const canonHex = parsed.canon === true && parsed.personalityHex && typeof parsed.personalityHex === 'object'
+            ? validatePersonalityHex(parsed.personalityHex)
+            : undefined;
+        return { candidateGroups, anchorTraits, ...(canonHex ? { canonHex } : {}) };
     } catch (err) {
         console.warn('[NPC Propose] Falling back to all GROUP_KEYS + no anchors:', err);
         return fallback;
@@ -73,7 +89,7 @@ async function proposeGroupsAndTraits(
 }
 
 function buildRenderPrompt(opts: RenderPromptOpts): string {
-    const { npcName, recentHistory, existingLedger, matureMode, primaryGroup, secondaryGroup, hexBandLine, looksTier, voiceDirective } = opts;
+    const { npcName, recentHistory, existingLedger, matureMode, primaryGroup, secondaryGroup, hexBandLine, looksTier, voiceDirective, canon } = opts;
     const systemPrompt = joinPromptSections(
         `${TTRPG_PERSONA_GM_ASSISTANT} Your job is to RENDER a profile for a new character whose personality skeleton has ALREADY BEEN ROLLED by the engine. You receive the rolled personality (as band-words), the archetype groups, the looks tier, and per-axis voice direction. Express these as vivid world-appropriate prose.`,
         `ROLLED SKELETON (engine-authored — treat as fixed truth; do NOT contradict):
@@ -81,6 +97,7 @@ function buildRenderPrompt(opts: RenderPromptOpts): string {
 - Secondary social group (trajectory): ${secondaryGroup ?? 'none'}
 - Personality (band-words): ${hexBandLine}
 - Looks tier: ${looksTier}`,
+        canon ? `CANON CHARACTER: this is a known character from the setting's source material. Render them TRUE TO THE SOURCE: their canonical name, appearance, voice, speech habits, history, affiliations and abilities. The personality band-words above were taken from the source; the looks tier does not apply.` : '',
         voiceDirective ? `VOICE DIRECTION (axis extremes — the exampleOutput/voice MUST express these):\n${voiceDirective}` : '',
         `OUTPUT FORMAT — respond with a JSON object matching this structure exactly:
 {
@@ -125,13 +142,15 @@ export async function generateNPCProfile(
         console.log(`[NPC Generator] Initiating background profile generation for: ${npcName}`);
         const recentHistory = history.slice(-15).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
 
-        const proposal = await proposeGroupsAndTraits(provider, recentHistory, existingLedger, matureMode);
+        const proposal = await proposeGroupsAndTraits(provider, npcName, recentHistory, existingLedger, matureMode);
+        const canon = !!proposal.canonHex;
         const validGroups = proposal.candidateGroups.filter(k => (GROUP_KEYS as readonly string[]).includes(k));
         const candidateGroups = validGroups.length > 0 ? Array.from(new Set(validGroups)) : Array.from(GROUP_KEYS);
         const anchorTraits = proposal.anchorTraits.filter(t => KNOWN_TRAITS.has(t)).slice(0, 2);
 
         const { primary, secondary } = pickGroups(candidateGroups, rng);
-        const rolledHex = rollHex(primary, secondary, anchorTraits, rng);
+        // A canon character keeps the source-true hex the model gave; everyone else is rolled.
+        const rolledHex = proposal.canonHex ?? rollHex(primary, secondary, anchorTraits, rng);
         const drawnTraits = drawConsistentTraits(rolledHex, anchorTraits, rng, matureMode);
         const finalTraits = [...anchorTraits, ...drawnTraits].slice(0, 5);
         const looksTier = rollLooksTier(rng);
@@ -141,7 +160,7 @@ export async function generateNPCProfile(
         const renderPrompt = buildRenderPrompt({
             npcName, recentHistory, existingLedger, matureMode,
             primaryGroup: primary, secondaryGroup: secondary,
-            hexBandLine, looksTier, voiceDirective,
+            hexBandLine, looksTier, voiceDirective, canon,
         });
 
         const parsed = await llmParseJson<Record<string, unknown>>(provider, renderPrompt, 'NPC Generator');
@@ -209,6 +228,10 @@ export async function generateNPCProfile(
             newEntry.traits = finalTraits;
             newEntry.wants = { short: drawShortWants({ matureMode, traits: finalTraits }), medium: drawMediumWants({ matureMode, traits: finalTraits }), long: longWant };
             newEntry.personalityHex = rolledHex;
+            if (canon) {
+                newEntry.canon = true;
+                newEntry.canonHex = { ...rolledHex };
+            }
             newEntry.primaryGroup = primary;
             newEntry.secondaryGroup = secondary;
             newEntry.region = typeof finalParsed.region === 'string' ? finalParsed.region.trim() : '';

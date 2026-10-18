@@ -44,3 +44,4 @@ export { currentActivity, activityBumpPatch, selectTickTarget } from './agencyAu
 export type { SelectTickTargetResult } from './agencyAudition';
 export { goalsCoincide, topActiveGoal, relationTone, detectCollision, resolveTangle, buildTangleDeltas } from './agencyCollision';
 export type { DetectedCollision, RelationTone, TangleOutcome } from './agencyCollision';
+export { isCanon, anchorCanonHex, stripCanonLockedFields, findLoreMatch, markCanonFromLore, mergeLoreNPCs, CANON_LOCKED_FIELDS, CANON_HEX_SLACK } from './npcCanon';

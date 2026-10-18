@@ -882,6 +882,13 @@ export type NPCEntry = {
      *  agency signals and the Director's NPC summary (mirrors mainApp). Optional
      *  field — no migration needed, no other code reads it yet. */
     archived?: boolean;
+    /** Canon character from the setting's source (lore file, or recognised by the generator).
+     *  Locks identity fields against LLM rewrites and anchors the hex to `canonHex`.
+     *  `false` = the player switched it off; migrations never flip it back.
+     *  See services/npc/npcCanon.ts. */
+    canon?: boolean;
+    /** The source-true hex baseline; canon hex drift stays within ±1 of it per axis. */
+    canonHex?: PersonalityHex;
 };
 
 

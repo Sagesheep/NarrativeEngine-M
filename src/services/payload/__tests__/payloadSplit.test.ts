@@ -235,7 +235,7 @@ describe('payloadSplit — T1', () => {
             expect(npcBlock!.content).not.toContain('REACTIONS');
         });
 
-        it('uses the dangerous context pool when planner tags a combat scene', () => {
+        it('omits the reaction menu on a combat-tagged scene too', () => {
             const combatNpc = makeNpc('npc_fighter', 'Bram', {
                 personalityHex: { drive: 0, diligence: 0, boldness: 2, warmth: -1, empathy: -1, composure: -1 },
                 traits: ['impulsive', 'proud'],
@@ -254,9 +254,9 @@ describe('payloadSplit — T1', () => {
 
             const npcBlock = blocks.find(b => b.source === 'Active NPCs');
             expect(npcBlock).toBeDefined();
-            // 'reckless charge' is in the dangerous context pool — should surface
-            // for a bold/impulsive NPC on a combat-tagged scene.
-            expect(npcBlock!.content).toContain('REACTIONS');
+            // The menu was dropped for every scene type: story models read the hex,
+            // wants and relation band directly.
+            expect(npcBlock!.content).not.toContain('REACTIONS');
         });
     });
 

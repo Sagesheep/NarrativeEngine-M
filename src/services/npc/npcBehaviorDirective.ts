@@ -23,7 +23,7 @@ export type BehaviorDirectiveOpts = {
     matureMode?: boolean;       // mirrors agencyWantDraw mature gating
 };
 
-export function buildBehaviorDirective(npc: NPCEntry, opts: BehaviorDirectiveOpts = {}): string {
+export function buildBehaviorDirective(npc: NPCEntry, _opts: BehaviorDirectiveOpts = {}): string {
     const parts: string[] = [];
 
     // Prefer the re-homed PC edge (word-banded -3..+3); fall back to legacy affinity for

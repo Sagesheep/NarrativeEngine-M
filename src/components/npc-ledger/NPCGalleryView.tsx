@@ -47,6 +47,7 @@ export function NPCGalleryView({ npcLedger, selectedId, selectMode, checkedIds, 
                         </div>
                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-void via-void/80 to-transparent p-3 pt-8">
                             <p className={`text-[14px] md:text-xs font-bold truncate ${isActive ? 'text-terminal glow-green-sm' : 'text-text-primary'}`}>{npc.name}</p>
+                            {npc.canon === true && <p className="text-[9px] text-amber-400 uppercase mt-0.5" title="Canon character — identity locked to source">Canon</p>}
                             {npc.faction && <p className="text-[9px] text-text-dim truncate uppercase mt-0.5">{npc.faction}</p>}
                         </div>
                         {selectMode ? (

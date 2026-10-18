@@ -436,7 +436,8 @@ export function NPCEditForm({
                                             onClick={() => {
                                                 const hex = { ...(form.personalityHex ?? { drive: 0, diligence: 0, boldness: 0, warmth: 0, empathy: 0, composure: 0 }) };
                                                 hex[axis] = clamped - 1;
-                                                setForm({ ...form, personalityHex: hex });
+                                                // A player edit to a canon hex re-bases the source anchor.
+                                                setForm({ ...form, personalityHex: hex, ...(form.canon === true ? { canonHex: { ...hex } } : {}) });
                                             }}
                                             className="p-1 text-text-dim hover:text-terminal disabled:opacity-30 disabled:cursor-not-allowed"
                                         >
@@ -449,7 +450,8 @@ export function NPCEditForm({
                                             onClick={() => {
                                                 const hex = { ...(form.personalityHex ?? { drive: 0, diligence: 0, boldness: 0, warmth: 0, empathy: 0, composure: 0 }) };
                                                 hex[axis] = clamped + 1;
-                                                setForm({ ...form, personalityHex: hex });
+                                                // A player edit to a canon hex re-bases the source anchor.
+                                                setForm({ ...form, personalityHex: hex, ...(form.canon === true ? { canonHex: { ...hex } } : {}) });
                                             }}
                                             className="p-1 text-text-dim hover:text-terminal disabled:opacity-30 disabled:cursor-not-allowed"
                                         >
@@ -817,6 +819,24 @@ export function NPCEditForm({
                             <span className="text-[10px] text-terminal uppercase tracking-widest font-bold">Player Character</span>
                         </label>
                     </div>
+                    <label className="flex items-center justify-between gap-2 cursor-pointer">
+                        <span className="text-[10px] text-text-dim leading-snug">
+                            Canon character — personality, voice and core identity stay true to source; the hex drifts at most one step from its source values.
+                        </span>
+                        <span className="flex items-center gap-2 shrink-0">
+                            <input
+                                type="checkbox"
+                                checked={form.canon === true}
+                                onChange={e => setForm(e.target.checked
+                                    // Turning canon on adopts the current hex as the source baseline.
+                                    ? { ...form, canon: true, canonHex: form.canonHex ?? (form.personalityHex ? { ...form.personalityHex } : undefined) }
+                                    : { ...form, canon: false })}
+                                disabled={!isEditing || form.isPC === true}
+                                className="accent-amber-400"
+                            />
+                            <span className="text-[10px] text-amber-400 uppercase tracking-widest font-bold">Canon</span>
+                        </span>
+                    </label>
                 </div>
 
                 {selectedId && !isEditing && (() => {

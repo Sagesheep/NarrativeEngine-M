@@ -161,6 +161,9 @@ function fieldTagMatches(
 function buildCoreDirective(npc: NPCEntry, reactionCtx: ReactionContext): string {
     const parts: string[] = [];
 
+    // Canon characters come from the setting's source — the story model knows them.
+    if (npc.canon === true) parts.push('CANON — stay true to source');
+
     const affinityLabel = npc.pcRelation !== undefined
         ? relationBand(npc.pcRelation)
         : undefined;

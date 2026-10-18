@@ -58,7 +58,7 @@ export async function populateAgencyFields(
 
     if (needLLM.length > 0) {
         const recentContext = history.slice(-10).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
-        const npcBlocks = needLLM.map(n => `- name: ${n.name}\n  faction: ${n.faction || 'Unknown'}\n  personality: ${n.personality || n.disposition || 'Unknown'}\n  bio: ${n.storyRelevance || 'Unknown'}; goals: ${n.goals || 'Unknown'}`).join('\n');
+        const npcBlocks = needLLM.map(n => `- name: ${n.name}${n.canon === true ? ' (CANON character from the setting\'s source: infer hex and traits true to how they are in the source)' : ''}\n  faction: ${n.faction || 'Unknown'}\n  personality: ${n.personality || n.disposition || 'Unknown'}\n  bio: ${n.storyRelevance || 'Unknown'}; goals: ${n.goals || 'Unknown'}`).join('\n');
         const prompt = joinPromptSections(
             `${TTRPG_PERSONA_STATE_ANALYZER} For EACH NPC below, infer their personality hexagon, a few defining traits, and home region. Data generation only — no narrative, no prose.`,
             HEX_AXIS_LEGEND,
@@ -79,6 +79,8 @@ export async function populateAgencyFields(
             const row = rows.find(r => typeof r.name === 'string' && (r.name as string).toLowerCase() === npc.name.toLowerCase());
             const patch = patches.get(npc.id)!;
             if (!npc.personalityHex) patch.personalityHex = validatePersonalityHex(row?.personalityHex);
+            // A canon NPC's first hex becomes its source baseline (anchors later drift).
+            if (npc.canon === true && !npc.canonHex && patch.personalityHex) patch.canonHex = { ...patch.personalityHex };
             if (!npc.traits || npc.traits.length === 0) patch.traits = validateTraits(row?.traits, matureMode);
             if (npc.region === undefined || npc.region === '') { patch.region = row && typeof row.region === 'string' ? (row.region as string).trim() : ''; }
         }

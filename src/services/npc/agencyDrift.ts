@@ -2,6 +2,7 @@ import type { PersonalityHex, HexAxis, NPCEntry, Goal } from '../../types';
 import { HEX_AXIS_MIN, HEX_AXIS_MAX, HEX_DRIFT_MAX_STEP, OUTCOME_AXIS_MAP, RUNG_DEFAULT, RUNG_CEILING_DEFAULT, type Band } from './agencyConstants';
 import { canCrossTier, consumeTierCross } from './agencyProgress';
 import { formatHexShift, formatRungShift } from './agencyBands';
+import { anchorCanonHex } from './npcCanon';
 
 /**
  * Returns a NEW hex with one axis nudged by `by`, clamped to [HEX_AXIS_MIN, HEX_AXIS_MAX].
@@ -67,9 +68,10 @@ export function applyGoalOutcomeNudge(
     if (!axis || by === 0) return { shiftLine: '' };
 
     const prev = hex[axis];
-    const next = hexDelta(hex, axis, by);
+    // Canon NPCs stay within ±1 of their source hex (no-op for everyone else).
+    const next = anchorCanonHex(npc, hexDelta(hex, axis, by));
     if (next[axis] === prev) {
-        // Clamped at the band edge — no actual move, nothing to surface.
+        // Clamped at the band edge or the canon anchor — no actual move, nothing to surface.
         return { shiftLine: '' };
     }
     const shiftLine = formatHexShift(axis, prev, next[axis]);
