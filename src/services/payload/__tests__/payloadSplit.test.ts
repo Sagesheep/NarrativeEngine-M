@@ -203,7 +203,7 @@ describe('payloadSplit — T1', () => {
             goals: 'protect his students',
         });
 
-        it('buildCoreDirective emits the REACTIONS line for a hex-bearing NPC (peaceful)', () => {
+        it('buildCoreDirective no longer emits a REACTIONS line for a hex-bearing NPC', () => {
             const blocks = assembleWorldBlocks({
                 context: stubContext,
                 history: [{ id: 'm1', role: 'user', content: 'hey Kakashi', timestamp: 0 }] as ChatMessage[],
@@ -215,8 +215,8 @@ describe('payloadSplit — T1', () => {
 
             const npcBlock = blocks.find(b => b.source === 'Active NPCs');
             expect(npcBlock).toBeDefined();
-            expect(npcBlock!.content).toContain('REACTIONS (choose ONE');
-            expect(npcBlock!.content).toContain('do NOT invent a softer reaction');
+            expect(npcBlock!.content).not.toContain('REACTIONS');
+            expect(npcBlock!.content).toContain('Personality:');
         });
 
         it('reaction menu is absent for a legacy hex-less NPC', () => {

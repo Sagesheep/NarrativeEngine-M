@@ -1,7 +1,6 @@
 import type { NPCEntry, HexAxis } from '../../types';
 import { relationBand, describeHex, formatHexShift, formatRungShift } from './agencyBands';
-import { buildReactionMenu, type ReactionContext } from './reactionMenu';
-import { applyRepressionToMenu } from './reactionRepression';
+import type { ReactionContext } from './reactionMenu';
 
 function affinityDescriptor(v: number): string {
     if (v <= 15) return 'Nemesis — actively hostile';
@@ -74,35 +73,7 @@ export function buildBehaviorDirective(npc: NPCEntry, opts: BehaviorDirectiveOpt
     const example = npc.exampleOutput || '';
     if (example) parts.push(`Example: ${truncate(example, 80)}`);
 
-    // Phase 2 §9.1 — engine-built reaction menu. The engine scores REACTION_VOCAB against
-    // the NPC's fixed hex+traits and surfaces rank-1 + 2 sampled alternatives. The story AI
-    // may only pick ONE from the list — the load-bearing enforcement clause prevents it from
-    // inventing a softer, out-of-character reaction (the sycophant-smoothing failure mode).
-    // Skipped entirely for legacy hex-less NPCs or when the menu is empty.
-    // NOTE: `context` defaults to 'peaceful'; wire it from encounter/combat state when
-    // available at the call site (a later refinement). `matureMode` threads the same gate
-    // the want/action draws use.
-    if (npc.personalityHex) {
-        const context = opts.context ?? 'peaceful';
-        const rng = opts.rng ?? Math.random;
-        const matureMode = opts.matureMode ?? false;
-        const rawMenu = buildReactionMenu(npc, context, rng, matureMode);
-        // Inner repression (peaceful only): if the NPC's top impulse is a hostile/self-interested
-        // one, the engine rolls whether they hide it and rewrites that entry into a leak/mask
-        // token. The `event` (pressure delta / catharsis) is intentionally discarded here —
-        // payload assembly can re-run, so booking happens once-per-turn elsewhere, not in this
-        // read path. See reactionRepression.ts.
-        const { menu } = applyRepressionToMenu(rawMenu, npc, context, rng);
-        if (menu.length > 0) {
-            // NOTE: fallback switch point — if playtest shows the AI still always grabs the
-            // gentlest, replace the menu with a single engine-picked reaction (rank-1 or
-            // weighted-random among the surfaced set) asserted as fact. Same principle as the
-            // dice forcing function. Ship AI-picks-from-menu first; keep engine-picks in reserve.
-            parts.push(
-                `REACTIONS (choose ONE and play it — do NOT invent a softer reaction; prefer the less obvious when several fit): ${menu.join(' | ')}`
-            );
-        }
-    }
+    // The REACTIONS menu is no longer injected (see payloadWorldContext buildCoreDirective).
 
     return `PLAY AS: ${parts.join(' | ')}`;
 }

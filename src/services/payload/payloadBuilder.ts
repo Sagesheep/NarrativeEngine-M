@@ -292,7 +292,6 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     // player is overriding exactly that steering.
     const absoluteBlock = buildAbsoluteCommandBlock(absoluteCommand);
     const hasAbsolute = absoluteBlock !== '';
-    const GM_REMINDER = hasAbsolute ? '' : '[GM REMINDER: NPCs push back when their wants/boundaries are crossed. Do not default to facilitation.]';
     const watchdogNudgeActive = watchdogNudge && !directorBrief && !hasAbsolute ? watchdogNudge : '';
     const directorBriefBlock = directorBrief && !hasAbsolute ? `[DIRECTOR BRIEF]\n${directorBrief}` : '';
 
@@ -307,14 +306,13 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
             ? 'Work through the [WRITER REASONING FRAMEWORK] only where it does not conflict with [USER ABSOLUTE COMMAND]. Where they conflict, discard the framework step and follow the command.'
             : 'Work through the [WRITER REASONING FRAMEWORK] in your reasoning before writing.';
 
-    // Ordering: volatileBlock → writerCotNudge → directorBriefBlock → GM_REMINDER
-    // → watchdogNudgeActive → userMessage → absoluteBlock. The Brief lands BEFORE
-    // GM_REMINDER so the GM reads the audit directives first, then the standing
-    // reminder, then the (possibly suppressed) deterministic nudge. The Absolute
-    // Command goes last, at maximum recency. Everything upstream of this point is
-    // cache-stable.
+    // Ordering: volatileBlock → writerCotNudge → directorBriefBlock
+    // → watchdogNudgeActive → userMessage → absoluteBlock. The Brief lands first so
+    // the GM reads the audit directives, then the (possibly suppressed)
+    // deterministic nudge. The Absolute Command goes last, at maximum recency.
+    // Everything upstream of this point is cache-stable.
     const finalUserContent = [
-        volatileBlock, writerCotNudge, directorBriefBlock, GM_REMINDER,
+        volatileBlock, writerCotNudge, directorBriefBlock,
         watchdogNudgeActive, userMessage, absoluteBlock,
     ].filter(Boolean).join('\n\n');
 

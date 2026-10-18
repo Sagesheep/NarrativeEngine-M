@@ -35,7 +35,7 @@ describe('Absolute Command in the payload', () => {
     it('a normal turn is unchanged', () => {
         const text = finalUser(buildPayload(base()).messages);
         expect(text).toContain('[DIRECTOR BRIEF]');
-        expect(text).toContain('[GM REMINDER');
+        expect(text).not.toContain('[GM REMINDER');
         expect(text).not.toContain('ABSOLUTE COMMAND');
         expect(text.endsWith('I open the door.')).toBe(true);
     });

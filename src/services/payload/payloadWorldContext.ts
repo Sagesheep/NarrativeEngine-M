@@ -2,8 +2,7 @@ import type { GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry,
 import { countTokens } from '../infrastructure';
 import { buildDriftAlert } from '../npc';
 import { relationBand, describeHex } from '../npc/agencyBands';
-import { buildReactionMenu, type ReactionContext } from '../npc/reactionMenu';
-import { applyRepressionToMenu } from '../npc/reactionRepression';
+import type { ReactionContext } from '../npc/reactionMenu';
 import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
 import { isFactActive } from '../campaign-state/divergenceRegister';
 import { renderSignatureKit } from '../npc/signatureKit';
@@ -183,22 +182,10 @@ function buildCoreDirective(npc: NPCEntry, reactionCtx: ReactionContext): string
     const kit = renderSignatureKit(npc.signatureKit);
     if (kit) parts.push(kit);
 
-    // Phase 2 §9.1 — engine-built reaction menu. The enforcement clause
-    // prevents the story AI from inventing a softer, out-of-character reaction
-    // (the sycophant-smoothing failure mode). The engine picks rank-1 + 2
-    // sampled alternatives from REACTION_VOCAB filtered by personality + traits
-    // + relationship + context — zero LLM cost. Skipped for legacy hex-less NPCs.
-    if (npc.personalityHex) {
-        const rawMenu = buildReactionMenu(npc, reactionCtx);
-        // Inner repression (peaceful only) — rewrites a hostile top impulse into a leak/mask
-        // token. Event discarded here (read path); booked once-per-turn elsewhere.
-        const { menu } = applyRepressionToMenu(rawMenu, npc, reactionCtx);
-        if (menu.length > 0) {
-            parts.push(
-                `REACTIONS (choose ONE and play it — do NOT invent a softer reaction; prefer the less obvious when several fit): ${menu.join(' | ')}`
-            );
-        }
-    }
+    // The engine-built REACTIONS menu is no longer injected: frontier story models
+    // read the hex, wants and relationship band directly, and the "do not invent a
+    // softer reaction" clause pushed scenes toward friction.
+    void reactionCtx;
 
     return parts.length > 0 ? `PLAY AS: ${parts.join(' | ')}` : '';
 }

@@ -282,12 +282,12 @@ describe('reactionMenu — buildReactionMenu', () => {
     });
 });
 
-describe('npcBehaviorDirective integration (enforcement clause)', () => {
-    it('appends the REACTIONS line with the enforcement clause for a hex-bearing NPC', () => {
+describe('npcBehaviorDirective integration', () => {
+    it('does not inject a REACTIONS line for a hex-bearing NPC', () => {
         const npc = KAKASHI();
         const directive = buildBehaviorDirective(npc, { rng: mulberry32(1) });
-        expect(directive).toContain('REACTIONS (choose ONE and play it');
-        expect(directive).toContain('do NOT invent a softer reaction');
+        expect(directive).not.toContain('REACTIONS');
+        expect(directive).not.toContain('do NOT invent a softer reaction');
     });
 
     it('omits the REACTIONS line for a legacy hex-less NPC', () => {
