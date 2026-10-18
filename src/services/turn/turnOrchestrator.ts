@@ -199,7 +199,6 @@ export async function runTurn(
         npcLedger,
         onStageNpcIds: state.onStageNpcIds ?? [],
     });
-    const watchdogNudge = watchdogDossier?.nudgeText ?? undefined;
 
     let directorBrief: Promise<string | undefined> | undefined;
     if (watchdogDossier && tierAllows(settings.aiTier, 'directorBrief')) {
@@ -228,7 +227,6 @@ export async function runTurn(
     }
 
     const gathered = await gatherContext(state, callbacks, finalInput, userMsgId, undefined, {
-        watchdogNudge,
         directorBrief,
         absoluteCommand,
     });

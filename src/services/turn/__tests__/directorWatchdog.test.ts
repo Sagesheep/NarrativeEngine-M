@@ -98,13 +98,11 @@ describe('directorWatchdog — empty-input safety', () => {
         const d = buildWatchdogDossier(input([], [npcEntry()]));
         expect(d.signals).toEqual([]);
         expect(d.dossierText).toBe('');
-        expect(d.nudgeText).toBeNull();
     });
 
     it('returns no signals for empty ledger', () => {
         const d = buildWatchdogDossier(input([asstMsg('Ingrid smiles.')], []));
         expect(d.signals).toEqual([]);
-        expect(d.nudgeText).toBeNull();
     });
 
     it('returns no signals when no on-stage NPCs are passed', () => {
@@ -443,7 +441,7 @@ describe('directorWatchdog — priority ordering & dossier text', () => {
         expect(sigs[1].npcName).toBe('Zara');
     });
 
-    it('dossierText has one line per signal, nudgeText surfaces highest priority', () => {
+    it('dossierText has one line per signal, highest priority first', () => {
         const ingrid = npcEntry({
             pcRelation: 1,
             goalRecords: [activeGoal('Recover the stolen ledger')],
@@ -459,40 +457,6 @@ describe('directorWatchdog — priority ordering & dossier text', () => {
         const lines = d.dossierText.split('\n');
         expect(lines).toHaveLength(3);
         expect(lines.every(l => l.startsWith('- '))).toBe(true);
-        // Highest priority (1 = interrupted-goal) becomes the nudge.
-        expect(d.nudgeText).toContain('STAGE NOTE');
-        expect(d.nudgeText).toContain('Ingrid');
-        expect(d.nudgeText).toContain('Recover the stolen ledger');
-    });
-
-    it('nudgeText formats silent-npc with the streak count', () => {
-        const ingrid = npcEntry();
-        const msgs = [
-            asstMsg('Quiet.'),
-            asstMsg('Quiet again.'),
-            asstMsg('Quiet once more.'),
-            asstMsg('Still quiet.'),
-        ];
-        const d = buildWatchdogDossier(input(msgs, [ingrid]));
-        // Only silent-npc fires (pcRelation 0 → no one-directional; no goals).
-        expect(d.nudgeText).toBe(
-            '[STAGE NOTE: Ingrid has been silent 3 turns — must act or speak this scene.]',
-        );
-    });
-
-    it('nudgeText for one-directional uses a directive phrasing', () => {
-        const ingrid = npcEntry({ pcRelation: 1 });
-        const msgs = [
-            asstMsg('Kai asks Ingrid a question.'),
-            asstMsg('Kai presses Ingrid again.'),
-            asstMsg('Kai waits.'),
-            asstMsg('Kai tries once more.'),
-            asstMsg('Kai sighs.'),
-        ];
-        const d = buildWatchdogDossier(inputWithPc(msgs, [ingrid]));
-        expect(d.nudgeText).toBe(
-            '[STAGE NOTE: Ingrid has not initiated toward the PC recently — give Ingrid a beat to reach out this scene.]',
-        );
     });
 });
 

@@ -133,7 +133,7 @@ export function minifyLoreChunk(chunk: LoreChunk): string {
  * After:  [ASH_HUANG] Alive | Asian male... | panicked | Goals: ...
  *
  * Sentiment toward the PC and personality reach the LLM as WORD-BANDS via
- * buildBehaviorDirective — never as raw numbers here. `aff:NN` was dropped (redundant with the
+ * the PLAY AS directive (payloadWorldContext) — never as raw numbers here. `aff:NN` was dropped (redundant with the
  * [Aff: …] band), and the free-text personality is omitted once the personality hexagon exists
  * so the model sees one personality signal, not two.
  */

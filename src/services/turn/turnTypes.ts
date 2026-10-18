@@ -119,7 +119,7 @@ export type TurnState = {
     // runs and the result is appended to the GM turn as a fact. null/undefined = normal turn.
     armedLoot?: ArmedLoot | null;
     // Absolute Command: binding out-of-character instruction for this turn only. It
-    // suppresses the Director Brief, watchdog nudge and GM_REMINDER, and rides last in
+    // suppresses the Director Brief and rides last in
     // the prompt. Never stored on the user message. null/undefined = normal turn.
     absoluteCommand?: string | null;
     // One-Shot Event Injector: event type whose directive rides this turn's input.

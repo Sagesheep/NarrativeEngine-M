@@ -28,10 +28,9 @@ vi.mock('../directorBrief', () => ({
     clearDirectorBriefCache: vi.fn(),
 }));
 
-// The watchdog dossier mock — returns an empty dossier so the orchestrator's
-// `watchdogNudge` is undefined (no nudge in the payload; irrelevant to the gate).
+// The watchdog dossier mock — returns an empty dossier (no signals for the Director).
 vi.mock('../directorWatchdog', () => ({
-    buildWatchdogDossier: vi.fn(() => ({ signals: [], dossierText: '', nudgeText: null })),
+    buildWatchdogDossier: vi.fn(() => ({ signals: [], dossierText: '' })),
 }));
 
 // pendingCommit mock — capturePendingTurnSnapshot + getActiveSnapshotId.
@@ -281,7 +280,7 @@ describe('runTurn — Director Brief tier gate (WO-A §3.3)', () => {
         await runTurn({ ...baseState('max'), absoluteCommand: 'Skip to morning.' } as any as TurnState, callbacks, new AbortController());
         expect(runDirectorBriefMock).not.toHaveBeenCalled();
         const signals = vi.mocked(gatherContext).mock.calls[0][5] as any;
-        expect(signals).toMatchObject({ absoluteCommand: 'Skip to morning.', watchdogNudge: undefined, directorBrief: undefined });
+        expect(signals).toMatchObject({ absoluteCommand: 'Skip to morning.', directorBrief: undefined });
         const userMsg = added.find(m => m.role === 'user');
         expect(userMsg.content).not.toContain('Skip to morning.');
         expect(userMsg.displayContent).toContain('Absolute command issued');

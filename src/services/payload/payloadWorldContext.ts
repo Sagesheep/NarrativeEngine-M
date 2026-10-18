@@ -2,26 +2,10 @@ import type { GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry,
 import { countTokens } from '../infrastructure';
 import { buildDriftAlert } from '../npc';
 import { relationBand, describeHex } from '../npc/agencyBands';
-import type { ReactionContext } from '../npc/reactionMenu';
 import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
 import { isFactActive } from '../campaign-state/divergenceRegister';
 import { renderSignatureKit } from '../npc/signatureKit';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
-
-/**
- * Map the planner's scene-type tags to the reaction menu's peaceful/dangerous
- * context split. Combat + the high-stakes scene types surface the danger pool;
- * everything else gets the peaceful pool (the default — covers social scenes,
- * travel, discovery, etc.). If the planner returned no tags, default peaceful.
- */
-const DANGER_EVENT_TYPES: ReadonlySet<SceneEventType> = new Set([
-    'combat', 'betrayal', 'death',
-]);
-function reactionContextFor(plannerTags: Set<SceneEventType> | null): ReactionContext {
-    if (!plannerTags || plannerTags.size === 0) return 'peaceful';
-    for (const t of plannerTags) if (DANGER_EVENT_TYPES.has(t)) return 'dangerous';
-    return 'peaceful';
-}
 
 export function computeOpenThreads(chapters: ArchiveChapter[]): { text: string; chapterId: string }[] {
     const allUnresolved: { text: string; chapterId: string }[] = [];
@@ -146,19 +130,10 @@ function fieldTagMatches(
  * Core directive — always injected for every active NPC regardless of scene.
  * Contains the 5-field "GM is never starved" floor: affinity, personality hex
  * (if present, since it's compact word-bands), and the current active goal
- * (wants.short[0] or drives fallback). This mirrors the most critical parts
- * of buildBehaviorDirective but drops voice, boundaries, triggers, example,
- * and drift — those move to the extended tier.
- *
- * Phase 2 §9.1 — the engine-built reaction menu is appended here (the primary
- * behavioral signal). The engine already consumed personalityHex + pcRelation
- * + traits + context to pick the reactions, so the menu is the cooked dish —
- * the AI picks ONE from the list instead of interpreting raw ingredients.
- * Rides inside the NPC budget slice (payloadBuilder two-phase trim), so it
- * never competes against lore/archive. Skipped for legacy hex-less NPCs or
- * when the menu is empty.
+ * (wants.short[0] or drives fallback). Voice, boundaries, triggers, example
+ * and drift live in the extended tier.
  */
-function buildCoreDirective(npc: NPCEntry, reactionCtx: ReactionContext): string {
+function buildCoreDirective(npc: NPCEntry): string {
     const parts: string[] = [];
 
     const affinityLabel = npc.pcRelation !== undefined
@@ -181,11 +156,6 @@ function buildCoreDirective(npc: NPCEntry, reactionCtx: ReactionContext): string
     // drop it; the anti-drift analogue of personalityHex.
     const kit = renderSignatureKit(npc.signatureKit);
     if (kit) parts.push(kit);
-
-    // The engine-built REACTIONS menu is no longer injected: frontier story models
-    // read the hex, wants and relationship band directly, and the "do not invent a
-    // softer reaction" clause pushed scenes toward friction.
-    void reactionCtx;
 
     return parts.length > 0 ? `PLAY AS: ${parts.join(' | ')}` : '';
 }
@@ -534,7 +504,6 @@ export function assembleWorldBlocks(opts: {
             const plannerTags = plannerEventTypes && plannerEventTypes.length > 0
                 ? new Set(plannerEventTypes)
                 : null;
-            const reactionCtx = reactionContextFor(plannerTags);
             const npcSegments: { npcId: string; content: string; tokens: number }[] = [];
 
             for (const npc of activeNPCs) {
@@ -542,7 +511,7 @@ export function assembleWorldBlocks(opts: {
 
                 // Core tier — always injected.
                 const coreParts: string[] = [minifyNPC(npc, offStage)];
-                const coreDirective = buildCoreDirective(npc, reactionCtx);
+                const coreDirective = buildCoreDirective(npc);
                 if (coreDirective) coreParts.push(coreDirective);
                 const coreLine = coreParts.join(' | ');
 

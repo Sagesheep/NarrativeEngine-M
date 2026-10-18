@@ -194,8 +194,8 @@ describe('payloadSplit — T1', () => {
         });
     });
 
-    // ── Phase 2: reaction menu wiring + NPC budget decoupling ──────────────
-    describe('Phase 2 — reaction menu reaches the payload', () => {
+    // ── Phase 2: reaction menu removed + NPC budget decoupling ─────────────
+    describe('Phase 2 — no reaction menu in the payload', () => {
         const hexNpc = makeNpc('npc_hex', 'Kakashi', {
             personalityHex: { drive: 1, diligence: 2, boldness: 1, warmth: 2, empathy: 2, composure: 1 },
             traits: ['loyal', 'protective', 'honorable'],
@@ -233,30 +233,6 @@ describe('payloadSplit — T1', () => {
             const npcBlock = blocks.find(b => b.source === 'Active NPCs');
             expect(npcBlock).toBeDefined();
             expect(npcBlock!.content).not.toContain('REACTIONS');
-        });
-
-        it('uses the dangerous context pool when planner tags a combat scene', () => {
-            const combatNpc = makeNpc('npc_fighter', 'Bram', {
-                personalityHex: { drive: 0, diligence: 0, boldness: 2, warmth: -1, empathy: -1, composure: -1 },
-                traits: ['impulsive', 'proud'],
-                pcRelation: 0,
-                goals: 'win',
-            });
-            const blocks = assembleWorldBlocks({
-                context: stubContext,
-                history: [{ id: 'm1', role: 'user', content: 'Bram attack!', timestamp: 0 }] as ChatMessage[],
-                userMessage: 'Bram attack!',
-                npcLedger: [combatNpc],
-                onStageNpcIds: ['npc_fighter'],
-                plannerEventTypes: ['combat'],
-                addTrace: noTrace,
-            });
-
-            const npcBlock = blocks.find(b => b.source === 'Active NPCs');
-            expect(npcBlock).toBeDefined();
-            // 'reckless charge' is in the dangerous context pool — should surface
-            // for a bold/impulsive NPC on a combat-tagged scene.
-            expect(npcBlock!.content).toContain('REACTIONS');
         });
     });
 

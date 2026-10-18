@@ -852,7 +852,7 @@ export type NPCEntry = {
     // Count of times this NPC has swallowed a hostile/self-interested reaction instead of
     // expressing it. Pure engine-managed gauge: raises the hide-DC (masking gets harder as it
     // climbs) until a forced break discharges it back toward 0 (catharsis). Never sent to the
-    // LLM. Default-absent = 0. See services/npc/reactionRepression.ts.
+    // LLM. Default-absent = 0. No longer updated (the reaction menu was removed); kept so saves load.
     repressionPressure?: number;
     // ---- Relationship meter (engine-owned affinity accumulator) ----
     // Hidden sub-band progress toward the next pcRelation change. The AI only classifies each

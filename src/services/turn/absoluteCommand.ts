@@ -2,8 +2,8 @@
 // services/turn/absoluteCommand.ts.
 //
 // A one-turn escape hatch: the player authors a binding out-of-character
-// instruction; that turn runs with the Director Brief, the watchdog nudge,
-// and GM_REMINDER suppressed, and the command placed LAST in the prompt
+// instruction; that turn runs with the Director Brief suppressed
+// and the command placed LAST in the prompt
 // (after the user message) at maximum recency, explicitly outranking every
 // other directive.
 

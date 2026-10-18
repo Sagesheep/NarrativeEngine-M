@@ -24,7 +24,7 @@ export { buildDigest, visibilityFromBand } from './agencyDigest';
 export type { TickDelta } from './agencyDigest';
 export { HEARTBEAT_DC, GOAL_BASE_DC, COLLISION_TANGLE_PROB, COLLISION_OPPORTUNITY_BONUS } from './agencyConstants';
 export { extractNPCNames, classifyNPCNames, validateNPCCandidates, COMBAT_TIER_ARCHETYPE_RUBRIC } from './npcDetector';
-export { buildBehaviorDirective, buildDriftAlert } from './npcBehaviorDirective';
+export { buildDriftAlert } from './npcBehaviorDirective';
 export { swapDuplicateNames, decideSwap, detectCollisions, applySwap } from './nameSwap';
 export type { SwapResult, SwapContext, SwapVerdict, Collision } from './nameSwap';
 export { drawUnusedName, lookupCultures, genderOf, isKnownName, NAME_CULTURES } from './nameBank';

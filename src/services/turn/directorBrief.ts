@@ -2,8 +2,7 @@
 // turn and issues a short Writer Brief to the GM for the next turn.
 //
 // Graceful on timeout/cancel/parse-failure/any error: returns null and the turn
-// continues without a Brief (the watchdog nudge still fires per WO-03 §3, since
-// `buildPayload` only suppresses the nudge when a Brief string is actually passed).
+// continues without a Brief.
 //
 // Computed once per user input: a module-level cache keyed `(campaignId, userMessage)`.
 // A swipe/regenerate with the same user input reuses the cached Brief. The cache is
@@ -231,8 +230,8 @@ export function renderDirectorPrompt(input: {
 /**
  * Parse the Director's `WRITER BRIEF` output. Tolerant: strips <think> tags,
  * trims, and accepts any text that contains the `WRITER BRIEF` header. Returns
- * null on parse failure (the caller returns null to the turn, which falls back
- * to the watchdog nudge per `buildPayload`'s supersession gate).
+ * null on parse failure (the caller returns null and the turn proceeds without
+ * a Brief).
  */
 export function parseDirectorBrief(raw: string): string | null {
     if (!raw) return null;
@@ -305,7 +304,7 @@ export interface DirectorBriefInput {
 /**
  * Run the Director: one blocking LLM call that produces a Writer Brief for the
  * GM. Returns `null` on timeout/abort/parse-failure/any error — the turn
- * continues without a Brief in those cases (the watchdog nudge still fires).
+ * continues without a Brief in those cases.
  *
  * WO-04b §1 / WO-04c §1: the graceful-failure boundary covers provider
  * resolution, NPC summary construction, recent-event construction, prompt

@@ -34,14 +34,11 @@ export interface BuildPayloadOptions {
     semanticallyRecalledNpcIds?: string[];
     pinnedExcerpts?: PinnedExcerpt[];
     plannerEventTypes?: SceneEventType[];
-    /** Director Watchdog nudge (WO-A §3.5): deterministic NPC-agency signal.
-     *  Suppressed when a `directorBrief` is present (the Brief supersedes it). */
-    watchdogNudge?: string;
     /** Director Brief (WO-A §3.5): LLM-authored Writer Brief rendered as a
      *  [DIRECTOR BRIEF] block in the volatile region of the final user message. */
     directorBrief?: string;
     /** Absolute Command: binding out-of-character instruction for THIS turn only.
-     *  Placed after the user message; suppresses the Brief, watchdog nudge and GM_REMINDER. */
+     *  Placed after the user message; suppresses the Brief. */
     absoluteCommand?: string;
 }
 
@@ -68,7 +65,6 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         semanticallyRecalledNpcIds,
         pinnedExcerpts,
         plannerEventTypes,
-        watchdogNudge,
         directorBrief,
         absoluteCommand,
     } = opts;
@@ -284,15 +280,12 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
 
     const volatileBlock = [combinedWorldContent, volatileContent].filter(Boolean).join('\n\n');
 
-    // ── Director Watchdog + Director Brief + Writer CoT (WO-A §3.5 / WO-B §4.4) ──
-    // All three ride in the volatile region of the final user message (below the
-    // cache boundary) so they never perturb the cached prefix. The Brief
-    // supersedes the deterministic watchdog nudge (WO-A §3.5 supersession rule).
-    // An Absolute Command suppresses all three steering blocks for its turn: the
-    // player is overriding exactly that steering.
+    // ── Director Brief + Writer CoT (WO-A §3.5 / WO-B §4.4) ──
+    // Both ride in the volatile region of the final user message (below the cache
+    // boundary) so they never perturb the cached prefix. An Absolute Command
+    // suppresses the Brief for its turn: the player is overriding that steering.
     const absoluteBlock = buildAbsoluteCommandBlock(absoluteCommand);
     const hasAbsolute = absoluteBlock !== '';
-    const watchdogNudgeActive = watchdogNudge && !directorBrief && !hasAbsolute ? watchdogNudge : '';
     const directorBriefBlock = directorBrief && !hasAbsolute ? `[DIRECTOR BRIEF]\n${directorBrief}` : '';
 
     // Per-turn CoT invocation line (thinking-mode only). Rides in the final user
@@ -306,18 +299,15 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
             ? 'Work through the [WRITER REASONING FRAMEWORK] only where it does not conflict with [USER ABSOLUTE COMMAND]. Where they conflict, discard the framework step and follow the command.'
             : 'Work through the [WRITER REASONING FRAMEWORK] in your reasoning before writing.';
 
-    // Ordering: volatileBlock → writerCotNudge → directorBriefBlock
-    // → watchdogNudgeActive → userMessage → absoluteBlock. The Brief lands first so
-    // the GM reads the audit directives, then the (possibly suppressed)
-    // deterministic nudge. The Absolute Command goes last, at maximum recency.
+    // Ordering: volatileBlock → writerCotNudge → directorBriefBlock → userMessage
+    // → absoluteBlock. The Absolute Command goes last, at maximum recency.
     // Everything upstream of this point is cache-stable.
     const finalUserContent = [
-        volatileBlock, writerCotNudge, directorBriefBlock,
-        watchdogNudgeActive, userMessage, absoluteBlock,
+        volatileBlock, writerCotNudge, directorBriefBlock, userMessage, absoluteBlock,
     ].filter(Boolean).join('\n\n');
 
     if (absoluteBlock) {
-        addTrace({ source: 'Absolute Command', classification: 'player_input', tokens: countTokens(absoluteBlock), reason: 'Binding out-of-character instruction for this turn; Director, watchdog and GM reminder suppressed', included: true, position: 'user', preview: absoluteBlock });
+        addTrace({ source: 'Absolute Command', classification: 'player_input', tokens: countTokens(absoluteBlock), reason: 'Binding out-of-character instruction for this turn; Director Brief suppressed', included: true, position: 'user', preview: absoluteBlock });
     }
 
     // Trace the THREE buckets distinctly so debug differentiates them:
@@ -331,32 +321,15 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     // (surprise/encounter/world-rumour) — that's the spillage to watch.
     addTrace({ source: 'Player Input', classification: 'player_input', tokens: countTokens(userMessage), reason: 'This turn\'s typed input (+ any engine-event tags appended by rollEngines)', included: true, position: 'user', preview: userMessage });
 
-    // Trace the watchdog so debug mode shows the dossier. Only recorded when the
-    // nudge is actually surfaced — a suppressed nudge (Brief present) or absent
-    // input is not a payload contributor this turn.
-    if (watchdogNudgeActive) {
-        addTrace({
-            source: 'Watchdog',
-            classification: 'world_context',
-            tokens: countTokens(watchdogNudgeActive),
-            reason: 'Deterministic NPC-agency nudge (highest-priority signal from buildWatchdogDossier)',
-            included: true,
-            position: 'user',
-            preview: watchdogNudgeActive,
-        });
-    }
-
     // Trace the Director Brief so debug mode shows the LLM-authored directives.
     // Only recorded when the Brief is actually present — a null/empty Brief
     // (timeout, parse failure, lite tier) is not a payload contributor this turn.
-    // When the Brief is present the watchdog trace above is skipped, so exactly
-    // one of the two traces appears.
     if (directorBriefBlock) {
         addTrace({
             source: 'Director',
             classification: 'world_context',
             tokens: countTokens(directorBriefBlock),
-            reason: 'LLM-authored Writer Brief from runDirectorBrief (supersedes the deterministic watchdog nudge)',
+            reason: 'LLM-authored Writer Brief from runDirectorBrief',
             included: true,
             position: 'user',
             preview: directorBriefBlock,

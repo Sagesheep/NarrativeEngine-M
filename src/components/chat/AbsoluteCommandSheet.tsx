@@ -9,8 +9,8 @@ import { ABSOLUTE_COMMAND_MAX_CHARS, clampAbsoluteCommand } from '../../services
 /**
  * AbsoluteCommandSheet — bottom sheet for arming an Absolute Command (port of
  * mainApp's AbsoluteCommandButton modal). The player writes a binding
- * out-of-character instruction; the next send obeys it, with the Director Brief,
- * watchdog nudge and GM reminder switched off for that turn, then it clears.
+ * out-of-character instruction; the next send obeys it, with the Director Brief
+ * switched off for that turn, then it clears.
  *
  * Modeled on DeepSearchSheet: bottom sheet, useBackHandler for Android back,
  * backdrop click with a 350ms open-guard to dismiss.

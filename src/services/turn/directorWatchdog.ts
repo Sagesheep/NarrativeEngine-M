@@ -10,9 +10,8 @@
 //                            (the PC is doing all the talking-to; the NPC never reaches back).
 //   3. interrupted-goal   — an active goal's keywords have not surfaced in the last 5 messages.
 //
-// Each signal carries a priority; `nudgeText` surfaces the highest-priority one to the GM
-// as a single [STAGE NOTE] directive. Lower-priority signals still appear in `dossierText`
-// for the GM's situational awareness.
+// Each signal carries a priority. The signals reach only the Director, as `dossierText`;
+// nothing from the watchdog is sent to the GM directly.
 
 import type { ChatMessage, NPCEntry } from '../../types';
 
@@ -29,7 +28,6 @@ export interface WatchdogSignal {
 export interface WatchdogDossier {
     signals: WatchdogSignal[];
     dossierText: string;
-    nudgeText: string | null;
 }
 
 export interface WatchdogInput {
@@ -48,8 +46,7 @@ const ONE_DIR_WINDOW = 5;       // last N assistant messages scanned for NPC ini
 const INTERRUPTED_WINDOW = 5;   // last N messages (any role) scanned for goal keywords
 
 // pcRelation engagement threshold. The pcRelation scale is -3..+3 (see NPCEntry type doc);
-// >= +1 (Friendly) is "meaningfully positive/engaged" — matches RELATION_CLOSE in
-// reactionMenu.ts (the codebase's existing "close bond" gate).
+// >= +1 (Friendly) is "meaningfully positive/engaged".
 const PC_RELATION_ENGAGED_MIN = 1;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -228,7 +225,7 @@ function resolvePcRelation(npc: NPCEntry): number {
     if (typeof npc.pcRelation === 'number' && Number.isFinite(npc.pcRelation)) {
         return npc.pcRelation;
     }
-    // Mirror reactionMenu.ts / relationMeter.ts fallback. Inline the boundaries so
+    // Mirror the relationMeter.ts fallback. Inline the boundaries so
     // this module stays pure (no import of agency/agencyBands — keeps the blast
     // radius small and the test hermetic).
     const a = typeof npc.affinity === 'number' && Number.isFinite(npc.affinity) ? npc.affinity : 50;
@@ -318,25 +315,5 @@ export function buildWatchdogDossier(input: WatchdogInput): WatchdogDossier {
         .map(s => `- ${s.npcName}: ${s.detail}`)
         .join('\n');
 
-    const nudgeText = signals.length === 0
-        ? null
-        : formatNudge(signals[0]);
-
-    return { signals, dossierText, nudgeText };
-}
-
-/** Format the highest-priority signal as a single GM directive. */
-function formatNudge(s: WatchdogSignal): string {
-    switch (s.kind) {
-        case 'silent-npc': {
-            // detail = "silent for N turns while on stage." → extract N.
-            const m = /silent for (\d+) turn/.exec(s.detail);
-            const n = m ? m[1] : '?';
-            return `[STAGE NOTE: ${s.npcName} has been silent ${n} turn${n === '1' ? '' : 's'} — must act or speak this scene.]`;
-        }
-        case 'one-directional':
-            return `[STAGE NOTE: ${s.npcName} has not initiated toward the PC recently — give ${s.npcName} a beat to reach out this scene.]`;
-        case 'interrupted-goal':
-            return `[STAGE NOTE: ${s.npcName}'s ${s.detail} — surface a step toward it this scene.]`;
-    }
+    return { signals, dossierText };
 }

@@ -27,7 +27,6 @@ export type GatheredContext = {
 };
 
 export type DirectorSignals = {
-    watchdogNudge?: string;
     /** The Director Brief, or the still-running Director call. The gather runs
      *  alongside it and waits for it only when the payload is built. */
     directorBrief?: string | Promise<string | undefined>;
@@ -124,7 +123,6 @@ export async function gatherContext(
         semanticallyRecalledNpcIds,
         pinnedExcerpts: state.pinnedExcerpts,
         plannerEventTypes: plannerResult?.filters?.eventTypes as SceneEventType[] | undefined,
-        watchdogNudge: directorSignals.watchdogNudge,
         directorBrief,
         absoluteCommand: directorSignals.absoluteCommand,
     });

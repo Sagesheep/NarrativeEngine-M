@@ -9,7 +9,6 @@ const base = () => ({
     context: defaultContext,
     history: [],
     userMessage: 'I open the door.',
-    watchdogNudge: '[STAGE NOTE] Mira has been silent.',
     directorBrief: 'MANDATORY: the door is locked.',
 });
 const finalUser = (messages: ReturnType<typeof buildPayload>['messages']) => String(messages[messages.length - 1].content);
@@ -23,13 +22,12 @@ describe('Absolute Command block', () => {
 });
 
 describe('Absolute Command in the payload', () => {
-    it('goes last, after the player message, and suppresses Director, watchdog and GM reminder', () => {
+    it('goes last, after the player message, and suppresses the Director Brief', () => {
         const text = finalUser(buildPayload({ ...base(), absoluteCommand: 'Skip to the next morning.' }).messages);
         expect(text.endsWith('COMMAND: Skip to the next morning.\n[END ABSOLUTE COMMAND]')).toBe(true);
         expect(text.indexOf('I open the door.')).toBeLessThan(text.indexOf('[USER ABSOLUTE COMMAND'));
         expect(text).not.toContain('[DIRECTOR BRIEF]');
         expect(text).not.toContain('[GM REMINDER');
-        expect(text).not.toContain('[STAGE NOTE]');
     });
 
     it('a normal turn is unchanged', () => {
