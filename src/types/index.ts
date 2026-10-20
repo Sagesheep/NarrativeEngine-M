@@ -111,6 +111,7 @@ export type AppSettings = {
     utilityTimeoutSeconds?: number;   // soft deadline for utility AI calls (reranker, recommender, expandQuery). Default 45. User can EXTEND +1m mid-flight.
     verboseUtilityLogging?: boolean;  // when true, utility call tracker records extra detail (slot waits, retries, payload sizes)
     aiTier?: AiTier;
+    directorBriefEnabled?: boolean;  // default true; false skips the Director Brief call even on tiers that allow it
     imageStylePrompt?: string;       // prepended to every image generation prompt (e.g. "oil painting, fantasy art, dark atmosphere")
     imageNegativePrompt?: string;    // negative prompt for models that support it
     imageTagRewriteEnabled?: boolean; // default false; when true, scene prose is rewritten to comma tags via the aux model before image gen (WO-05)

@@ -176,6 +176,19 @@ export function GlobalSettingsPanel() {
                     <p><span className="text-text-primary font-bold">Pro</span> — Adds the high-impact context calls (search planner, chapter recall funnel, NPC/lore recommender) and maintains the memory they rely on (chapter summaries + NPC profiles, with throttled NPC updates). Skips polish calls. Balanced cost and quality for long campaigns on a budget.</p>
                     <p><span className="text-text-primary font-bold">Max</span> — Everything fires: reranking, query expansion, per-turn importance rating, NPC intro engine, and periodic profile/inventory scans. Highest continuity and fidelity, highest cost. Best for capable models where quality outweighs spend.</p>
                 </div>
+                <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between">
+                    <div>
+                        <label className="block text-[10px] text-text-primary uppercase tracking-widest font-bold mb-1">Director Brief</label>
+                        <p className="text-[9px] text-text-dim">One extra call per turn that writes a steering brief for the GM (Pro/Max). Off = the GM writes without it and the turn waits on one less call.</p>
+                    </div>
+                    <button
+                        onClick={() => updateSettings({ directorBriefEnabled: settings.directorBriefEnabled === false })}
+                        aria-label="Toggle Director Brief"
+                        className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.directorBriefEnabled !== false ? 'bg-terminal' : 'bg-border'}`}
+                    >
+                        <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.directorBriefEnabled !== false ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                    </button>
+                </div>
             </div>
 
             <div className="bg-void p-4 border border-amber-500/20 rounded">

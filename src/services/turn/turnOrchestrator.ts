@@ -201,7 +201,7 @@ export async function runTurn(
     });
 
     let directorBrief: Promise<string | undefined> | undefined;
-    if (watchdogDossier && tierAllows(settings.aiTier, 'directorBrief')) {
+    if (watchdogDossier && tierAllows(settings.aiTier, 'directorBrief') && settings.directorBriefEnabled !== false) {
         callbacks.onDirectorBriefPhase?.('running');
         directorBrief = runDirectorBrief({
             provider,
