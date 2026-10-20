@@ -1,8 +1,13 @@
 import { useState, useRef } from 'react';
 import { X, Plus, LayoutGrid, List, ArrowLeft, Sparkles, Images } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { updateExistingNPCs } from '../services/chatEngine';
 import { api } from '../services/apiClient';
+import {
+  gatherUpdateEvidence, proposeRequestedUpdate, buildAcceptedPatch,
+  type RequestedUpdateResult, type UpdateProposal,
+} from '../services/npc/npcRequestedUpdate';
+import { isEmbedderReady, semanticSearchScored } from '../services/embedding';
+import { NPCUpdateRequestModal } from './npc-ledger/NPCUpdateRequestModal';
 import { runNPCReview, addNpcFromSelection, type NPCReviewCandidate, type NPCReviewCancelled } from '../services/npc';
 
 import type { NPCEntry } from '../types';
@@ -39,6 +44,7 @@ export function NPCLedgerModal() {
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'gallery'>('list');
   const [isAIUpdating, setIsAIUpdating] = useState(false);
+  const [updateRequestOpen, setUpdateRequestOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [populating, setPopulating] = useState<{ done: number; total: number } | null>(null);
@@ -143,19 +149,52 @@ export function NPCLedgerModal() {
     return false;
   };
 
-  const handleAIUpdate = async () => {
-    if (!selectedId) return;
+  // AI Update: ask the player what changed, search the story for it, propose
+  // field edits with the supporting model, and save only what the player confirms.
+  const handleAIUpdate = () => {
+    if (selectedId) setUpdateRequestOpen(true);
+  };
+
+  const handleProposeUpdate = async (request: string): Promise<RequestedUpdateResult> => {
     const state = useAppStore.getState();
-    const provider = state.getActiveStoryEndpoint();
-    if (!provider) return;
+    const npc = state.npcLedger.find(n => n.id === selectedId);
+    if (!npc) throw new Error('Character not found.');
+    const summarizer = state.getActiveSummarizerEndpoint?.();
+    const provider = (summarizer?.endpoint && summarizer?.modelName)
+      ? summarizer
+      : applyActiveSlotThinking(state.settings, 'summarizer', state.getActiveStoryEndpoint());
+    if (!provider) throw new Error('No AI endpoint configured.');
+
     setIsAIUpdating(true);
     try {
-      const npc = npcLedger.find(n => n.id === selectedId);
-      if (npc) await updateExistingNPCs(provider, state.messages, [npc], (id, patch) => {
-        updateNPC(id, patch);
-        setForm(prev => ({ ...prev, ...patch }));
+      const cid = state.activeCampaignId;
+      const sceneIds = state.archiveIndex.map(e => e.sceneId);
+      const scenes = cid && sceneIds.length > 0 ? await api.archive.getScenes(cid, sceneIds) : [];
+      let semanticSceneIds: string[] | undefined;
+      if (cid && request.trim() && isEmbedderReady()) {
+        const hits = await semanticSearchScored(cid, [`${npc.name}: ${request.trim()}`], 'scene', 6, 0.28).catch(() => undefined);
+        semanticSceneIds = hits?.map(h => h.id);
+      }
+      const facts = [
+        ...state.divergenceRegister.entries.filter(e => e.enabled !== false).map(e => `${e.text} [#${e.sceneRef}]`),
+        ...(npc.isPC ? (state.context.characterProfile?.activeTraits ?? []).filter(t => !t.superseded).map(t => t.text) : []),
+      ];
+      const evidence = gatherUpdateEvidence({
+        npc, request, scenes, semanticSceneIds, facts, recentMessages: state.messages,
       });
+      return await proposeRequestedUpdate(provider, npc, request, evidence);
     } finally { setIsAIUpdating(false); }
+  };
+
+  const handleApplyUpdate = (accepted: UpdateProposal[]) => {
+    const npc = useAppStore.getState().npcLedger.find(n => n.id === selectedId);
+    if (npc && accepted.length > 0) {
+      const patch = buildAcceptedPatch(npc, accepted);
+      updateNPC(npc.id, patch);
+      setForm(prev => ({ ...prev, ...patch }));
+      toast.success(`Updated ${accepted.map(p => p.label.toLowerCase()).join(', ')}`);
+    }
+    setUpdateRequestOpen(false);
   };
 
   // Generate portraits for every NPC that has no image yet. Skips NPCs without
@@ -420,6 +459,17 @@ export function NPCLedgerModal() {
           />
         </div>
       </div>
+
+      {updateRequestOpen && (
+        <NPCUpdateRequestModal
+          open
+          npcName={form.name ?? ''}
+          isPC={form.isPC === true}
+          onPropose={handleProposeUpdate}
+          onApply={handleApplyUpdate}
+          onClose={() => setUpdateRequestOpen(false)}
+        />
+      )}
 
       <NPCReviewModal
         open={reviewOpen}

@@ -120,7 +120,7 @@ export function NPCEditForm({
                         <button
                             onClick={onAIUpdate}
                             disabled={isAIUpdating || !selectedId}
-                            title="Ask AI to update this NPC based on recent chat history"
+                            title="Tell the AI what changed — it checks the story and proposes edits for you to confirm"
                             className="flex items-center gap-2 bg-void border border-terminal/30 px-4 md:px-3 py-2.5 md:py-1.5 text-sm md:text-xs text-terminal hover:border-terminal uppercase tracking-widest transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px] md:min-h-0"
                         >
                             {isAIUpdating ? <Loader2 size={14} className="animate-spin md:w-[12px] md:h-[12px]" /> : <Sparkles size={14} className="md:w-[12px] md:h-[12px]" />}
