@@ -314,10 +314,19 @@ export function ChatArea() {
 
     // When the soft keyboard opens, keep the latest message in view (the nav bar
     // disappears and the viewport shrinks, so the tail would otherwise be hidden).
+    // While editing a message, keep THAT bubble in view instead — jumping to the
+    // tail would push the edit box off screen.
     useEffect(() => {
-        if (keyboardVisible) {
-            requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'end' }));
-        }
+        if (!keyboardVisible) return;
+        requestAnimationFrame(() => {
+            if (editingMessageId) {
+                const editing = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(editingMessageId)}"]`);
+                editing?.querySelector('textarea')?.scrollIntoView({ block: 'center' });
+                return;
+            }
+            bottomRef.current?.scrollIntoView({ block: 'end' });
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on keyboard open/close
     }, [keyboardVisible]);
 
     useEffect(() => {

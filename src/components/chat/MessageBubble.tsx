@@ -431,8 +431,14 @@ export const MessageBubble = memo(function MessageBubble({
         setEditText(e.target.value);
         const textarea = textareaRef.current;
         if (textarea) {
+            // Collapsing to 'auto' to measure briefly shrinks the chat, which makes
+            // the scroll container clamp/jump and throws the edit box off screen.
+            // Pin the container's scroll position across the measure.
+            const scroller = textarea.closest<HTMLElement>('.overflow-y-auto');
+            const prevScrollTop = scroller?.scrollTop;
             textarea.style.height = 'auto';
             textarea.style.height = `${Math.min(textarea.scrollHeight, window.innerHeight * 0.4)}px`;
+            if (scroller && prevScrollTop !== undefined) scroller.scrollTop = prevScrollTop;
         }
     };
 
