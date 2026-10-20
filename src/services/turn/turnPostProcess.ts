@@ -76,7 +76,7 @@ export async function handlePostTurn(
     queueIndexPatch(state, callbacks, appendedSceneId, displayInput, lastAssistantContent, npcLedger, activeCampaignId);
     queueNPCValidation(state, callbacks, extractedNames, npcLedger, lastAssistantContent, activeCampaignId);
     autoEnableCharacterProfile(state, callbacks, npcLedger);
-    runBookkeepingScans(state, callbacks, appendedSceneId);
+    runBookkeepingScans(state, callbacks, appendedSceneId, lastAssistantContent, displayInput, npcLedger);
     runNPCPressureScan(state, callbacks, npcLedger, displayInput, lastAssistantContent);
     runAgencyTick(state, callbacks, npcLedger, displayInput);
     runArcTick(state, callbacks, displayInput, lastAssistantContent);

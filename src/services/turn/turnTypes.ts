@@ -55,6 +55,8 @@ export type TurnCallbacks = {
     updateContext: (patch: Partial<GameContext>) => void;
     setArchiveIndex: (entries: ArchiveIndexEntry[]) => void;
     updateNPC: (id: string, patch: Partial<NPCEntry>) => void;
+    /** Live ledger read (post-commit compare-and-set for background writes). */
+    getNpc?: (id: string) => NPCEntry | undefined;
     addNPC: (npc: NPCEntry) => void;
     // Newly-detected names are no longer auto-added; they're surfaced as
     // suggestions the player promotes (or dismisses) in the ledger.

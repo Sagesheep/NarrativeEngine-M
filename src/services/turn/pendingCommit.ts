@@ -127,6 +127,7 @@ function buildCommitCallbacks(activeCampaignId: string): TurnCallbacks {
         updateContext: (patch) => storeAccess().getState().updateContext(patch),
         setArchiveIndex: (entries) => storeAccess().getState().setArchiveIndex(entries),
         updateNPC: (id, patch) => storeAccess().getState().updateNPC(id, patch),
+        getNpc: (id) => storeAccess().getState().npcLedger.find(n => n.id === id),
         addNPC: (npc) => storeAccess().getState().addNPC(npc),
         addNpcSuggestions: (names, ctx) => storeAccess().getState().addNpcSuggestions(names, ctx),
         setCondensed: (upToIndex) => storeAccess().getState().setCondensed(upToIndex),

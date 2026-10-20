@@ -14,6 +14,8 @@ export { drawShortWants, drawMediumWants } from './agencyWantDraw';
 export { affinityToPcRelation, hexBand, relationBand, describeHex, formatRungBand, formatHexShift, formatRungShift } from './agencyBands';
 export { buildGoalsFromWants, upgradeWantsToGoals } from './agencyGoals';
 export { isAgencyEligible, filterUpdatableNPCs, completeShortWant } from './agencyLifecycle';
+export { isFactMaintenanceEligible, resolvePcStateUpdate, renderPcCurrentState, buildPcStateSection, hasPcFactCue, withCommittedReply, PC_FACT_FIELDS } from './pcFactMaintenance';
+export type { PcFactPatch } from './pcFactMaintenance';
 export { rollHeartbeat, buildProximityRoster } from './agencyHeartbeat';
 export { contextAllow, goalScore, chooseTick, driveMult } from './agencySelection';
 export type { TickChoice } from './agencySelection';

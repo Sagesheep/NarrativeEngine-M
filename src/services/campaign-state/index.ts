@@ -34,7 +34,8 @@ export { fetchFacts, extractContextEntities, queryFacts, formatFactsForContext, 
 export type { SelectedTraits } from './semanticMemory';
 export { resolveTimeline, queryTimeline, formatResolvedForContext, getEventsByScene, maxImportanceForScene } from './timelineResolver';
 export type { ResolvedTruth } from './timelineResolver';
-export { scanCharacterProfile } from './characterProfileParser';
+export { scanCharacterProfile, scanCharacterProfileWithPcState } from './characterProfileParser';
+export type { ProfileScanResult } from './characterProfileParser';
 export { scanInventory } from './inventoryParser';
 export { normalizeSubjectToken, parseKnownByToken, isKnownToAnyOnStage, normalizeFaction, compareSceneRef, groupDivergencesBySubject } from './knowledgeScope';
 export type { KnownByToken } from './knowledgeScope';

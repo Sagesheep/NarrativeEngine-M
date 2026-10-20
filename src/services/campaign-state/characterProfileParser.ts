@@ -34,8 +34,31 @@ export async function scanCharacterProfile(
     messages: ChatMessage[],
     currentProfile: CharacterProfileState,
 ): Promise<CharacterProfileState> {
+    return (await scanCharacterProfileWithPcState(provider, messages, currentProfile, undefined)).profile;
+}
+
+export type ProfileScanResult = {
+    profile: CharacterProfileState;
+    /** Raw `pcStateUpdate` from the model — validate with resolvePcStateUpdate
+     *  (services/npc) before writing anything. Undefined when not requested/failed. */
+    pcStateUpdate?: unknown;
+};
+
+/**
+ * Same scan, plus PC current-state maintenance when `pcStateSection` is given
+ * (see services/npc/pcFactMaintenance.ts: the PC ledger row owns appearance,
+ * equipment, powers and condition). Without it the prompt is exactly the plain
+ * scan's. The model only PROPOSES slot changes; the engine validates them.
+ */
+export async function scanCharacterProfileWithPcState(
+    provider: LLMProvider,
+    messages: ChatMessage[],
+    currentProfile: CharacterProfileState,
+    pcStateSection: string | undefined,
+): Promise<ProfileScanResult> {
     const recentMessages = messages.slice(-15);
-    if (recentMessages.length === 0) return currentProfile;
+    if (recentMessages.length === 0) return { profile: currentProfile };
+    const withPcState = pcStateSection !== undefined;
 
     const turns = recentMessages
         .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
@@ -81,7 +104,7 @@ INSTRUCTIONS:
    - "Has a scar over left eye" → tags: ["combat", "discovery"]
 6. TRAITS — CATEGORY: Each trait's \`category\` must be one of: [${categoryList.join(', ')}]. Use \`party_facts\` for personal attributes/scars/titles/abilities, \`locations\` for residence/travel, \`promises_debts\` for oaths/debts, \`npc_events\` for NPC relationships, \`world_state\` for broad world changes affecting the PC.
 7. TRAITS — IMPORTANCE: Assign 1-10 based on narrative weight. Combat-relevant or plot-critical facts: 7-10. Personal bonds/flavor: 4-6. Minor details: 1-3.
-8. OUTPUT: Emit ONLY a JSON object matching the CharacterProfileState shape below. No prose, no markdown fences, no explanations.
+8. OUTPUT: Emit ONLY a JSON object matching the CharacterProfileState shape below. No prose, no markdown fences, no explanations.${withPcState ? PC_STATE_INSTRUCTIONS : ''}
 
 OUTPUT SHAPE:
 {
@@ -99,7 +122,7 @@ OUTPUT SHAPE:
       "superseded": false,
       "source": "llm"
     }
-  ]
+  ]${withPcState ? PC_STATE_SHAPE : ''}
 }
 
 If nothing changed, return the current profile as-is (with superseded flags preserved).`,
@@ -109,6 +132,7 @@ If nothing changed, return the current profile as-is (with superseded flags pres
         INPUT_DELIMITER,
 
         `=== CURRENT CHARACTER PROFILE (JSON) ===\n${currentProfileJson}`,
+        withPcState ? `=== PLAYER CHARACTER CURRENT STATE ===\n${pcStateSection}` : '',
         `=== RECENT CHAT HISTORY ===\n${turns}`,
     );
 
@@ -123,16 +147,36 @@ If nothing changed, return the current profile as-is (with superseded flags pres
         const braceEnd = clean.lastIndexOf('}');
         if (braceStart === -1 || braceEnd === -1) {
             console.warn('[CharacterProfileParser] No JSON object found in response — returning current profile unchanged');
-            return currentProfile;
+            return { profile: currentProfile };
         }
 
         const parsed = JSON.parse(clean.substring(braceStart, braceEnd + 1));
-        return normalizeParsedProfile(parsed, currentProfile);
+        return {
+            profile: normalizeParsedProfile(parsed, currentProfile),
+            pcStateUpdate: withPcState && parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>).pcStateUpdate : undefined,
+        };
     } catch (e) {
         console.warn('[CharacterProfileParser] Parse failed — returning current profile unchanged:', e);
-        return currentProfile;
+        return { profile: currentProfile };
     }
 }
+
+const PC_STATE_INSTRUCTIONS = `
+9. PLAYER CHARACTER CURRENT STATE (separate from traits): the section of that name holds the player character's saved appearance (incl. clothing), equipment, abilities/powers and condition. The player character is whoever the PLAYER's "I"/"me"/"my" lines refer to and whom the GM addresses as "you" — no name needed. For each slot in "pcStateUpdate":
+   - "changed": true ONLY for a COMPLETED change shown in the chat (basis "completed_change": hair cut/dyed, new clothes or armor put on, a new scar/tattoo, an item issued/received/lost/broken/replaced, a power explicitly awakened/learned/lost/changed, injured/healed), or an explicit PLAYER correction of a saved fact (basis "player_correction", e.g. "correction: my persona is X, not Y").
+   - NOT a change ("changed": false): plans or promises ("will be issued tomorrow"), hypotheticals or discussion, temporary effects (wet, muddy, a one-scene disguise, a brief buff), the story merely describing the character again, or anything about an NPC.
+   - "value" is the FULL updated slot: the saved text/list with ONLY the changed part edited — copy every unchanged detail/item exactly. Equipment/abilities are lists of short items. Condition is one of healthy|wounded|critical|dead.
+   - "evidence" quotes the exact chat line showing the change (for a player_correction, the PLAYER's line).
+   - Slots hold physical/factual state only: never personality, mood, goals, intentions, decisions or relationships.
+   - Do NOT add activeTraits for appearance, clothing, equipment, powers or condition — they live only in these slots. When a slot changes, set "superseded": true on any active trait that states the old value.`;
+
+const PC_STATE_SHAPE = `,
+  "pcStateUpdate": {
+    "appearance": { "changed": false, "basis": "", "evidence": "", "value": "" },
+    "equipment": { "changed": false, "basis": "", "evidence": "", "value": [] },
+    "abilities": { "changed": false, "basis": "", "evidence": "", "value": [] },
+    "condition": { "changed": false, "basis": "", "evidence": "", "value": "" }
+  }`;
 
 /**
  * Normalize a parsed JSON object into a valid CharacterProfileState.
@@ -162,6 +206,9 @@ function normalizeParsedProfile(
         class: typeof identityRaw.class === 'string' ? identityRaw.class : fallback.identity.class,
         archetype: typeof identityRaw.archetype === 'string' ? identityRaw.archetype as CharacterIdentity['archetype'] : fallback.identity.archetype,
         level: typeof identityRaw.level === 'number' ? identityRaw.level : fallback.identity.level,
+        // Not in the scan's output shape — carry through so a scan never erases them.
+        appearance: fallback.identity.appearance,
+        portraitSeed: fallback.identity.portraitSeed,
     };
 
     let stats: StatBlock | undefined;

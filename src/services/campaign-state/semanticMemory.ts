@@ -217,6 +217,9 @@ function formatTraitLine(trait: CharacterTrait): string {
 export function formatTraitsForContext(
     profile: CharacterProfileState,
     selected: SelectedTraits,
+    /** PC current-state line from the ledger row (npc/pcFactMaintenance renderPcCurrentState).
+     *  Outside the trait cap/budget, so newer traits can never crowd it out. */
+    currentState?: string,
 ): string {
     const parts: string[] = ['[CHARACTER PROFILE]'];
 
@@ -229,6 +232,7 @@ export function formatTraitsForContext(
     if (id.archetype) idParts.push(id.archetype);
     if (id.level !== undefined) idParts.push(`Level ${id.level}`);
     if (idParts.length > 0) parts.push(idParts.join(' | '));
+    if (currentState) parts.push(currentState);
 
     // Stats (if present — structured, not a flat string)
     if (profile.stats) {

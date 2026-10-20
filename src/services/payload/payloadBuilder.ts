@@ -11,6 +11,7 @@ import { buildAbsoluteCommandBlock } from '../turn/absoluteCommand';
 import { sceneNoteText as buildSceneNoteText, sceneNoteTokens, normalizeSceneNoteRole } from './sceneNote';
 import { queryTraits, formatTraitsForContext } from '../campaign-state';
 import type { NpcDetailLevel } from './contextRecommender';
+import { renderPcCurrentState } from '../npc/pcFactMaintenance';
 
 export type { BudgetMap, WorldBlock, NpcStrategy };
 
@@ -182,7 +183,10 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     let profileText = '';
     if (context.characterProfileActive && context.characterProfile) {
         const profile = context.characterProfile;
-        if (profile.activeTraits && profile.activeTraits.length > 0 || profile.identity.name || profile.stats) {
+        // The PC ledger row owns current appearance/kit/condition; it rides here as
+        // one authoritative line so stale traits can't contradict it.
+        const pcCurrentState = renderPcCurrentState(npcLedger?.find(n => n.isPC));
+        if (profile.activeTraits && profile.activeTraits.length > 0 || profile.identity.name || profile.stats || pcCurrentState) {
             const selected = queryTraits(
                 profile.activeTraits ?? [],
                 userMessage,
@@ -192,7 +196,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
                 400,
                 CORE_FLOOR_TRAITS,
             );
-            profileText = formatTraitsForContext(profile, selected);
+            profileText = formatTraitsForContext(profile, selected, pcCurrentState);
             if (profileText) volatileParts.push(profileText);
         }
     }
