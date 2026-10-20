@@ -95,7 +95,7 @@ export async function gatherContext(
 
     // Recommender lore picks that keyword/semantic retrieval missed join the lore.
     injectRecommendedLore(relevantLore, recommender.relevantLoreIds, loreChunks);
-    const { recommendedNPCNames } = recommender;
+    const { recommendedNPCNames, recommendedNPCDetail } = recommender;
     const finalArchiveRecall = archiveResult.scenes.length > 0 ? archiveResult.scenes : undefined;
 
     const directorBrief = await directorSignals.directorBrief;
@@ -115,6 +115,7 @@ export async function gatherContext(
         archiveRecall: finalArchiveRecall,
         onStageNpcIds: state.onStageNpcIds,
         recommendedNPCNames,
+        recommendedNPCDetail,
         semanticFactText,
         deepContextSummary,
         divergenceRegister: state.divergenceRegister,

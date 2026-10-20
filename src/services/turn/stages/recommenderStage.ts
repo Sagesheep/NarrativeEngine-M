@@ -1,14 +1,17 @@
 import type { ChatMessage, LoreChunk } from '../../../types';
 import type { TurnState, UtilityLLM } from '../turnTypes';
-import { recommendContext } from '../../payload';
+import { recommendContext, type NpcDetailLevel } from '../../payload';
 import { tierAllows } from '../aiTier';
 
 export type RecommenderPicks = {
     recommendedNPCNames: string[] | undefined;
     relevantLoreIds: string[];
+    /** npcId → full/brief. Undefined when the call did not run or failed, which
+     *  keeps every NPC at full detail (pre-detail-level behavior). */
+    recommendedNPCDetail: Record<string, NpcDetailLevel> | undefined;
 };
 
-const NO_PICKS: RecommenderPicks = { recommendedNPCNames: undefined, relevantLoreIds: [] };
+const NO_PICKS: RecommenderPicks = { recommendedNPCNames: undefined, relevantLoreIds: [], recommendedNPCDetail: undefined };
 
 /**
  * AI context recommender: asks the utility LLM which NPCs and lore are relevant
@@ -43,9 +46,13 @@ export async function recommenderStage(params: {
     if (!hasSelectableContent) return NO_PICKS;
 
     try {
-        const result = await recommendContext(utilityEndpoint, npcLedger, loreChunks, messages, finalInput, pinnedChaptersForRecommender, utilityTimeoutMs);
+        const result = await recommendContext(utilityEndpoint, npcLedger, loreChunks, messages, finalInput, pinnedChaptersForRecommender, utilityTimeoutMs, state.onStageNpcIds);
         if (!result) return NO_PICKS;
-        return { recommendedNPCNames: result.relevantNPCNames, relevantLoreIds: result.relevantLoreIds };
+        return {
+            recommendedNPCNames: result.relevantNPCNames,
+            relevantLoreIds: result.relevantLoreIds,
+            recommendedNPCDetail: result.npcDetail ?? {},
+        };
     } catch (err) {
         console.warn('[TurnOrchestrator] UtilityAI recommender failed:', err);
         return NO_PICKS;

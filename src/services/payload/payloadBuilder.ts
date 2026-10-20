@@ -10,6 +10,7 @@ import { buildChapterRecapBlock } from './lodRenderer';
 import { buildAbsoluteCommandBlock } from '../turn/absoluteCommand';
 import { sceneNoteText as buildSceneNoteText, sceneNoteTokens, normalizeSceneNoteRole } from './sceneNote';
 import { queryTraits, formatTraitsForContext } from '../campaign-state';
+import type { NpcDetailLevel } from './contextRecommender';
 
 export type { BudgetMap, WorldBlock, NpcStrategy };
 
@@ -26,6 +27,9 @@ export interface BuildPayloadOptions {
     onStageNpcIds?: string[];
     sceneNumber?: string;
     recommendedNPCNames?: string[];
+    /** Recommender's per-NPC detail level (npcId → full/brief). Undefined = recommender
+     *  unavailable → every NPC at full detail. */
+    recommendedNPCDetail?: Record<string, NpcDetailLevel>;
     semanticFactText?: string;
     deepContextSummary?: string;
     divergenceRegister?: DivergenceRegister;
@@ -57,6 +61,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         archiveRecall,
         onStageNpcIds,
         recommendedNPCNames,
+        recommendedNPCDetail,
         semanticFactText,
         deepContextSummary,
         divergenceRegister,
@@ -99,6 +104,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
             mode: (recommendedNPCNames && recommendedNPCNames.length > 0) ? 'recommended' : 'fallback',
             recommendedNames: recommendedNPCNames,
             semanticallyRecalledNpcIds,
+            detailLevels: recommendedNPCDetail,
           }
         : undefined;
 

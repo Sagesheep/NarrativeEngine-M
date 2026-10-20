@@ -30,6 +30,7 @@ export {
 export {
     recommendContext,
     type RecommenderResult,
+    type NpcDetailLevel,
 } from './contextRecommender';
 
 export {

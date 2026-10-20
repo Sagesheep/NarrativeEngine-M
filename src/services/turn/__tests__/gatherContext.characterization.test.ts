@@ -267,6 +267,21 @@ describe('gatherContext characterization', () => {
         expect(result.relevantLore?.map(c => c.id)).toContain('lore_2');
     });
 
+    it('6b. recommender detail levels reach the payload; a failed call leaves them undefined (all full)', async () => {
+        h.recommendContext.mockResolvedValue({ relevantNPCNames: ['Astarion'], relevantLoreIds: [], npcDetail: { n1: 'brief' } });
+        const loreChunks = [{ id: 'lore_1', header: 'L1', content: 'a', summary: '', tokens: 40 }] as never;
+        await gatherContext(makeState({ onStageNpcIds: ['n1'], loreChunks } as never), makeCallbacks(), 'who is around', 'u1', makePort());
+        expect(h.recommendContext.mock.calls[0][7]).toEqual(['n1']);
+        expect(h.buildPayload.mock.calls.at(-1)![0].recommendedNPCDetail).toEqual({ n1: 'brief' });
+
+        h.recommendContext.mockRejectedValue(new Error('timeout'));
+        await gatherContext(makeState({ loreChunks }), makeCallbacks(), 'who is around', 'u1', makePort());
+        expect(h.recommendContext).toHaveBeenCalledTimes(2);
+        const opts = h.buildPayload.mock.calls.at(-1)![0];
+        expect(opts.recommendedNPCDetail).toBeUndefined();
+        expect(opts.recommendedNPCNames).toBeUndefined();
+    });
+
     it('7. recommender starts alongside the memory search, not after it', async () => {
         let finishSearch!: (hits: unknown) => void;
         h.semanticSearchScored.mockReturnValue(new Promise(resolve => { finishSearch = resolve; }));

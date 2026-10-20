@@ -6,6 +6,7 @@ import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowle
 import { isFactActive } from '../campaign-state/divergenceRegister';
 import { renderSignatureKit } from '../npc/signatureKit';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
+import type { NpcDetailLevel } from './contextRecommender';
 
 export function computeOpenThreads(chapters: ArchiveChapter[]): { text: string; chapterId: string }[] {
     const allUnresolved: { text: string; chapterId: string }[] = [];
@@ -133,7 +134,7 @@ function fieldTagMatches(
  * (wants.short[0] or drives fallback). Voice, boundaries, triggers, example
  * and drift live in the extended tier.
  */
-function buildCoreDirective(npc: NPCEntry): string {
+function buildCoreDirective(npc: NPCEntry, includeKit: boolean = true): string {
     const parts: string[] = [];
 
     // Canon characters come from the setting's source — the story model knows them.
@@ -156,48 +157,90 @@ function buildCoreDirective(npc: NPCEntry): string {
     }
 
     // Signature Kit — the durable loadout rides here so scene filtering can never
-    // drop it; the anti-drift analogue of personalityHex.
-    const kit = renderSignatureKit(npc.signatureKit);
+    // drop it; the anti-drift analogue of personalityHex. Omitted only for a brief,
+    // absent NPC (they cannot draw a sword they are not there to hold).
+    const kit = includeKit ? renderSignatureKit(npc.signatureKit) : '';
     if (kit) parts.push(kit);
 
     return parts.length > 0 ? `PLAY AS: ${parts.join(' | ')}` : '';
 }
 
 /**
+ * Per-turn detail level for an NPC's profile (recommender-chosen, engine-defaulted).
+ * - full:  everything below.
+ * - brief: voice; hard boundaries only if present; behavioral triggers only when
+ *          their keyword appears in the recent conversation/input. Longer goals,
+ *          soft boundaries, example dialogue, drift and inner state are omitted.
+ * The core line (identity, markers, affinity, personality, NOW goal) is always kept.
+ */
+export type NpcDetail = {
+    level: NpcDetailLevel;
+    present: boolean;
+    /** Lower-cased recent conversation + input, for brief-tier trigger matching. */
+    triggerScan: string;
+};
+
+const FULL_DETAIL: NpcDetail = { level: 'full', present: true, triggerScan: '' };
+
+/**
+ * Detail level for one NPC. No recommender result (call skipped/failed) → full,
+ * i.e. pre-detail-level behavior. Otherwise the recommender's valid level wins, and
+ * NPCs it gave no level (semantic recall, name matching, bad level) default to
+ * full if present, brief if absent.
+ */
+export function resolveNpcDetailLevel(
+    npcId: string,
+    detailLevels: Record<string, NpcDetailLevel> | undefined,
+    present: boolean,
+): NpcDetailLevel {
+    if (!detailLevels) return 'full';
+    const lv = detailLevels[npcId];
+    if (lv === 'full' || lv === 'brief') return lv;
+    return present ? 'full' : 'brief';
+}
+
+/**
  * Extended directive — scene-tagged fields injected only when relevant to the
  * current scene type. Contains: long/medium wants (goals), hard/soft boundaries,
  * behavioral triggers, voice, example output. Each field is checked against
- * the NPC's fieldTags (if any) intersected with the planner's eventTypes.
+ * the NPC's fieldTags (if any) intersected with the planner's eventTypes, and
+ * against the NPC's detail level for this turn.
  */
 function buildExtendedDirective(
     npc: NPCEntry,
     plannerTags: Set<SceneEventType> | null,
+    detail: NpcDetail = FULL_DETAIL,
 ): string {
     const parts: string[] = [];
+    const full = detail.level === 'full';
 
     // Goals/pursuits — broadly relevant (promise, quest_milestone), but
     // untagged by default so they always inject (goals are usually important).
-    if (npc.wants?.long) {
+    // Brief NPCs keep only the core NOW goal.
+    if (full && npc.wants?.long) {
         parts.push(`GOAL: ${npc.wants.long.length > 80 ? npc.wants.long.substring(0, 80) + '…' : npc.wants.long}`);
     }
-    if (npc.wants?.medium?.[0]) {
+    if (full && npc.wants?.medium?.[0]) {
         parts.push(`PURSUING: ${npc.wants.medium[0].length > 60 ? npc.wants.medium[0].substring(0, 60) + '…' : npc.wants.medium[0]}`);
-    } else if (npc.drives && !npc.wants) {
+    } else if (full && npc.drives && !npc.wants) {
         const driveParts: string[] = [];
         if (npc.drives.sessionWant) driveParts.push(npc.drives.sessionWant.length > 80 ? npc.drives.sessionWant.substring(0, 80) + '…' : npc.drives.sessionWant);
         if (npc.drives.coreWant) driveParts.push(npc.drives.coreWant.length > 80 ? npc.drives.coreWant.substring(0, 80) + '…' : npc.drives.coreWant);
         if (driveParts.length > 0) parts.push(`WANTS: ${driveParts.join(' ← ')}`);
     }
 
-    if (npc.hardBoundaries?.length && fieldTagMatches('hardBoundaries', npc.fieldTags, plannerTags)) {
+    if ((full || detail.present) && npc.hardBoundaries?.length && fieldTagMatches('hardBoundaries', npc.fieldTags, plannerTags)) {
         parts.push(`WON'T: ${npc.hardBoundaries.map(b => b.length > 40 ? b.substring(0, 40) + '…' : b).join('; ')}`);
     }
-    if (npc.softBoundaries?.length && fieldTagMatches('softBoundaries', npc.fieldTags, plannerTags)) {
+    if (full && npc.softBoundaries?.length && fieldTagMatches('softBoundaries', npc.fieldTags, plannerTags)) {
         parts.push(`RESENTS: ${npc.softBoundaries.map(b => b.length > 40 ? b.substring(0, 40) + '…' : b).join('; ')}`);
     }
 
     if (npc.behavioralTriggers?.length && fieldTagMatches('behavioralTriggers', npc.fieldTags, plannerTags)) {
         for (const t of npc.behavioralTriggers) {
+            // Brief: only literal keyword hits. Reactions that matter without the
+            // exact word are the recommender's cue to mark the NPC full instead.
+            if (!full && !(t.keyword && detail.triggerScan.includes(t.keyword.toLowerCase().trim()))) continue;
             parts.push(`ON "${t.keyword}": ${t.shift.length > 50 ? t.shift.substring(0, 50) + '…' : t.shift}`);
         }
     }
@@ -205,7 +248,7 @@ function buildExtendedDirective(
     if (npc.voice && fieldTagMatches('voice', npc.fieldTags, plannerTags)) {
         parts.push(`Voice: ${npc.voice.length > 60 ? npc.voice.substring(0, 60) + '…' : npc.voice}`);
     }
-    if (npc.exampleOutput && fieldTagMatches('exampleOutput', npc.fieldTags, plannerTags)) {
+    if (full && npc.exampleOutput && fieldTagMatches('exampleOutput', npc.fieldTags, plannerTags)) {
         parts.push(`Example: ${npc.exampleOutput.length > 80 ? npc.exampleOutput.substring(0, 80) + '…' : npc.exampleOutput}`);
     }
 
@@ -298,6 +341,22 @@ export interface NpcStrategy {
     mode: NpcSelectMode;
     recommendedNames?: string[];
     semanticallyRecalledNpcIds?: string[];
+    /** Recommender detail levels (npcId → full/brief); undefined = all full. */
+    detailLevels?: Record<string, NpcDetailLevel>;
+}
+
+/**
+ * Deterministic NPC order: present first (when presence is known), then by id.
+ * Keeps the block byte-stable for an unchanged cast, and makes budget trimming
+ * (which keeps a prefix of segments) drop absent NPCs first.
+ */
+function orderActiveNPCs(activeNPCs: NPCEntry[], onStageSet: Set<string>): NPCEntry[] {
+    return [...activeNPCs].sort((a, b) => {
+        const pa = onStageSet.has(a.id) ? 0 : 1;
+        const pb = onStageSet.has(b.id) ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
 }
 
 /**
@@ -504,27 +563,36 @@ export function assembleWorldBlocks(opts: {
         activeNPCs = mergeSemanticRecall(activeNPCs, npcStrategy?.semanticallyRecalledNpcIds, npcLedger);
         if (activeNPCs.length > 0) {
             const onStageSet = new Set(onStageNpcIds ?? []);
+            activeNPCs = orderActiveNPCs(activeNPCs, onStageSet);
             const plannerTags = plannerEventTypes && plannerEventTypes.length > 0
                 ? new Set(plannerEventTypes)
                 : null;
             const npcSegments: { npcId: string; content: string; tokens: number }[] = [];
+            const detailLevels = npcStrategy?.detailLevels;
+            // Brief-tier trigger matching looks at the latest exchange + this input only.
+            const triggerScan = (history.slice(-2).map(m => m.content || '').join(' ') + ' ' + userMessage).toLowerCase();
+            const levelLog: string[] = [];
 
             for (const npc of activeNPCs) {
                 const offStage = onStageSet.size > 0 && !onStageSet.has(npc.id);
+                const level = resolveNpcDetailLevel(npc.id, detailLevels, !offStage);
+                const detail: NpcDetail = { level, present: !offStage, triggerScan };
+                const full = level === 'full';
+                levelLog.push(`${npc.name}:${level}${offStage ? '' : '@present'}`);
 
-                // Core tier — always injected.
+                // Core tier — always injected (kit dropped only for brief + absent).
                 const coreParts: string[] = [minifyNPC(npc, offStage)];
-                const coreDirective = buildCoreDirective(npc);
+                const coreDirective = buildCoreDirective(npc, full || !offStage);
                 if (coreDirective) coreParts.push(coreDirective);
                 const coreLine = coreParts.join(' | ');
 
-                // Extended tier — scene-tagged.
+                // Extended tier — scene-tagged and detail-level gated.
                 const extParts: string[] = [];
-                const extDirective = buildExtendedDirective(npc, plannerTags);
+                const extDirective = buildExtendedDirective(npc, plannerTags, detail);
                 if (extDirective) extParts.push(extDirective);
-                const drift = buildDriftAlert(npc);
+                const drift = full ? buildDriftAlert(npc) : null;
                 if (drift && fieldTagMatches('drift', npc.fieldTags, plannerTags)) extParts.push(drift);
-                if (chapters && chapters.length > 0 && fieldTagMatches('innerState', npc.fieldTags, plannerTags)) {
+                if (full && chapters && chapters.length > 0 && fieldTagMatches('innerState', npc.fieldTags, plannerTags)) {
                     for (let ci = chapters.length - 1; ci >= 0; ci--) {
                         const ch = chapters[ci];
                         if (ch.npcInnerState && ch.npcInnerState[npc.name]) {
@@ -578,7 +646,7 @@ export function assembleWorldBlocks(opts: {
                 source: 'Active NPCs',
                 content: npcText,
                 tokens: countTokens(npcText),
-                reason: `NPCs detected in context (${activeNPCs.length}, tiered core+extended)`,
+                reason: `NPCs detected in context (${activeNPCs.length}, tiered core+extended; ${detailLevels ? levelLog.join(', ') : 'all full — no recommender detail'})`,
                 npcIds: activeNPCs.map(n => n.id),
                 segments: npcSegStrings,
                 rewrap: npcRewrap,
