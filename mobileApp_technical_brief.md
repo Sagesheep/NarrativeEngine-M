@@ -32,7 +32,7 @@ Lore chunks are injected into the context via:
 - Profiles are minified for the prompt to save tokens.
 
 ### Memory Systems
-- **Scene Notebook**: Short-term, volatile facts about the immediate area.
+- **Scene Notebook**: Short-term, volatile facts about the immediate area. The auxiliary model maintains it after each turn (not a story-model tool); edits apply when the turn commits.
 - **Canon State**: Long-term, immutable truths.
 - **Deep Archive Search**: A full sweep of the entire session history that synthesizes a brief for the AI.
 

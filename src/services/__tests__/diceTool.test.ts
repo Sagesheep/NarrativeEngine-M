@@ -110,7 +110,7 @@ describe('getToolDefinitions', () => {
         const tools = getToolDefinitions({ allowDiceTool: false });
         const names = tools.map(t => t.function.name);
         expect(names).toContain('query_campaign_lore');
-        expect(names).toContain('update_scene_notebook');
+        expect(names).not.toContain('update_scene_notebook');
         expect(names).not.toContain('roll_dice');
     });
 
@@ -118,7 +118,7 @@ describe('getToolDefinitions', () => {
         const tools = getToolDefinitions({ allowDiceTool: true });
         const names = tools.map(t => t.function.name);
         expect(names).toContain('query_campaign_lore');
-        expect(names).toContain('update_scene_notebook');
+        expect(names).not.toContain('update_scene_notebook');
         expect(names).toContain('roll_dice');
     });
 });

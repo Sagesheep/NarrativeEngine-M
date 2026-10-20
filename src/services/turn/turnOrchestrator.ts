@@ -8,9 +8,9 @@ import { recordLootDrop } from '../engine/lootDropTelemetry';
 import { notify } from '../ports/notify';
 import { sanitizePayloadForApi } from '../llm/payloadSanitizer';
 import { gatherContext } from './turnContext';
-import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool } from './toolHandlers';
+import { getToolDefinitions, handleLoreTool, handleDiceTool } from './toolHandlers';
 import { extractAndStripSceneStakes } from './sceneStakesTag';
-import { capturePendingTurnSnapshot, getActiveSnapshotId } from './pendingCommit';
+import { capturePendingTurnSnapshot, getActiveSnapshotId, prefetchNotebookForPendingVariant } from './pendingCommit';
 import { buildWatchdogDossier } from './directorWatchdog';
 import { runDirectorBrief, lastAssistantContent } from './directorBrief';
 import { buildOneShotDirective } from '../oneshot/oneShotEvents';
@@ -329,7 +329,7 @@ export async function runTurn(
                         reasoningContent || undefined,
                     ));
 
-                    const { toolResult } = handleLoreTool(toolCall.arguments, { loreChunks, notebook: context.notebook });
+                    const { toolResult } = handleLoreTool(toolCall.arguments, { loreChunks });
                     pushToolTrace(toolCall.name, toolCall.arguments, toolResult);
 
                     const toolMsgId = uid();
@@ -355,54 +355,6 @@ export async function runTurn(
                         callbacks.onCheckingNotes(false);
                         executeTurn(currentPayload, toolCallCount + 1);
                     }, CHECKING_NOTES_DWELL_MS);
-                    return;
-                }
-
-                if (toolCall && toolCall.name === 'update_scene_notebook') {
-                    callbacks.setStreaming(false);
-                    callbacks.updateLastAssistant(finalText);
-
-                    callbacks.updateLastMessage({
-                        tool_calls: [{
-                            id: toolCall.id,
-                            type: 'function' as const,
-                            function: { name: toolCall.name, arguments: toolCall.arguments }
-                        }],
-                        ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
-                    });
-
-                    currentPayload.push(buildAssistantToolCallMessage(
-                        finalText || "",
-                        [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }],
-                        reasoningContent || undefined,
-                    ));
-
-                    const { toolResult, updatedNotebook } = handleNotebookTool(toolCall.arguments, { loreChunks, notebook: context.notebook });
-                    pushToolTrace(toolCall.name, toolCall.arguments, toolResult);
-                    callbacks.updateContext({ notebook: updatedNotebook });
-
-                    const toolMsgId = uid();
-                    callbacks.addMessage({
-                        id: toolMsgId,
-                        role: 'tool' as const,
-                        content: toolResult,
-                        timestamp: Date.now(),
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id
-                    });
-
-                    currentPayload.push(buildToolResultMessage(toolCall.id, toolResult, toolCall.name));
-
-                    setTimeout(() => {
-                        if (abortController.signal.aborted) {
-                            callbacks.setStreaming(false);
-                            callbacks.onCheckingNotes(false);
-                            callbacks.setPipelinePhase?.('idle');
-                            callbacks.setStreamingStats?.(null);
-                            return;
-                        }
-                        executeTurn(currentPayload, toolCallCount + 1);
-                    }, TOOL_CONTINUATION_MS);
                     return;
                 }
 
@@ -517,6 +469,11 @@ export async function runTurn(
                         retryable: undefined,
                         ...(ref ? { precontext: { summary: buildPrecontextSummary(gathered), capturedPayloadRef: ref } } : {}),
                     });
+
+                    // Scene Notebook: the auxiliary model drafts this reply's notebook
+                    // edits in the background (small prompt, not the story payload).
+                    // They apply only if this variant is the one committed.
+                    prefetchNotebookForPendingVariant(stakesStrippedText);
                 }
 
                 callbacks.setPipelinePhase?.('idle');

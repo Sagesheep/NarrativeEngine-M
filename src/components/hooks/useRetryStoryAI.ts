@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { generateSwipeVariant, SWIPE_BASE_TEMP_OFFSET, computeSwipeTemperature } from '../../services/turn/swipeGeneration';
-import { getCachedSwipePayload } from '../../services/turn/pendingCommit';
+import { getCachedSwipePayload, prefetchNotebookForPendingVariant } from '../../services/turn/pendingCommit';
 import type { ChatMessage } from '../../types';
 import type { OpenAIMessage } from '../../services/llm/llmService';
 import { toast } from '../Toast';
@@ -178,6 +178,8 @@ export function useRetryStoryAI() {
                 retryable: undefined,
             };
             useAppStore.setState({ messages: updated });
+            // Draft the Scene Notebook edits; they apply only if this reply is committed.
+            prefetchNotebookForPendingVariant(variant.text, newPromptText?.trim());
             import('../../store/campaignStore').then(m => m.saveCampaignState(fresh.activeCampaignId!, {
                 context: fresh.context,
                 messages: updated,

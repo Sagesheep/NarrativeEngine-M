@@ -50,8 +50,9 @@ export function fitHistory(
         if (msg.role === 'tool') continue;
         // An assistant message with tool_calls but NO content is a pure tool-call
         // envelope — skip it (its matching tool result is skipped on the line above).
-        // BUT: when the GM emits story text TOGETHER WITH an update_scene_notebook
-        // tool call, the assistant message has BOTH content and tool_calls. The
+        // BUT: when the GM emits story text TOGETHER WITH a tool call (older saves
+        // hold update_scene_notebook calls like this), the assistant message has
+        // BOTH content and tool_calls. The
         // trailing tool-role message is skipped above, so we must drop tool_calls
         // here too — otherwise the API sees a dangling tool_call with no matching
         // tool result. Keeping the content preserves the story in fitted history.

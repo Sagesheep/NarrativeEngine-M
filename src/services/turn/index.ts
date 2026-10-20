@@ -27,11 +27,12 @@ export {
 export {
     getToolDefinitions,
     handleLoreTool,
-    handleNotebookTool,
+    parseNotebookActions,
+    applyNotebookActions,
     handleDiceTool,
     type ToolContext,
     type LoreHandlerResult,
-    type NotebookHandlerResult,
+    type NotebookAction,
     type DiceHandlerResult,
 } from './toolHandlers';
 

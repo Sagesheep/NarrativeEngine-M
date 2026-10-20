@@ -151,8 +151,12 @@ The mobile app connects to LLM providers over the network:
 
 ### LLM Tool Calls
 - **Query Campaign Lore** — GM recalls world details on the fly.
-- **Update Scene Notebook** — volatile working memory for active scene state.
-- **Deep Archive Search** — tap the scan icon in the header to arm a full lore sweep on the next send.
+- **Roll Dice** — GM rolls for uncertain outcomes (when the fair dice pool is off).
+- **Deep Archive Search**
+
+### Scene Notebook
+- Volatile working memory for active scene state (spells, timers, positions, conditions).
+- Kept by the auxiliary model after each turn from the notebook, the player's message and the GM's reply; edits apply when the turn commits (the chosen swipe only). — tap the scan icon in the header to arm a full lore sweep on the next send.
 
 ### Security
 - AES-256-GCM encrypted API key vault.

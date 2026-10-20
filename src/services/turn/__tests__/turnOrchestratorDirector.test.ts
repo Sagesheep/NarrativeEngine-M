@@ -37,6 +37,7 @@ vi.mock('../directorWatchdog', () => ({
 vi.mock('../pendingCommit', () => ({
     capturePendingTurnSnapshot: vi.fn(),
     getActiveSnapshotId: vi.fn(() => null),
+    prefetchNotebookForPendingVariant: vi.fn(),
 }));
 
 // gatherContext mock — returns the minimal GatheredContext shape.
@@ -80,7 +81,6 @@ vi.mock('../sceneStakesTag', () => ({
 vi.mock('../toolHandlers', () => ({
     getToolDefinitions: vi.fn(() => []),
     handleLoreTool: vi.fn(),
-    handleNotebookTool: vi.fn(),
     handleDiceTool: vi.fn(),
 }));
 

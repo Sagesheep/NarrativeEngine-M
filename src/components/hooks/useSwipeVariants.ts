@@ -6,7 +6,7 @@ import {
     SWIPE_BASE_TEMP_OFFSET,
     computeSwipeTemperature,
 } from '../../services/turn/swipeGeneration';
-import { getCachedSwipePayload } from '../../services/turn/pendingCommit';
+import { getCachedSwipePayload, prefetchNotebookForPendingVariant } from '../../services/turn/pendingCommit';
 import type { SwipeVariant, ChatMessage } from '../../types';
 import { toast } from '../Toast';
 
@@ -259,6 +259,8 @@ export function useSwipeVariants(messageId: string | null) {
             };
             useAppStore.setState({ messages: updated });
             streamingSlotRef.current = null;
+            // Draft this variant's Scene Notebook edits; they apply only if it is committed.
+            prefetchNotebookForPendingVariant(variant.text);
             import('../../store/campaignStore').then(m => m.saveCampaignState(fresh.activeCampaignId!, {
                 context: fresh.context,
                 messages: updated,

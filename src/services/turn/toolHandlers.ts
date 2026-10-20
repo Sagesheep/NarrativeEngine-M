@@ -3,22 +3,21 @@ import { searchLoreByQuery } from '../lore';
 import { uid } from '../../utils/uid';
 import { mapTier } from '../engine';
 
-const MAX_NOTEBOOK_OPS = 5;
-const MAX_NOTEBOOK_NOTES = 50;
+// Scene notebook limits. The story model has no notebook tool; the auxiliary model
+// edits the notebook after each turn through parseNotebookActions +
+// applyNotebookActions (sceneNotebookMaintenance.ts).
+export const MAX_NOTEBOOK_OPS = 5;
+export const MAX_NOTEBOOK_NOTES = 50;
 
 export type ToolContext = {
     loreChunks: LoreChunk[];
-    notebook: NotebookNote[];
 };
 
 export type LoreHandlerResult = {
     toolResult: string;
 };
 
-export type NotebookHandlerResult = {
-    toolResult: string;
-    updatedNotebook: NotebookNote[];
-};
+export type NotebookAction = { op: 'add' | 'remove' | 'clear'; text?: string };
 
 export type DiceHandlerResult = {
     toolResult: string;
@@ -34,32 +33,6 @@ const BASE_TOOLS = [
                 type: 'object' as const,
                 properties: { query: { type: 'string' as const, description: 'The specific search query' } },
                 required: ['query'],
-            },
-        },
-    },
-    {
-        type: 'function' as const,
-        function: {
-            name: 'update_scene_notebook',
-            description: 'Update the scene notebook for tracking temporary state — active spells, timers, NPC positions, environmental conditions. Actions: add (create note), remove (delete by text match), clear (wipe all). Max 50 notes, max 5 actions per call. Use sparingly — only for volatile scene state that changes within a scene.',
-            parameters: {
-                type: 'object' as const,
-                properties: {
-                    actions: {
-                        type: 'array' as const,
-                        items: {
-                            type: 'object' as const,
-                            properties: {
-                                op: { type: 'string' as const, enum: ['add', 'remove', 'clear'] },
-                                text: { type: 'string' as const, description: 'Note text (ignored for clear op)' },
-                            },
-                            required: ['op'],
-                        },
-                        description: 'Array of notebook actions to perform (max 5)',
-                        maxItems: 5,
-                    },
-                },
-                required: ['actions'],
             },
         },
     },
@@ -124,34 +97,56 @@ export function handleLoreTool(
     return { toolResult };
 }
 
-export function handleNotebookTool(
-    toolArguments: string,
-    ctx: ToolContext
-): NotebookHandlerResult {
-    let notebookActions: { op: string; text?: string }[] = [];
-    try { notebookActions = JSON.parse(toolArguments).actions || []; } catch { /* ignore */ }
-
-    const currentNotebook = [...(ctx.notebook ?? [])];
-    let opsCount = 0;
-
-    for (const action of notebookActions) {
-        if (opsCount >= MAX_NOTEBOOK_OPS) break;
-        if (action.op === 'add' && action.text && currentNotebook.length < MAX_NOTEBOOK_NOTES) {
-            currentNotebook.push({ id: uid(), text: action.text.trim(), timestamp: Date.now() });
-        } else if (action.op === 'remove' && action.text) {
-            const searchLower = action.text.toLowerCase().trim();
-            const idx = currentNotebook.findIndex(n => n.text.toLowerCase().includes(searchLower));
-            if (idx !== -1) currentNotebook.splice(idx, 1);
-        } else if (action.op === 'clear') {
-            currentNotebook.length = 0;
-        }
-        opsCount++;
+/**
+ * Validate notebook edits in the `{ actions: [{ op: 'add' | 'remove' | 'clear', text? }] }`
+ * schema the old update_scene_notebook tool used. Takes the parsed object or its
+ * JSON string. Drops unknown ops and add/remove without text, and keeps at most
+ * MAX_NOTEBOOK_OPS actions; anything malformed yields no actions.
+ */
+export function parseNotebookActions(raw: unknown): NotebookAction[] {
+    let value = raw;
+    if (typeof value === 'string') {
+        try { value = JSON.parse(value); } catch { return []; }
     }
+    const list = (value as { actions?: unknown } | null)?.actions;
+    if (!Array.isArray(list)) return [];
 
-    const toolResult = `Notebook updated. ${currentNotebook.length} notes active.`;
-    console.log(`[Notebook] Updated: ${currentNotebook.length} notes active (${opsCount} ops)`);
+    const actions: NotebookAction[] = [];
+    for (const item of list) {
+        if (actions.length >= MAX_NOTEBOOK_OPS) break;
+        if (!item || typeof item !== 'object') continue;
+        const { op, text: rawText } = item as { op?: unknown; text?: unknown };
+        const text = typeof rawText === 'string' ? rawText.trim() : '';
+        if (op === 'clear') actions.push({ op });
+        else if ((op === 'add' || op === 'remove') && text) actions.push({ op, text });
+    }
+    return actions;
+}
 
-    return { toolResult, updatedNotebook: currentNotebook };
+/**
+ * Apply notebook edits in order and return the new notebook (the input is not
+ * mutated). add skips a note that is already there and stops at
+ * MAX_NOTEBOOK_NOTES; remove deletes the first note matching the text (exact,
+ * then substring, ignoring case); clear wipes the list.
+ */
+export function applyNotebookActions(notebook: NotebookNote[] | undefined, actions: NotebookAction[]): NotebookNote[] {
+    const next = [...(notebook ?? [])];
+    for (const action of actions.slice(0, MAX_NOTEBOOK_OPS)) {
+        const text = action.text?.trim() ?? '';
+        const lower = text.toLowerCase();
+        if (action.op === 'add' && text) {
+            if (next.length >= MAX_NOTEBOOK_NOTES) continue;
+            if (next.some(n => n.text.trim().toLowerCase() === lower)) continue;
+            next.push({ id: uid(), text, timestamp: Date.now() });
+        } else if (action.op === 'remove' && text) {
+            let idx = next.findIndex(n => n.text.trim().toLowerCase() === lower);
+            if (idx === -1) idx = next.findIndex(n => n.text.toLowerCase().includes(lower));
+            if (idx !== -1) next.splice(idx, 1);
+        } else if (action.op === 'clear') {
+            next.length = 0;
+        }
+    }
+    return next;
 }
 
 function parseAndRoll(expr: string): { total: number; breakdown: string; sides: number; count: number; rawSum: number } {

@@ -9,6 +9,7 @@ import { notify } from '../ports/notify';
 import { storeAccess, type StoreState } from '../ports/store';
 import { uid } from '../../utils/uid';
 import { applyActiveSlotThinking } from '../../store/slices/slotThinking';
+import { prefetchNotebookUpdate, takeNotebookJob, cancelNotebookJobs, startNotebookJob, settleNotebookJob } from './sceneNotebookMaintenance';
 
 // ── In-memory snapshot ─────────────────────────────────────────────────
 // Lost on crash — that's OK. Relaunch reconciliation rebuilds from the live
@@ -30,6 +31,10 @@ export function capturePendingTurnSnapshot(
     cachedPayload: OpenAIMessage[],
     displayInput: string,
 ): void {
+    // A different turn: notebook edits requested for the old one can never commit.
+    // (The orchestrator re-captures the same turn on success; only notebook jobs
+    // started after that capture belong to it, so dropping here is safe.)
+    cancelNotebookJobs();
     pendingSnapshot = {
         snapshotId: uid(),
         turnState: state,
@@ -47,6 +52,74 @@ export function getActiveSnapshotId(): string | null {
 
 export function clearPendingTurnSnapshot(): void {
     pendingSnapshot = null;
+    cancelNotebookJobs();
+}
+
+// ── Scene Notebook (auxiliary model) ───────────────────────────────────
+// Called when a variant of the pending turn finishes (swipe 1 from the
+// orchestrator, swipes 2–5, Smart Retry). Requests the notebook edits in the
+// background; commitPendingTurn applies them only for the committed text.
+// `userMessage` overrides the snapshot's input when the player rewrote it (Smart Retry soft edit).
+export function prefetchNotebookForPendingVariant(storyText: string, userMessage?: string): void {
+    const snap = pendingSnapshot;
+    if (!snap || !snap.activeCampaignId || !storyText.trim()) return;
+    try {
+        const store = storeAccess().getState();
+        if (store.activeCampaignId !== snap.activeCampaignId) return;
+        if (store.context.notebookActive === false) return;
+        prefetchNotebookUpdate({
+            snapshotId: snap.snapshotId,
+            campaignId: snap.activeCampaignId,
+            storyText,
+            userMessage: userMessage ?? snap.displayInput,
+            notebook: store.context.notebook ?? [],
+            getProvider: () => snap.turnState.getFreshAuxiliaryProvider?.(),
+        });
+    } catch (e) {
+        console.warn('[SceneNotebook] prefetch failed:', e);
+    }
+}
+
+// The committed turn's notebook update: the prefetched job for this exact text,
+// else a fresh one (the player edited the reply, or a restart lost the snapshot).
+// Every other variant's job is aborted. Never rejects.
+function settleCommittedNotebook(
+    snapshot: PendingTurnSnapshot | null,
+    commitState: TurnState,
+    text: string,
+    userMessage: string,
+): Promise<void> {
+    try {
+        const job = snapshot ? takeNotebookJob(snapshot.snapshotId, text) : undefined;
+        cancelNotebookJobs();
+        const store = storeAccess().getState();
+        const campaignId = commitState.activeCampaignId ?? '';
+        if (!campaignId || store.activeCampaignId !== campaignId || store.context.notebookActive === false || !text.trim()) {
+            job?.controller.abort();
+            return Promise.resolve();
+        }
+        const committedJob = job ?? startNotebookJob({
+            snapshotId: snapshot?.snapshotId ?? 'commit',
+            campaignId,
+            storyText: text,
+            userMessage,
+            notebook: store.context.notebook ?? [],
+            getProvider: () => commitState.getFreshAuxiliaryProvider?.(),
+        });
+        return settleNotebookJob(committedJob);
+    } catch (e) {
+        console.warn('[SceneNotebook] commit update failed:', e);
+        return Promise.resolve();
+    }
+}
+
+// The player's text for the turn ending at `pendingMsg` (used when no snapshot survived).
+function precedingUserText(messages: ChatMessage[], pendingMsg: ChatMessage): string {
+    const idx = messages.findIndex(m => m.id === pendingMsg.id);
+    for (let i = idx - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') return messages[i].displayContent ?? messages[i].content ?? '';
+    }
+    return '';
 }
 
 export function getPendingTurnSnapshot(): PendingTurnSnapshot | null {
@@ -209,6 +282,12 @@ export async function commitPendingTurn(): Promise<void> {
     const commitCallbacks = buildCommitCallbacks(commitState.activeCampaignId ?? '');
     const displayInput = snapshot?.displayInput ?? '';
     const activeCampaignId = commitState.activeCampaignId!;
+
+    // Runs beside handlePostTurn and is awaited before the commit resolves, so the
+    // next story turn (built right after) sees the updated notebook.
+    const notebookSettled = settleCommittedNotebook(
+        snapshot, commitState, text, snapshot ? displayInput : precedingUserText(messages, pendingMsg),
+    );
     const npcLedger = commitState.npcLedger;
 
     try {
@@ -237,6 +316,8 @@ export async function commitPendingTurn(): Promise<void> {
         console.error('[Commit] handlePostTurn failed:', err);
         notify.error('Turn committed but some archive updates may be missing. Your story is saved.');
     }
+
+    await notebookSettled;
 
     // Clear the swipe set + pendingCommit marker — the bubble is now a
     // normal historical message.
