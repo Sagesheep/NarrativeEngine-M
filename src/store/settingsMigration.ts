@@ -3,6 +3,7 @@ import { uid } from '../utils/uid';
 import { READING_DEFAULTS, clampReadingSize, normalizeReadingFont, normalizeReadingLeading } from '../components/chat/readingPrefs';
 import { DEFAULT_SLOT_THINKING, migratePresetSlotThinking } from './slices/slotThinking';
 import { DEFAULT_STORY_TIMEOUT_SECONDS, DEFAULT_UTILITY_TIMEOUT_SECONDS, normalizeTimeoutSeconds } from '../services/llm/timeouts';
+import { DEFAULT_HEADER_SHORTCUTS, normalizeHeaderShortcuts } from '../components/header/headerActions';
 
 export const defaultProvider: LLMProvider = {
     id: uid(),
@@ -36,6 +37,7 @@ export const defaultSettings: AppSettings = {
     showReasoning: true,
     uiScale: 1.0,
     ...READING_DEFAULTS,
+    headerShortcuts: [...DEFAULT_HEADER_SHORTCUTS],
     enableDeepArchiveSearch: false,
     autoExtractDivergences: true,
     divergenceTokenBudget: 2000,
@@ -210,6 +212,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         readingFont: normalizeReadingFont(raw.readingFont),
         readingSize: clampReadingSize(raw.readingSize),
         readingLeading: normalizeReadingLeading(raw.readingLeading),
+        headerShortcuts: normalizeHeaderShortcuts(raw.headerShortcuts),
         enableDeepArchiveSearch: (raw.enableDeepArchiveSearch as boolean) ?? false,
         autoExtractDivergences: (raw.autoExtractDivergences as boolean) ?? true,
         divergenceTokenBudget: (raw.divergenceTokenBudget as number) ?? 2000,

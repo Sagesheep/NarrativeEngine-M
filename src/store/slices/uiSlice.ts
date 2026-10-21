@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { PayloadTrace, PipelinePhase, StreamingStats, ManualRollRequest } from '../../types';
+import type { PayloadTrace, PipelinePhase, StreamingStats, ManualRollRequest, ContextTabId } from '../../types';
 import type { OneShotEventId } from '../../services/oneshot/oneShotEvents';
 
 /** Loot Engine WO-05: armed loot drop config, resolved at send time. Mirrors armedRoll. */
@@ -40,6 +40,10 @@ export type UISlice = {
     setPipelinePhase: (phase: PipelinePhase) => void;
     setStreamingStats: (stats: StreamingStats | null) => void;
     setMobileView: (view: 'chat' | 'context' | 'npcs' | 'settings') => void;
+    contextTab: ContextTabId;
+    setContextTab: (tab: ContextTabId) => void;
+    /** Bring the context drawer to the front on `tab` (on mobile, closes settings / NPC ledger). */
+    openContextTab: (tab: ContextTabId) => void;
     deepArmed: boolean;
     setDeepArmed: (val: boolean) => void;
     toggleDeepArmed: () => void;
@@ -89,6 +93,15 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     setPipelinePhase: (phase) => set({ pipelinePhase: phase }),
     setStreamingStats: (stats) => set({ streamingStats: stats }),
     setMobileView: (view) => set({ mobileView: view }),
+    contextTab: 'sys',
+    setContextTab: (tab) => set({ contextTab: tab }),
+    openContextTab: (tab) => set({
+        contextTab: tab,
+        drawerOpen: true,
+        mobileView: 'context',
+        settingsOpen: false,
+        npcLedgerOpen: false,
+    }),
     deepArmed: false,
     setDeepArmed: (val) => set({ deepArmed: val }),
     toggleDeepArmed: () => set((s) => ({ deepArmed: !s.deepArmed })),

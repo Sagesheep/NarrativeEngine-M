@@ -88,6 +88,20 @@ export type AIPreset = {
 
 export type CondenseAggressiveness = 'aggressive' | 'balanced' | 'quality';
 
+/** Context drawer tabs (components/context-drawer/contextTabs.ts). */
+export type ContextTabId = 'sys' | 'rules-mgr' | 'world' | 'mem' | 'eng' | 'gallery' | 'chapters' | 'chr' | 'notes';
+
+/** Actions the header can show as shortcuts (components/header/headerActions.ts). */
+export type HeaderActionId =
+    | 'dice'
+    | 'loot'
+    | 'pin'
+    | 'deepSearch'
+    | 'loreCheck'
+    | 'rename'
+    | 'addNpc'
+    | `tab:${ContextTabId}`;
+
 export type AppSettings = {
     presets: AIPreset[];
     activePresetId: string;
@@ -102,6 +116,8 @@ export type AppSettings = {
     readingFont?: ReadingFont;
     readingSize?: number; // px, 12-22, default 14
     readingLeading?: ReadingLeading;
+    /** Header shortcut buttons, in order. Actions not listed go in the ⋮ menu. */
+    headerShortcuts?: HeaderActionId[];
 
     enableDeepArchiveSearch?: boolean;
     autoExtractDivergences?: boolean;

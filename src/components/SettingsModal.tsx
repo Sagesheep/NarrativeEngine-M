@@ -6,6 +6,7 @@ import { ProvidersPanel } from './settings/ProvidersPanel';
 import { PresetsPanel } from './settings/PresetsPanel';
 import { GlobalSettingsPanel } from './settings/GlobalSettingsPanel';
 import { AdvancedEmbeddingPanel } from './settings/AdvancedEmbeddingPanel';
+import { HeaderShortcutsPanel } from './settings/HeaderShortcutsPanel';
 import { DebugPanel } from './settings/DebugPanel';
 
 type PanelKey = 'providers' | 'presets' | 'global' | 'advanced' | 'debug';
@@ -73,7 +74,10 @@ export function SettingsModal() {
                     <div className={activePanel !== 'providers' ? 'hidden' : ''}><ProvidersPanel /></div>
                     <div className={activePanel !== 'presets' ? 'hidden' : ''}><PresetsPanel /></div>
                     <div className={activePanel !== 'global' ? 'hidden' : ''}><GlobalSettingsPanel /></div>
-                    <div className={activePanel !== 'advanced' ? 'hidden' : ''}><AdvancedEmbeddingPanel /></div>
+                    <div className={activePanel !== 'advanced' ? 'hidden' : 'space-y-8'}>
+                        <HeaderShortcutsPanel />
+                        <AdvancedEmbeddingPanel />
+                    </div>
                     <div className={activePanel !== 'debug' ? 'hidden' : ''}><DebugPanel /></div>
                 </div>
             </div>
