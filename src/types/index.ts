@@ -114,6 +114,7 @@ export type AppSettings = {
     embeddingModel?: 'standard' | 'high'; // default 'standard'
     matureMode?: boolean;            // default false; gates mature-tier NPC traits/wants (NPC Agency Phase 2)
 
+    storyTimeoutSeconds?: number;     // initial deadline per story request; streaming text extends it. Default 120.
     utilityTimeoutSeconds?: number;   // soft deadline for utility AI calls (reranker, recommender, expandQuery). Default 45. User can EXTEND +1m mid-flight.
     verboseUtilityLogging?: boolean;  // when true, utility call tracker records extra detail (slot waits, retries, payload sizes)
     aiTier?: AiTier;

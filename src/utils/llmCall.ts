@@ -95,6 +95,7 @@ async function runInner(
         temperature?: number;
         priority?: LLMCallPriority;
         thinkingEffort?: ThinkingEffort;
+        timeoutMs?: number;
     },
     telemetryLabel = 'utility',
 ): Promise<string> {
@@ -153,7 +154,7 @@ async function runInner(
                     url: nativeUrl,
                     headers,
                     data: body,
-                    readTimeout: 600000,
+                    readTimeout: Math.max(600000, opts?.timeoutMs ?? 0),
                     connectTimeout: 15000,
                 });
 

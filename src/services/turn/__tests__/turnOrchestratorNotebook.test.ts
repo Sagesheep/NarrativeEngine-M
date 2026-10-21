@@ -92,6 +92,14 @@ const flush = (ms = 50) => new Promise(r => setTimeout(r, ms));
 beforeEach(() => vi.clearAllMocks());
 
 describe('runTurn — Scene Notebook moved to the auxiliary model', () => {
+    it('passes the configured story timeout into generation', async () => {
+        script([{ text: 'The gate creaks open.' }]);
+        const { state, callbacks } = makeTurn();
+        state.settings.storyTimeoutSeconds = 1200;
+        await runTurn(state, callbacks, new AbortController());
+        expect(sendMessageMock.mock.calls[0][8]).toBe(1200);
+    });
+
     it('offers lore and dice tools but not update_scene_notebook', async () => {
         script([{ text: 'The gate creaks open.' }]);
         const { state, callbacks } = makeTurn();

@@ -139,6 +139,7 @@ export function useRetryStoryAI() {
                 {
                     provider,
                     cachedPayload,
+                    timeoutSeconds: store.settings.storyTimeoutSeconds,
                     modelName: provider.modelName,
                     temperature,
                     abortSignal,

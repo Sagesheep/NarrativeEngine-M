@@ -192,6 +192,7 @@ export function useSwipeVariants(messageId: string | null) {
                 {
                     provider,
                     cachedPayload,
+                    timeoutSeconds: store.settings.storyTimeoutSeconds,
                     modelName: provider.modelName,
                     temperature,
                     abortSignal,

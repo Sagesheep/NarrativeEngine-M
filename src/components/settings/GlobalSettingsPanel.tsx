@@ -1,5 +1,6 @@
 import { useAppStore } from '../../store/useAppStore';
 import type { CondenseAggressiveness, AiTier } from '../../types';
+import { DEFAULT_STORY_TIMEOUT_SECONDS, DEFAULT_UTILITY_TIMEOUT_SECONDS, MIN_AI_TIMEOUT_SECONDS, MAX_AI_TIMEOUT_SECONDS, normalizeTimeoutSeconds } from '../../services/llm/timeouts';
 import {
     READING_DEFAULTS, READING_FONTS, READING_LEADINGS, READING_SIZE_MIN, READING_SIZE_MAX,
     clampReadingSize, normalizeReadingFont, normalizeReadingLeading, readingStyleVars,
@@ -12,6 +13,39 @@ export function GlobalSettingsPanel() {
     return (
         <div className="space-y-8">
             <label className="text-text-dim text-xs uppercase tracking-widest font-bold block">Global Preferences</label>
+
+            <div className="bg-void p-4 border border-border rounded space-y-4">
+                <h3 className="text-[11px] text-text-primary uppercase tracking-wider font-bold">AI Request Timeouts</h3>
+                <p className="text-[10px] text-text-dim">Increase these for slower models or Flex tier. Values are seconds, up to 60 minutes.</p>
+                {[
+                    { key: 'storyTimeoutSeconds' as const, label: 'Story AI timeout (seconds)', fallback: DEFAULT_STORY_TIMEOUT_SECONDS, description: 'Wait for each story reply, retry or swipe. Streaming text automatically extends the deadline.' },
+                    { key: 'utilityTimeoutSeconds' as const, label: 'Utility AI timeout (seconds)', fallback: DEFAULT_UTILITY_TIMEOUT_SECONDS, description: 'Wait for context planning, reranking, recommendations and archive search calls that use the utility deadline. EXTEND adds time while a call is running.' },
+                ].map(({ key, label, fallback, description }) => (
+                    <div key={key}>
+                        <label htmlFor={key} className="block text-[11px] text-text-dim mb-2">{label}</label>
+                        <input
+                            id={key}
+                            key={settings[key] ?? fallback}
+                            type="number"
+                            min={MIN_AI_TIMEOUT_SECONDS}
+                            max={MAX_AI_TIMEOUT_SECONDS}
+                            step={1}
+                            defaultValue={settings[key] ?? fallback}
+                            onBlur={e => updateSettings({ [key]: normalizeTimeoutSeconds(e.target.valueAsNumber, fallback) })}
+                            className="w-full bg-surface border border-border px-3 py-3 text-[16px] font-mono focus:border-terminal focus:outline-none"
+                        />
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {[{ label: 'Default', value: fallback }, { label: '5 min', value: 300 }, { label: '10 min', value: 600 }, { label: '20 min', value: 1200 }].map(preset => (
+                                <button key={preset.label} onClick={() => updateSettings({ [key]: preset.value })}
+                                    className={`px-3 py-2 text-[10px] font-mono border rounded ${(settings[key] ?? fallback) === preset.value ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim'}`}>
+                                    {preset.label}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-text-dim mt-2">{description}</p>
+                    </div>
+                ))}
+            </div>
 
             <div>
                 <div className="flex items-center justify-between mb-3">

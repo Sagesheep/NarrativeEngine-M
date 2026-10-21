@@ -9,10 +9,10 @@ import type { LLMUsage } from '../../types/llmMessages';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { startUtilityCall } from './utilityCallTracker';
 import { recordCacheUsage } from './cacheTelemetry';
+import { DEFAULT_STORY_TIMEOUT_SECONDS, normalizeTimeoutSeconds } from './timeouts';
 
 const STORY_LABEL = 'story-generation';
 
-const STORY_INITIAL_TIMEOUT_MS = 120000;
 const STORY_CHUNK_EXTEND_MS = 30000;
 const STORY_CHUNK_EXTEND_THRESHOLD_MS = 30000;
 
@@ -45,6 +45,7 @@ async function nativeNonStreamStory(
     onChunk: (text: string) => void,
     onDone: (text: string, toolCall?: { id: string; name: string; arguments: string }, reasoningContent?: string) => void,
     onError: (err: string) => void,
+    timeoutMs: number,
 ): Promise<void> {
     // Fallback path may arrive with a streaming URL in scope — recompute non-stream
     // (critical for Gemini: :generateContent, not :streamGenerateContent).
@@ -56,11 +57,11 @@ async function nativeNonStreamStory(
     const nativeCall = startUtilityCall(
         'story-generation',
         provider.modelName || provider.endpoint,
-        STORY_INITIAL_TIMEOUT_MS,
+        timeoutMs,
     );
     const nativeStartedAt = Date.now();
     let settled = false;
-    console.info(`[story-gen] start (native non-stream) model=${provider.modelName || provider.endpoint} format=${format} messages=${messages.length} tools=${tools ? (tools as unknown[]).length : 0} timeoutMs=${STORY_INITIAL_TIMEOUT_MS}`);
+    console.info(`[story-gen] start (native non-stream) model=${provider.modelName || provider.endpoint} format=${format} messages=${messages.length} tools=${tools ? (tools as unknown[]).length : 0} timeoutMs=${timeoutMs}`);
     // CapacitorHttp can't be aborted mid-flight, so the deadline is informational here.
     nativeCall.deadlinePromise.then(() => {
         if (settled) return;
@@ -72,7 +73,7 @@ async function nativeNonStreamStory(
             url: nativeUrl,
             headers,
             data: nativePayload,
-            readTimeout: 600000,
+            readTimeout: timeoutMs,
             connectTimeout: 15000,
         });
         if (nativeRes.status < 200 || nativeRes.status >= 300) {
@@ -80,7 +81,7 @@ async function nativeNonStreamStory(
             nativeCall.settleError('error', `API error ${nativeRes.status}`);
             console.warn(`[story-gen] http error ${nativeRes.status} after ${Date.now() - nativeStartedAt}ms (native non-stream)`);
             if (refusedThinking(provider, nativeRes.status, JSON.stringify(nativeRes.data))) {
-                await nativeNonStreamStory(provider, messages, format, headers, tools, sampling, onChunk, onDone, onError);
+                await nativeNonStreamStory(provider, messages, format, headers, tools, sampling, onChunk, onDone, onError, timeoutMs);
                 return;
             }
             onError(`API error ${nativeRes.status}: ${JSON.stringify(nativeRes.data)}`);
@@ -119,7 +120,9 @@ export async function sendMessage(
     tools?: unknown[],
     abortController?: AbortController,
     sampling?: SamplingConfig,
+    timeoutSeconds?: number,
 ) {
+    const timeoutMs = normalizeTimeoutSeconds(timeoutSeconds, DEFAULT_STORY_TIMEOUT_SECONDS) * 1000;
     const format = getApiFormat(provider);
     const useStreaming = provider.streamingEnabled !== false;
     const url = getChatUrl(provider, { stream: useStreaming });
@@ -139,7 +142,7 @@ export async function sendMessage(
 
         // On native with streaming OFF: use CapacitorHttp to bypass WebView CORS restrictions.
         if (Capacitor.isNativePlatform() && !useStreaming) {
-            await nativeNonStreamStory(provider, messages, format, headers, tools, sampling, onChunk, onDone, onError);
+            await nativeNonStreamStory(provider, messages, format, headers, tools, sampling, onChunk, onDone, onError, timeoutMs);
             return;
         }
 
@@ -153,7 +156,7 @@ export async function sendMessage(
         const storyCall = startUtilityCall(
             'story-generation',
             provider.modelName || provider.endpoint,
-            STORY_INITIAL_TIMEOUT_MS,
+            timeoutMs,
         );
         tracker = storyCall;
         const startedAt = Date.now();
@@ -172,7 +175,7 @@ export async function sendMessage(
             settleError('timeout');
         });
 
-        console.info(`[story-gen] start model=${provider.modelName || provider.endpoint} format=${format} streaming=${useStreaming} messages=${messages.length} tools=${tools ? (tools as unknown[]).length : 0} timeoutMs=${STORY_INITIAL_TIMEOUT_MS}`);
+        console.info(`[story-gen] start model=${provider.modelName || provider.endpoint} format=${format} streaming=${useStreaming} messages=${messages.length} tools=${tools ? (tools as unknown[]).length : 0} timeoutMs=${timeoutMs}`);
 
         let fetchUrl = url;
         if (format === 'gemini' && provider.apiKey) {
@@ -198,7 +201,7 @@ export async function sendMessage(
             if (Capacitor.isNativePlatform() && !isAbortError(fetchErr)) {
                 console.warn(`[story-gen] streaming fetch failed on native (${fetchErr instanceof Error ? fetchErr.message : 'unknown'}); falling back to CapacitorHttp non-stream`);
                 settleTrackerError('error', 'stream-fallback');
-                await nativeNonStreamStory(provider, messages, format, headers, tools, sampling, onChunk, onDone, onError);
+                await nativeNonStreamStory(provider, messages, format, headers, tools, sampling, onChunk, onDone, onError, timeoutMs);
                 return;
             }
             throw fetchErr;
@@ -209,7 +212,7 @@ export async function sendMessage(
             settleError('error', `API error ${res.status}`);
             console.warn(`[story-gen] http error ${res.status} after ${Date.now() - startedAt}ms: ${errBody.slice(0, 200)}`);
             if (refusedThinking(provider, res.status, errBody)) {
-                await sendMessage(provider, messages, onChunk, onDone, onError, tools, abortController, sampling);
+                await sendMessage(provider, messages, onChunk, onDone, onError, tools, abortController, sampling, timeoutSeconds);
                 return;
             }
             onError(`API error ${res.status}: ${errBody}`);
@@ -235,7 +238,7 @@ export async function sendMessage(
             return;
         }
 
-        let nextAutoExtendAt = startedAt + (STORY_INITIAL_TIMEOUT_MS - STORY_CHUNK_EXTEND_THRESHOLD_MS);
+        let nextAutoExtendAt = startedAt + Math.max(0, timeoutMs - STORY_CHUNK_EXTEND_THRESHOLD_MS);
         const wrappedOnChunk = (text: string) => {
             chunkCount++;
             const now = Date.now();

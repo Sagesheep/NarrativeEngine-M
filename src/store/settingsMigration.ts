@@ -2,6 +2,7 @@ import type { AppSettings, AIPreset, LLMProvider, ApiFormat } from '../types';
 import { uid } from '../utils/uid';
 import { READING_DEFAULTS, clampReadingSize, normalizeReadingFont, normalizeReadingLeading } from '../components/chat/readingPrefs';
 import { DEFAULT_SLOT_THINKING, migratePresetSlotThinking } from './slices/slotThinking';
+import { DEFAULT_STORY_TIMEOUT_SECONDS, DEFAULT_UTILITY_TIMEOUT_SECONDS, normalizeTimeoutSeconds } from '../services/llm/timeouts';
 
 export const defaultProvider: LLMProvider = {
     id: uid(),
@@ -43,7 +44,8 @@ export const defaultSettings: AppSettings = {
     rulesBudgetPct: 0.10,
     autoGenerateRuleKeywords: true,
     embeddingModel: 'standard' as const,
-    utilityTimeoutSeconds: 45,
+    storyTimeoutSeconds: DEFAULT_STORY_TIMEOUT_SECONDS,
+    utilityTimeoutSeconds: DEFAULT_UTILITY_TIMEOUT_SECONDS,
     verboseUtilityLogging: false,
     aiTier: 'pro' as const,
     directorBriefEnabled: true,
@@ -216,7 +218,8 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         rulesBudgetPct: (raw.rulesBudgetPct as number) ?? 0.10,
         autoGenerateRuleKeywords: (raw.autoGenerateRuleKeywords as boolean) ?? true,
         embeddingModel: (raw.embeddingModel as 'standard' | 'high') ?? 'standard',
-        utilityTimeoutSeconds: (raw.utilityTimeoutSeconds as number) ?? 45,
+        storyTimeoutSeconds: normalizeTimeoutSeconds(raw.storyTimeoutSeconds, DEFAULT_STORY_TIMEOUT_SECONDS),
+        utilityTimeoutSeconds: normalizeTimeoutSeconds(raw.utilityTimeoutSeconds, DEFAULT_UTILITY_TIMEOUT_SECONDS),
         verboseUtilityLogging: (raw.verboseUtilityLogging as boolean) ?? false,
         aiTier: (raw.aiTier as AppSettings['aiTier']) ?? 'pro',
         directorBriefEnabled: (raw.directorBriefEnabled as boolean) ?? true,

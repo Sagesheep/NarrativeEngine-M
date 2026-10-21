@@ -34,6 +34,19 @@ describe('defaultSettings', () => {
 });
 
 describe('migrateSettings', () => {
+    it('preserves custom AI timeouts and supplies defaults for older settings', () => {
+        expect(migrateSettings({ settings: {} })).toMatchObject({ storyTimeoutSeconds: 120, utilityTimeoutSeconds: 45 });
+        expect(migrateSettings({ settings: { storyTimeoutSeconds: 1200, utilityTimeoutSeconds: 900 } }))
+            .toMatchObject({ storyTimeoutSeconds: 1200, utilityTimeoutSeconds: 900 });
+    });
+
+    it('normalizes invalid or out-of-range saved timeout values', () => {
+        expect(migrateSettings({ settings: { storyTimeoutSeconds: Number.NaN, utilityTimeoutSeconds: -1 } }))
+            .toMatchObject({ storyTimeoutSeconds: 120, utilityTimeoutSeconds: 10 });
+        expect(migrateSettings({ settings: { storyTimeoutSeconds: 99999, utilityTimeoutSeconds: '600' } }))
+            .toMatchObject({ storyTimeoutSeconds: 3600, utilityTimeoutSeconds: 45 });
+    });
+
     it('passes through already-migrated settings with providers', () => {
         const providerId = 'prov-1';
         const existing: Record<string, unknown> = {

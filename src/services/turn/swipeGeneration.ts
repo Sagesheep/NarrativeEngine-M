@@ -24,6 +24,7 @@ export interface SwipeGenerationOptions {
     guidance?: string;
     /** The campaign's Scene Note, read live so an edit applies to the next swipe. */
     sceneNote?: SceneNoteInput;
+    timeoutSeconds?: number;
 }
 
 export interface SwipeGenerationResult {
@@ -104,6 +105,7 @@ export function generateSwipeVariant(
             undefined,                       // tools: undefined (swipes 2–5)
             controller,
             sampling,
+            opts.timeoutSeconds,
         );
     });
 }

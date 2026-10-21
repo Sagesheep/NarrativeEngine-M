@@ -534,7 +534,8 @@ export async function runTurn(
             },
             tools,
             abortController,
-            sampling
+            sampling,
+            settings.storyTimeoutSeconds,
         );
     };
 
