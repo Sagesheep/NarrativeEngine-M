@@ -258,6 +258,8 @@ export type GameContext = {
     encounterEngineActive: boolean;
     worldEngineActive: boolean;
     diceFairnessActive: boolean;
+    /** Offer roll_dice to Story AI when Pool mode is off. Defaults to true. */
+    diceToolEnabled?: boolean;
     sceneNote: string;
     sceneNoteActive: boolean;
     sceneNoteDepth: number;

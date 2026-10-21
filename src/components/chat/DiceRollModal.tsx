@@ -19,8 +19,10 @@ export function DiceRollModal() {
     const onClose = useAppStore(s => s.closeDiceRollModal);
     const setArmedRoll = useAppStore(s => s.setArmedRoll);
     const context = useAppStore(s => s.context);
+    const updateContext = useAppStore(s => s.updateContext);
 
     const diceSystem = context.diceSystem ?? buildDefaultDiceSystem();
+    const diceToolEnabled = context.diceToolEnabled !== false;
 
     // rollDef is local to this roll — not stored globally. Defaults to a
     // plain single roll; the player adjusts via the 3 gates before confirming.
@@ -82,6 +84,27 @@ export function DiceRollModal() {
                 </div>
 
                 <div className="p-4 space-y-4">
+                    <div className="bg-void border border-border rounded p-3 space-y-2">
+                        <div className="text-[10px] text-text-dim uppercase tracking-wider">
+                            Story AI dice tools: {diceToolEnabled ? 'On' : 'Off'}
+                        </div>
+                        <p className="text-[10px] text-text-dim/70 leading-relaxed">
+                            {!diceToolEnabled
+                                ? 'Story AI cannot request dice rolls. Use Arm Roll below when you want to roll.'
+                                : context.diceFairnessActive !== false
+                                ? 'Pool mode supplies pre-rolled dice, so Story AI dice tools are currently inactive.'
+                                : 'Story AI can request dice rolls for uncertain actions. Each request needs a follow-up story call.'}
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => updateContext({ diceToolEnabled: !diceToolEnabled })}
+                            className="w-full px-3 py-2 text-xs text-terminal border border-terminal/30 rounded hover:bg-terminal/10"
+                        >
+                            {diceToolEnabled ? 'Turn off AI dice tools' : 'Turn on AI dice tools'}
+                        </button>
+                        <p className="text-[10px] text-text-dim/70">Saved for this campaign. Campaign lookup stays available.</p>
+                    </div>
+
                     {/* Die type selector */}
                     <div>
                         <div className="text-[9px] text-text-dim uppercase tracking-wider mb-1">Die Type</div>

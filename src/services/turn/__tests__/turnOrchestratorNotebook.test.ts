@@ -17,6 +17,7 @@ vi.mock('../turnContext', () => ({
     gatherContext: vi.fn(async () => ({ semanticArchiveHits: [], payloadResult: { messages: [{ role: 'user', content: 'hello' }], trace: [] } })),
 }));
 const sendMessageMock = vi.fn();
+const manualRollMock = vi.fn();
 vi.mock('../../chatEngine', () => ({ sendMessage: (...a: unknown[]) => sendMessageMock(...a) }));
 vi.mock('../../llm/payloadSanitizer', () => ({ sanitizePayloadForApi: (p: unknown) => p }));
 vi.mock('../../ports/notify', () => ({ notify: { warning: vi.fn(), error: vi.fn(), success: vi.fn() } }));
@@ -25,7 +26,7 @@ vi.mock('../../engine', () => ({
     rollEngines: vi.fn(() => ({ appendToInput: '', updatedDCs: {} })),
     rollDiceFairness: vi.fn(() => ''),
     rollCharacterIntroEngine: vi.fn(),
-    resolveManualRoll: vi.fn(),
+    resolveManualRoll: (...a: unknown[]) => manualRollMock(...a),
     resolveLootDrop: vi.fn(() => ({ appendToInput: '' })),
     mapTier: vi.fn(() => 'Success'),
 }));
@@ -110,6 +111,53 @@ describe('runTurn — Scene Notebook moved to the auxiliary model', () => {
         const gm = messages.filter(m => m.role === 'assistant').pop();
         expect(gm.content).toBe('The gate creaks open.');
         expect(gm.pendingCommit).toBe(true);
+    });
+
+    it.each([
+        { enabled: false, pool: false, diceExpected: false },
+        { enabled: true, pool: false, diceExpected: true },
+        { enabled: undefined, pool: false, diceExpected: true },
+        { enabled: true, pool: true, diceExpected: false },
+        { enabled: false, pool: true, diceExpected: false },
+    ])('keeps lore available with dice enabled=$enabled and pool=$pool', async ({ enabled, pool, diceExpected }) => {
+        script([{ text: 'The gate creaks open.' }]);
+        const { state, callbacks } = makeTurn();
+        state.context.diceToolEnabled = enabled;
+        state.context.diceFairnessActive = pool;
+        await runTurn(state, callbacks, new AbortController());
+        const names = (sendMessageMock.mock.calls[0][5] as any[]).map(t => t.function.name);
+        expect(names).toContain('query_campaign_lore');
+        expect(names.includes('roll_dice')).toBe(diceExpected);
+        expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([true, false])('still resolves a manual roll with AI dice tools enabled=%s', async enabled => {
+        script([{ text: 'You force the gate open.' }]);
+        manualRollMock.mockReturnValueOnce({ rolls: [12], tier: 'Success', faceValue: 12, detail: '1d20' });
+        const { state, callbacks, messages } = makeTurn();
+        state.context.diceToolEnabled = enabled;
+        state.armedRoll = '1d20';
+        await runTurn(state, callbacks, new AbortController());
+        expect(manualRollMock).toHaveBeenCalledWith('1d20', state.context.diceSystem);
+        expect(messages[0].content).toContain('[RESOLVED ROLL');
+        expect(messages[0].content).toContain('Success (12)');
+        expect((sendMessageMock.mock.calls[0][5] as any[]).map(t => t.function.name)).toEqual(['query_campaign_lore']);
+        expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('can still look up lore with AI dice tools disabled', async () => {
+        script([
+            { text: '', toolCall: { id: 'lore', name: 'query_campaign_lore', arguments: '{"query":"gate"}' } },
+            { text: 'The iron gate creaks open.' },
+        ]);
+        const { state, callbacks } = makeTurn();
+        state.context.diceToolEnabled = false;
+        await runTurn(state, callbacks, new AbortController());
+        await flush(700);
+        expect(sendMessageMock).toHaveBeenCalledTimes(2);
+        for (const call of sendMessageMock.mock.calls) {
+            expect((call[5] as any[]).map(t => t.function.name)).toEqual(['query_campaign_lore']);
+        }
     });
 
     it('lore and dice calls still loop back to the story model before the prefetch', async () => {

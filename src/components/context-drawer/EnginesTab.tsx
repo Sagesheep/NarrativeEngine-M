@@ -417,11 +417,13 @@ function DiceFairnessSection({ context, updateContext }: DiceFairnessSectionProp
                 <Toggle active={context.diceFairnessActive ?? true} onChange={() => updateContext({ diceFairnessActive: !(context.diceFairnessActive ?? true) })} />
             </div>
 
-            {(context.diceFairnessActive ?? true) && (
-                <div className="text-[9px] text-amber-400/70 italic px-1">
-                    ⚡ Pool mode active — pre-rolled dice injected. Turn OFF to let the AI call roll_dice on demand.
-                </div>
-            )}
+            <div className="text-[9px] text-amber-400/70 italic px-1">
+                {(context.diceFairnessActive ?? true)
+                    ? '⚡ Pool mode active — pre-rolled dice injected. AI dice tools are inactive.'
+                    : context.diceToolEnabled === false
+                    ? 'AI dice tools are off. Use Dice Me to arm a manual roll or turn AI dice tools on.'
+                    : 'Story AI can call roll_dice on demand. Use Dice Me to turn AI dice tools off.'}
+            </div>
 
             <div className="bg-void border border-border p-3 space-y-3">
                 {/* ── Die Types Registry ── */}

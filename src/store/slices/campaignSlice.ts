@@ -61,6 +61,7 @@ export const defaultContext: GameContext = {
     encounterEngineActive: true,
     worldEngineActive: true,
     diceFairnessActive: true,
+    diceToolEnabled: true,
     sceneNote: '',
     sceneNoteActive: false,
     sceneNoteDepth: 3,

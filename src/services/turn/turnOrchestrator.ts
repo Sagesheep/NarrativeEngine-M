@@ -295,7 +295,7 @@ export async function runTurn(
 
         // Suppress the dice tool when the player armed a manual roll — the resolved fact is
         // already in the payload; offering the tool too would let the model double-roll.
-        const allowDiceTool = context.diceFairnessActive === false && !armed;
+        const allowDiceTool = context.diceToolEnabled !== false && context.diceFairnessActive === false && !armed;
         const tools = allowTools ? getToolDefinitions({ allowDiceTool }) : undefined;
 
         const activePreset = settings.presets.find(p => p.id === settings.activePresetId);
