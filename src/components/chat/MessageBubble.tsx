@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, memo } from 'react';
-import { Edit2, Trash2, Loader2, Terminal, Zap, Check, X, Pin, PinOff, ImagePlus, AlertCircle, XCircle, Volume2, Square, RotateCw, Play, Pause, RefreshCw, Rewind, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Edit2, Trash2, Loader2, Terminal, Zap, Check, X, Pin, PinOff, ImagePlus, AlertCircle, XCircle, Volume2, Square, RotateCw, Play, Pause, RefreshCw, Rewind, ChevronLeft, ChevronRight, NotebookPen } from 'lucide-react';
 import type { ChatMessage } from '../../types';
 import { EngineTraceView } from '../engine-trace/EngineTraceView';
 import { ContentWithChips } from './ContentWithChips';
@@ -15,6 +15,7 @@ import { imageStorage } from '../../services/storage/imageStorage';
 import { proseForTTS, chunkSentencesForTTS } from '../../services/tts/proseStripper';
 import { speakChunks, speechSupported, type SpeakHandle } from '../../services/tts/speech';
 import { hasSwipeSet, MAX_SWIPES } from '../../services/turn';
+import { noteFromMessage } from '../../utils/playerNotes';
 
 type MessageBubbleProps = {
     msg: ChatMessage;
@@ -398,6 +399,14 @@ export const MessageBubble = memo(function MessageBubble({
         }
     };
 
+    const savedToNotes = useAppStore(s => !!s.context.playerNotes?.some(n => n.sourceMessageId === msg.id));
+
+    const handleSaveToNotes = () => {
+        const { context, messages, updateContext } = useAppStore.getState();
+        updateContext({ playerNotes: [noteFromMessage(msg, messages), ...(context.playerNotes ?? [])] });
+        toast.success('Saved to Notes');
+    };
+
     // Sync draft state only when entering edit mode
     useEffect(() => {
         if (isEditing) {
@@ -572,6 +581,17 @@ export const MessageBubble = memo(function MessageBubble({
                                 }`}
                             >
                                 {fullMessagePin ? <PinOff size={10} /> : <Pin size={10} />}
+                            </button>
+                        )}
+                        {msg.role !== 'system' && !isStreaming && (
+                            <button
+                                title={savedToNotes ? 'Saved to Notes (save again)' : 'Save to my Notes'}
+                                onClick={handleSaveToNotes}
+                                className={`p-1 bg-void-lighter rounded transition-colors ${
+                                    savedToNotes ? 'text-ice hover:text-ice/60' : 'text-text-dim hover:text-ice'
+                                }`}
+                            >
+                                <NotebookPen size={10} />
                             </button>
                         )}
                         <button title="Delete" onClick={() => onDelete(msg.id)} className="text-text-dim hover:text-red-400 p-1 bg-void-lighter rounded">

@@ -274,6 +274,8 @@ export type GameContext = {
     npcIntroDC?: number;
     notebook: NotebookNote[];
     notebookActive: boolean;
+    /** Player-only notes (Notes tab). Never sent to any AI call. */
+    playerNotes?: PlayerNote[];
     lastSceneStakes?: SceneStakes;     // Phase-3 §9.3#2: last parsed/fallback scene stakes
     agencyDigest?: string;             // Phase-3 §9.3#7: player-visible tick digest, folded into next GM call
     arcs?: ArcRecord[];                // Arc Engine (System 2): active + retired arcs for this campaign
@@ -965,6 +967,17 @@ export type NotebookNote = {
     id: string;
     text: string;
     timestamp: number;
+};
+
+/** A note the player keeps for themselves (OOC answers, reminders). Not the GM's notebook. */
+export type PlayerNote = {
+    id: string;
+    title: string;
+    body: string;
+    createdAt: number;
+    updatedAt: number;
+    /** Chat message this note was saved from, if any. */
+    sourceMessageId?: string;
 };
 
 export type BackupMeta = {

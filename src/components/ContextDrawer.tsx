@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { X, ScrollText, Globe, Zap, BookOpen, Bookmark, Brain, Sliders, Images } from 'lucide-react';
+import { X, ScrollText, Globe, Zap, BookOpen, Bookmark, Brain, Sliders, Images, NotebookPen } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { useBackHandler } from '../hooks/useBackHandler';
 import { RulesTab } from './context-drawer/RulesTab';
@@ -11,6 +11,7 @@ import { BookkeepingTab } from './context-drawer/BookkeepingTab';
 import { ResolvedStatePanel } from './context-drawer/ResolvedStatePanel';
 import { MemoryTab } from './context-drawer/MemoryTab';
 import { GalleryTab } from './context-drawer/GalleryTab';
+import { NotesTab } from './context-drawer/NotesTab';
 
 const TABS = [
   { id: 'sys',      label: 'System',   icon: ScrollText },
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'gallery',  label: 'Gallery',  icon: Images },
   { id: 'chapters', label: 'Chapters', icon: BookOpen },
   { id: 'chr',      label: 'Bookkeep', icon: Bookmark },
+  { id: 'notes',    label: 'Notes',    icon: NotebookPen },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -86,6 +88,7 @@ export function ContextDrawer() {
       {activeTab === 'gallery' && <GalleryTab />}
       {activeTab === 'chapters' && <ChapterTab />}
       {activeTab === 'chr' && <><ResolvedStatePanel /><BookkeepingTab /></>}
+      {activeTab === 'notes' && <NotesTab />}
     </>
   );
 
