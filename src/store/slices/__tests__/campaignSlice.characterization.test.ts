@@ -586,6 +586,39 @@ describe('divergence register', () => {
 // Test 5 — active campaign switch
 // ───────────────────────────────────────────────────────────────────────────
 describe('active campaign switch', () => {
+    it('awaits the outgoing pending commit before hydrating the next campaign', async () => {
+        await useAppStore.getState().setActiveCampaign('commit-A');
+        useAppStore.setState({ messages: [{ id: 'gm', role: 'assistant', content: 'reply', timestamp: 1, pendingCommit: true }] });
+        let finish!: () => void;
+        const turn = await import('../../../services/turn');
+        const commit = vi.spyOn(turn, 'commitPendingTurn').mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+        try {
+            const switching = useAppStore.getState().setActiveCampaign('commit-B');
+            await flush();
+            expect(commit).toHaveBeenCalledTimes(1);
+            expect(useAppStore.getState().activeCampaignId).toBe('commit-A');
+            finish();
+            await switching;
+            expect(useAppStore.getState().activeCampaignId).toBe('commit-B');
+        } finally {
+            commit.mockRestore();
+        }
+    });
+
+    it('keeps the outgoing campaign active if its pending commit fails', async () => {
+        await useAppStore.getState().setActiveCampaign('failed-A');
+        useAppStore.setState({ messages: [{ id: 'gm', role: 'assistant', content: 'reply', timestamp: 1, pendingCommit: true }] });
+        const turn = await import('../../../services/turn');
+        const commit = vi.spyOn(turn, 'commitPendingTurn').mockRejectedValueOnce(new Error('Storage full'));
+        try {
+            await expect(useAppStore.getState().setActiveCampaign('failed-B')).rejects.toThrow('Storage full');
+            expect(useAppStore.getState().activeCampaignId).toBe('failed-A');
+            expect(useAppStore.getState().messages[0].pendingCommit).toBe(true);
+        } finally {
+            commit.mockRestore();
+        }
+    });
+
     it('saves campaign A, loads campaign B, and restores A on switch-back', async () => {
         const A = 'camp-A';
         const B = 'camp-B';

@@ -25,6 +25,7 @@ interface PendingTurnSnapshot {
 }
 
 let pendingSnapshot: PendingTurnSnapshot | null = null;
+let commitInFlight: Promise<void> | null = null;
 
 export function capturePendingTurnSnapshot(
     state: TurnState,
@@ -167,9 +168,7 @@ export function findPendingCommitMessage(messages: ChatMessage[]): ChatMessage |
     for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages[i];
         if (m.role === 'assistant' && m.pendingCommit) return m;
-        // Only scan the tail — the pending message is always the latest GM bubble
-        // (no scene-marker follows it because handlePostTurn was deferred).
-        if (m.role === 'system' && m.name === 'scene-marker') break;
+        // A failed final save may leave a marker after a still-pending bubble.
     }
     return null;
 }
@@ -191,7 +190,10 @@ export function findRetryableMessage(messages: ChatMessage[]): ChatMessage | nul
 function buildCommitCallbacks(activeCampaignId: string): TurnCallbacks {
     return {
         onCheckingNotes: () => {},
-        addMessage: (msg) => storeAccess().getState().addMessage(msg),
+        addMessage: (msg) => {
+            const store = storeAccess().getState();
+            if (!store.messages.some(m => m.id === msg.id)) store.addMessage(msg);
+        },
         updateLastAssistant: (content) => storeAccess().getState().updateLastAssistant(content),
         updateLastMessage: (patch) => {
             const msgs = storeAccess().getState().messages;
@@ -228,7 +230,17 @@ function buildCommitCallbacks(activeCampaignId: string): TurnCallbacks {
 // Fires handlePostTurn with the visible variant's CURRENT (possibly edited)
 // text. Guards against late swipe results. Reworded failure toast for the
 // commit path.
-export async function commitPendingTurn(): Promise<void> {
+export function commitPendingTurn(): Promise<void> {
+    if (commitInFlight) return commitInFlight;
+    commitInFlight = commitPendingTurnOnce().catch(err => {
+        console.error('[Commit] Turn remains pending:', err);
+        notify.error('Could not finish saving this turn. It remains pending; try again before continuing.');
+        throw err;
+    }).finally(() => { commitInFlight = null; });
+    return commitInFlight;
+}
+
+async function commitPendingTurnOnce(): Promise<void> {
     const snapshot = pendingSnapshot;
     const store = storeAccess().getState();
     const messages = store.messages;
@@ -269,9 +281,6 @@ export async function commitPendingTurn(): Promise<void> {
         }
     }
 
-    // Update context with lastSceneStakes from the chosen variant (commit only).
-    store.updateContext({ lastSceneStakes: sceneStakes });
-
     // Build the commit state — use the ORIGINAL TurnState reference but
     // override getMessages so the importance rater reads the snapshot,
     // never live getMessages() (a late commit must not see the next turn's messages).
@@ -280,61 +289,68 @@ export async function commitPendingTurn(): Promise<void> {
         : rebuildStateFromLiveStore(store);
 
     const commitCallbacks = buildCommitCallbacks(commitState.activeCampaignId ?? '');
-    const displayInput = snapshot?.displayInput ?? '';
+    const displayInput = snapshot?.displayInput ?? precedingUserText(messages, pendingMsg);
     const activeCampaignId = commitState.activeCampaignId!;
+    if (!activeCampaignId || store.activeCampaignId !== activeCampaignId) {
+        throw new Error('Pending turn belongs to another campaign');
+    }
+    const { loadChapters, saveCampaignState } = await import('../../store/campaignStore');
+    const { debouncedSaveCampaignState } = await import('../../store/slices/campaignSlice');
+    // Persist the recovery marker before any archive write, even if the normal
+    // debounced chat save has not fired yet.
+    await saveCampaignState(activeCampaignId, {
+        context: store.context, messages, condenser: store.condenser, pinnedExcerpts: store.pinnedExcerpts,
+    });
 
-    // Runs beside handlePostTurn and is awaited before the commit resolves, so the
-    // next story turn (built right after) sees the updated notebook.
-    const notebookSettled = settleCommittedNotebook(
-        snapshot, commitState, text, snapshot ? displayInput : precedingUserText(messages, pendingMsg),
-    );
     const npcLedger = commitState.npcLedger;
 
-    try {
-        const { loadChapters } = await import('../../store/campaignStore');
-        await handlePostTurn(
-            commitState,
-            commitCallbacks,
-            displayInput,
-            activeCampaignId,
-            npcLedger,
-            text,
-            loadChapters,
-        );
+    await handlePostTurn(
+        commitState,
+        commitCallbacks,
+        displayInput,
+        activeCampaignId,
+        npcLedger,
+        text,
+        loadChapters,
+        pendingMsg.id,
+    );
+    store.updateContext({ lastSceneStakes: sceneStakes });
+    await settleCommittedNotebook(snapshot, commitState, text, displayInput);
 
-        // Auto-condense check — moved to commit (was in the orchestrator completion callback).
-        if (commitState.settings.autoCondenseEnabled) {
-            const allMsgs = commitState.getMessages();
-            if (shouldCondense(allMsgs, commitState.settings.contextLimit, commitState.condenser.condensedUpToIndex, getCondenseBudgetRatio(commitState.settings.condenseAggressiveness))) {
-                const newIndex = computeTrimIndex(allMsgs, commitState.condenser.condensedUpToIndex);
-                if (newIndex !== commitState.condenser.condensedUpToIndex) {
-                    storeAccess().getState().setCondensed(newIndex);
-                }
+    // Auto-condense check — moved to commit (was in the orchestrator completion callback).
+    if (commitState.settings.autoCondenseEnabled) {
+        const allMsgs = commitState.getMessages();
+        if (shouldCondense(allMsgs, commitState.settings.contextLimit, commitState.condenser.condensedUpToIndex, getCondenseBudgetRatio(commitState.settings.condenseAggressiveness))) {
+            const newIndex = computeTrimIndex(allMsgs, commitState.condenser.condensedUpToIndex);
+            if (newIndex !== commitState.condenser.condensedUpToIndex) {
+                storeAccess().getState().setCondensed(newIndex);
             }
         }
-    } catch (err) {
-        console.error('[Commit] handlePostTurn failed:', err);
-        notify.error('Turn committed but some archive updates may be missing. Your story is saved.');
     }
-
-    await notebookSettled;
-
     // Clear the swipe set + pendingCommit marker — the bubble is now a
     // normal historical message.
     const freshStore = storeAccess().getState();
+    if (freshStore.activeCampaignId !== activeCampaignId) throw new Error('Campaign changed during commit');
     const freshMsgs = freshStore.messages;
     const idx = freshMsgs.findIndex(m => m.id === pendingMsg.id);
     if (idx !== -1) {
         const updated = [...freshMsgs];
         const { swipeSet: _ss, pendingCommit: _pc, swipeActiveIndex: _si, retryable: _r, precontext: _pc2, ...rest } = updated[idx];
         updated[idx] = rest as ChatMessage;
-        storeAccess().setState({ messages: updated });
-        import('../../store/campaignStore').then(m => m.saveCampaignState(activeCampaignId, {
-            context: storeAccess().getState().context,
+        await saveCampaignState(activeCampaignId, {
+            context: freshStore.context,
             messages: updated,
-            condenser: storeAccess().getState().condenser,
-            pinnedExcerpts: storeAccess().getState().pinnedExcerpts,
-        })).catch(e => console.warn('[Commit] saveCampaignState failed:', e));
+            condenser: freshStore.condenser,
+            pinnedExcerpts: freshStore.pinnedExcerpts,
+        });
+        storeAccess().setState({ messages: updated });
+        // Context/notebook edits scheduled an autosave while the bubble was still
+        // pending. Replace that snapshot so it cannot resurrect the marker later.
+        const latest = storeAccess().getState();
+        debouncedSaveCampaignState(activeCampaignId, {
+            context: latest.context, messages: latest.messages,
+            condenser: latest.condenser, pinnedExcerpts: latest.pinnedExcerpts,
+        });
     }
 
     clearPendingTurnSnapshot();

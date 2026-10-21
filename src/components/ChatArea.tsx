@@ -146,6 +146,14 @@ export function ChatArea() {
 
         if (turnAbort.signal.aborted) { setStreaming(false); return; }
 
+        // A failed durable commit must leave the draft and armed actions intact.
+        try {
+            await commitPendingTurn();
+        } catch {
+            setStreaming(false);
+            return; // commitPendingTurn already explained the save failure.
+        }
+
         const useDeepScan = deepArmed && !!settings.enableDeepArchiveSearch;
         const useDeepQuery = deepSearchQuery;
         setDeepSearch(false, '');
@@ -173,11 +181,6 @@ export function ChatArea() {
         const llmInput = textToUse;
 
         try {
-            // Swipe Generation v1: commit any pending swipe turn BEFORE the next
-            // turn's gatherContext (handlePostTurn clears agencyDigest/arcDigest
-            // and appends the archive scene the next payload builds against).
-            // Ordering: commit is awaited before runTurn starts.
-            await commitPendingTurn();
             // Smart Retry v1: clear stale `retryable` on any old bubble before the
             // new turn starts. The snapshot was just nulled by commitPendingTurn's
             // no-pending-message branch, so any prior Retry button is now dead —

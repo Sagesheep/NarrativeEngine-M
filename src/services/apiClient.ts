@@ -5,14 +5,8 @@ import { get as idbGet, set as idbSet } from 'idb-keyval';
 
 export const api = {
     archive: {
-        async append(campaignId: string, userText: string, assistantText: string): Promise<{ sceneId: string } | undefined> {
-            try {
-                const result = await offlineStorage.archive.append(campaignId, userText, assistantText);
-                return result ? { sceneId: result.sceneId } : undefined;
-            } catch (err) {
-                console.warn('[Archive] Failed to append:', err);
-            }
-            return undefined;
+        async append(campaignId: string, userText: string, assistantText: string, commitId?: string) {
+            return offlineStorage.archive.append(campaignId, userText, assistantText, commitId);
         },
         async getIndex(campaignId: string): Promise<ArchiveIndexEntry[]> {
             return offlineStorage.archive.getIndex(campaignId);

@@ -40,6 +40,9 @@ import {
     prefetchNotebookForPendingVariant,
 } from '../pendingCommit';
 import { pendingNotebookJobCount } from '../sceneNotebookMaintenance';
+import { saveCampaignState } from '../../../store/campaignStore';
+import { getPendingTurnSnapshot, findPendingCommitMessage } from '../pendingCommit';
+import { debouncedSaveCampaignState } from '../../../store/slices/campaignSlice';
 
 const AUX = { id: 'aux', endpoint: 'http://aux', modelName: 'cheap-aux', apiKey: '' } as any;
 const STORY_SYSTEM_PROMPT = 'HUGE STORY SYSTEM PROMPT AND LORE';
@@ -95,6 +98,70 @@ beforeEach(() => {
 });
 
 describe('Scene Notebook at commit', () => {
+    it('replaces an autosave captured before acknowledgement so it cannot restore pendingCommit', async () => {
+        vi.useFakeTimers();
+        try {
+            setup(['Swipe one: the guard wakes.']);
+            fakeState.context.notebookActive = false;
+            debouncedSaveCampaignState('camp', {
+                context: fakeState.context, messages: fakeState.messages,
+                condenser: fakeState.condenser, pinnedExcerpts: [],
+            });
+            await commitPendingTurn();
+            await vi.advanceTimersByTimeAsync(1100);
+            const saved = vi.mocked(saveCampaignState).mock.calls.at(-1)![1];
+            expect(saved.messages[1].pendingCommit).toBeUndefined();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not archive if persisting the pending recovery marker fails', async () => {
+        setup(['Swipe one: the guard wakes.']);
+        vi.mocked(saveCampaignState).mockRejectedValueOnce(new Error('Recovery save failed'));
+        await expect(commitPendingTurn()).rejects.toThrow('Recovery save failed');
+        expect(handlePostTurnMock).not.toHaveBeenCalled();
+        expect(fakeState.messages[1].pendingCommit).toBe(true);
+        expect(getPendingTurnSnapshot()).not.toBeNull();
+    });
+
+    it('retains the pending turn and snapshot on archive failure, without applying notebook edits', async () => {
+        setup(['Swipe one: the guard wakes.']);
+        handlePostTurnMock.mockRejectedValueOnce(new Error('Storage full'));
+        await expect(commitPendingTurn()).rejects.toThrow('Storage full');
+        expect(fakeState.messages[1].pendingCommit).toBe(true);
+        expect(getPendingTurnSnapshot()).not.toBeNull();
+        expect(texts()).toEqual(['Night, raining']);
+        expect(saveCampaignState).toHaveBeenCalledWith('camp', expect.objectContaining({
+            messages: expect.arrayContaining([expect.objectContaining({ pendingCommit: true })]),
+        }));
+        await commitPendingTurn();
+        expect(fakeState.messages[1].pendingCommit).toBeUndefined();
+    });
+
+    it('retains recovery state when the final campaign save fails, and can retry past a scene marker', async () => {
+        setup(['Swipe one: the guard wakes.']);
+        handlePostTurnMock.mockImplementationOnce(async () => {
+            fakeState.messages = [...fakeState.messages, { id: 'marker', role: 'system', name: 'scene-marker', content: 'Scene 001', timestamp: 3 }];
+        });
+        vi.mocked(saveCampaignState).mockResolvedValueOnce().mockRejectedValueOnce(new Error('Final save failed'));
+        await expect(commitPendingTurn()).rejects.toThrow('Final save failed');
+        expect(findPendingCommitMessage(fakeState.messages)?.id).toBe('gm1');
+        expect(getPendingTurnSnapshot()).not.toBeNull();
+        await commitPendingTurn();
+        expect(fakeState.messages[1].pendingCommit).toBeUndefined();
+        expect((handlePostTurnMock.mock.calls.at(-1) as unknown[])[7]).toBe('gm1');
+    });
+
+    it('shares a single in-flight commit between simultaneous callers', async () => {
+        setup(['Swipe one: the guard wakes.']);
+        const first = commitPendingTurn();
+        const second = commitPendingTurn();
+        expect(second).toBe(first);
+        await Promise.all([first, second]);
+        expect(handlePostTurnMock).toHaveBeenCalledTimes(1);
+    });
+
     it('applies only the committed swipe edits; the other swipe job is aborted', async () => {
         setup(['Swipe one: the guard wakes.', 'Swipe two: the guard sleeps on.'], 1);
         prefetchNotebookForPendingVariant('Swipe one: the guard wakes.');

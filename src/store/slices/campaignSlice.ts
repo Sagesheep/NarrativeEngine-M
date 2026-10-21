@@ -154,10 +154,9 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         // campaigns. The pending turn belongs to the OUTGOING campaign; once
         // we hydrate the new campaign's messages, the pending GM bubble is
         // gone from the store and the commit would be lost. Commit first.
-        if (id !== get().activeCampaignId) {
-            import('../../services/turn').then(({ commitPendingTurn }) => {
-                commitPendingTurn().catch(e => console.warn('[CampaignSwitch] commitPendingTurn failed:', e));
-            }).catch(() => {});
+        if (id !== get().activeCampaignId && get().messages.some(m => m.pendingCommit)) {
+            const { commitPendingTurn } = await import('../../services/turn');
+            await commitPendingTurn();
         }
 
         // Release the outgoing campaign's in-memory vector cache so only the

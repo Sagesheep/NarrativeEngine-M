@@ -1,7 +1,11 @@
-import { del as idbDel } from 'idb-keyval';
+import { createStore, del as idbDel, type UseStore } from 'idb-keyval';
 import type { ArchiveChapter, SemanticFact } from '../../types';
-import { buildArchiveIndexEntry } from '../archive';
+import { buildArchiveIndexEntry, extractNPCFacts } from '../archive';
 import { getList, setList, k, type SceneRecord } from './_helpers';
+
+// Use the same database/object store as idb-keyval's default store. All reads
+// and writes must share one readwrite transaction, including scene allocation.
+let archiveStore: UseStore | undefined;
 
 function nextSceneNumber(scenes: SceneRecord[]): number {
     let max = 0;
@@ -22,26 +26,75 @@ export const archiveStorage = {
         cid: string,
         userContent: string,
         assistantContent: string,
-    ): Promise<{ sceneId: string; sceneNumber: number; indexEntry: import('../../types').ArchiveIndexEntry; timestamp: number } | undefined> {
-        try {
-            const scenes: SceneRecord[] = await getList(k(cid, 'scenes'));
-            const sceneNumber = nextSceneNumber(scenes);
-            const sceneId = String(sceneNumber).padStart(3, '0');
-            const timestamp = Date.now();
+        commitId?: string,
+    ) {
+        archiveStore ??= createStore('keyval-store', 'keyval');
+        return archiveStore('readwrite', store => new Promise<{
+            sceneId: string; sceneNumber: number; timestamp: number; created: boolean;
+        }>((resolve, reject) => {
+            const tx = store.transaction;
+            let result: { sceneId: string; sceneNumber: number; timestamp: number; created: boolean };
+            let failure: unknown;
+            tx.oncomplete = () => resolve(result);
+            tx.onabort = () => reject(failure ?? tx.error ?? new Error('Archive transaction aborted'));
+            tx.onerror = () => { failure ??= tx.error; };
+            const suffixes = ['scenes', 'archive_index', 'facts', 'chapters'];
+            const requests = suffixes.map(suffix => store.get(k(cid, suffix)));
+            let remaining = requests.length;
+            for (const request of requests) request.onsuccess = () => {
+                if (--remaining > 0) return;
+                try {
+                    const scenes: SceneRecord[] = requests[0].result ?? [];
+                    const index: import('../../types').ArchiveIndexEntry[] = requests[1].result ?? [];
+                    const facts: SemanticFact[] = requests[2].result ?? [];
+                    const chapters: ArchiveChapter[] = requests[3].result ?? [];
+                    const existing = commitId ? scenes.find(scene => scene.commitId === commitId) : undefined;
+                    if (existing) {
+                        if (existing.userContent !== userContent || existing.assistantContent !== assistantContent) {
+                            throw new Error('This turn was already archived with different text');
+                        }
+                        result = { sceneId: existing.sceneId, sceneNumber: parseInt(existing.sceneId, 10), timestamp: existing.timestamp, created: false };
+                        return;
+                    }
+                    const sceneNumber = nextSceneNumber(scenes);
+                    const sceneId = String(sceneNumber).padStart(3, '0');
+                    const timestamp = Date.now();
 
-            scenes.push({ sceneId, userContent, assistantContent, timestamp });
-            await setList(k(cid, 'scenes'), scenes);
+                    scenes.push({ sceneId, userContent, assistantContent, timestamp, ...(commitId ? { commitId } : {}) });
 
-            const indexEntry = buildArchiveIndexEntry(sceneId, timestamp, userContent, assistantContent);
-            const index = await getList<import('../../types').ArchiveIndexEntry>(k(cid, 'archive_index'));
-            index.push(indexEntry);
-            await setList(k(cid, 'archive_index'), index);
+                    const indexEntry = buildArchiveIndexEntry(sceneId, timestamp, userContent, assistantContent);
+                    index.push(indexEntry);
+                    for (const fact of extractNPCFacts(indexEntry.npcsMentioned, `${userContent}\n${assistantContent}`)) {
+                        if (!facts.some(ef => ef.subject === fact.subject && ef.predicate === fact.predicate && ef.object === fact.object)) {
+                            facts.push({ ...fact, id: `fact_${String(facts.length + 1).padStart(4, '0')}`, sceneId, timestamp });
+                        }
+                    }
+                    let openChapter = chapters.find(ch => !ch.sealedAt);
+                    if (!openChapter) {
+                        const nextNum = chapters.length + 1;
+                        openChapter = {
+                            chapterId: `CH${String(nextNum).padStart(2, '0')}`, title: `Chapter ${nextNum}`,
+                            sceneRange: [sceneId, sceneId], sceneIds: [], sceneCount: 0,
+                            summary: '', keywords: [], npcs: [], majorEvents: [], unresolvedThreads: [], tone: '', themes: [],
+                        };
+                        chapters.push(openChapter);
+                    }
+                    openChapter.sceneRange[1] = sceneId;
+                    openChapter.sceneIds ??= [];
+                    if (!openChapter.sceneIds.includes(sceneId)) openChapter.sceneIds.push(sceneId);
+                    openChapter.sceneCount = openChapter.sceneIds.length;
 
-            return { sceneId, sceneNumber, indexEntry, timestamp };
-        } catch (err) {
-            console.error('[OfflineStorage] Archive append failed:', err);
-            return undefined;
-        }
+                    store.put(scenes, k(cid, 'scenes'));
+                    store.put(index, k(cid, 'archive_index'));
+                    store.put(facts, k(cid, 'facts'));
+                    store.put(chapters, k(cid, 'chapters'));
+                    result = { sceneId, sceneNumber, timestamp, created: true };
+                } catch (err) {
+                    failure = err;
+                    tx.abort();
+                }
+            };
+        }));
     },
 
     async deleteScene(cid: string, sceneId: string): Promise<{ ok: boolean }> {

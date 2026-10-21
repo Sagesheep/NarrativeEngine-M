@@ -1,6 +1,6 @@
 import { get as idbGet, set as idbSet } from 'idb-keyval';
 
-export type SceneRecord = { sceneId: string; userContent: string; assistantContent: string; timestamp: number };
+export type SceneRecord = { sceneId: string; userContent: string; assistantContent: string; timestamp: number; commitId?: string };
 
 export async function getList<T>(key: string): Promise<T[]> {
     return (await idbGet(key)) || [];

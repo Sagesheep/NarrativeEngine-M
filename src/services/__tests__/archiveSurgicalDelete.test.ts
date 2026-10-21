@@ -1,24 +1,16 @@
+import 'fake-indexeddb/auto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { clear } from 'idb-keyval';
 import type { ArchiveChapter, ArchiveIndexEntry, TimelineEvent, SemanticFact } from '../../types';
 
 /**
  * Surgical-delete tests (WO-9). Tests 1–5 exercise archiveStorage against an
- * in-memory idb-keyval mock; test 6 is a pure function test of
+ * fake IndexedDB transactions; test 6 is a pure function test of
  * findSceneIdForMessage (no IDB at all).
  */
 
-// ── In-memory idb-keyval mock (shared by tests 1–5) ───────────────────────────
+// Real idb-keyval over fake IndexedDB exercises the atomic append path.
 
-const memStore = new Map<string, unknown>();
-
-vi.mock('idb-keyval', () => ({
-    get: vi.fn(async (key: string) => memStore.get(key)),
-    set: vi.fn(async (key: string, val: unknown) => { memStore.set(key, val); }),
-    del: vi.fn(async (key: string) => { memStore.delete(key); }),
-    keys: vi.fn(async () => Array.from(memStore.keys())),
-    getMany: vi.fn(async (keys: string[]) => keys.map(k => memStore.get(k))),
-    delMany: vi.fn(async (keys: string[]) => { for (const k of keys) memStore.delete(k); }),
-}));
 
 // embeddingStorage.deleteByTypeAndId / store are imported by the storage wrapper
 // for WO-3 / WO-7; stub them so they no-op rather than hitting the real IDB.
@@ -44,7 +36,7 @@ import type { ChatMessage } from '../../types';
 const CID = 'camp-test';
 
 function resetStore() {
-    memStore.clear();
+    return clear();
 }
 
 function makeTimelineEvent(sceneId: string): TimelineEvent {

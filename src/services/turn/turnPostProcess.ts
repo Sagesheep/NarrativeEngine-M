@@ -38,18 +38,22 @@ export async function handlePostTurn(
     npcLedger: NPCEntry[],
     lastAssistantContent: string,
     loadChapters: (campaignId: string) => Promise<ArchiveChapter[]>,
+    commitId?: string,
 ): Promise<void> {
+    const appendData = await api.archive.append(activeCampaignId, displayInput, lastAssistantContent, commitId);
+    if (!appendData) throw new Error('Archive append did not confirm a durable scene');
+    const appendedSceneId = appendData.sceneId;
+    const freshIndex = await api.archive.getIndex(activeCampaignId);
+    callbacks.setArchiveIndex(freshIndex);
+    const markerId = commitId ? `scene-marker-${commitId}` : uid();
+    if (!state.getMessages().some(m => m.id === markerId)) {
+        callbacks.addMessage({ id: markerId, role: 'system', name: 'scene-marker', content: `Scene ${appendedSceneId}`, timestamp: Date.now() });
+    }
+
+    // Recovery after archive success must not tick agency or increment counters again.
+    if (appendData.created === false) return;
     if (state.context.agencyDigest) { callbacks.updateContext({ agencyDigest: '' }); }
     if (state.context.arcDigest) { callbacks.updateContext({ arcDigest: '' }); }
-
-    const appendData = await api.archive.append(activeCampaignId, displayInput, lastAssistantContent);
-    const appendedSceneId = appendData?.sceneId;
-
-    if (appendData) {
-        const freshIndex = await api.archive.getIndex(activeCampaignId);
-        callbacks.setArchiveIndex(freshIndex);
-        callbacks.addMessage({ id: uid(), role: 'system', name: 'scene-marker', content: `Scene ${appendedSceneId}`, timestamp: Date.now() });
-    }
 
     const extractedNames = extractNPCNames(lastAssistantContent);
     const presentHeaderNames = parsePresentHeader(lastAssistantContent);

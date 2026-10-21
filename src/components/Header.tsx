@@ -234,7 +234,11 @@ export function Header() {
             await saveCampaignState(activeCampaignId, { context: state.context, messages: state.messages, condenser: state.condenser, pinnedExcerpts: state.pinnedExcerpts });
             await saveDivergenceRegister(activeCampaignId, state.divergenceRegister);
         }
-        setActiveCampaign(null);
+        try {
+            await setActiveCampaign(null);
+        } catch {
+            // The commit error is reported at its source; keep this campaign open.
+        }
     };
 
     return (
