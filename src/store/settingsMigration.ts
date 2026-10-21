@@ -64,6 +64,7 @@ function normalizeProviderConfig(config: any): LLMProvider | null {
         streamingEnabled: config.streamingEnabled ?? true,
         apiFormat: config.apiFormat || 'openai',
         thinkingEffort: config.thinkingEffort,
+        serviceTier: config.serviceTier === 'flex' || config.serviceTier === 'priority' ? config.serviceTier : undefined,
     };
 }
 

@@ -4,6 +4,9 @@ export type AiTier = 'lite' | 'pro' | 'max';
 
 export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 
+/** Processing tier on hosts that sell one (NanoGPT, OpenRouter). Unset is the host default. */
+export type ServiceTier = 'flex' | 'priority';
+
 /** Preset slots that carry their own thinking level. Image generation has none. */
 export type ThinkingSlot = 'story' | 'summarizer' | 'utility' | 'auxiliary';
 
@@ -29,6 +32,9 @@ export type LLMProvider = {
      *  slot (`AIPreset.slotThinking`), and the stored value only seeds the story slot
      *  on migration. */
     thinkingEffort?: ThinkingEffort;
+    /** NanoGPT / OpenRouter only: 'flex' is cheaper and slower, 'priority' faster
+     *  and dearer. Ignored on other hosts. */
+    serviceTier?: ServiceTier;
 };
 
 export type SamplingConfig = {

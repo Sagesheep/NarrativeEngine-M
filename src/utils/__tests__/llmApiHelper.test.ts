@@ -173,6 +173,32 @@ describe('buildChatBody', () => {
     });
 });
 
+describe('service tier', () => {
+    const messages = [{ role: 'user' as const, content: 'Hello' }];
+    const nano: LLMProvider = { ...openaiProvider, endpoint: 'https://nano-gpt.com/api/v1', modelName: 'openai/gpt-5.5' };
+    const router: LLMProvider = { ...openaiProvider, endpoint: 'https://openrouter.ai/api/v1', modelName: 'openai/gpt-5.5' };
+
+    it('sends nothing when unset', () => {
+        expect(buildChatBody(nano, messages).service_tier).toBeUndefined();
+        expect(buildChatBody(router, messages).service_tier).toBeUndefined();
+    });
+
+    it('sends flex and fast to NanoGPT', () => {
+        expect(buildChatBody({ ...nano, serviceTier: 'flex' }, messages).service_tier).toBe('flex');
+        expect(buildChatBody({ ...nano, serviceTier: 'priority' }, messages).service_tier).toBe('fast');
+    });
+
+    it('sends flex and priority to OpenRouter', () => {
+        expect(buildChatBody({ ...router, serviceTier: 'flex' }, messages).service_tier).toBe('flex');
+        expect(buildChatBody({ ...router, serviceTier: 'priority' }, messages).service_tier).toBe('priority');
+    });
+
+    it('sends nothing to other hosts or formats', () => {
+        expect(buildChatBody({ ...openaiProvider, serviceTier: 'flex' }, messages).service_tier).toBeUndefined();
+        expect(buildChatBody({ ...router, apiFormat: 'claude', serviceTier: 'flex' }, messages).service_tier).toBeUndefined();
+    });
+});
+
 describe('extractContent', () => {
     it('extracts openai content', () => {
         const data = { choices: [{ message: { content: 'Hello world' } }] };
