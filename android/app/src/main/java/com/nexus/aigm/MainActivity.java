@@ -21,22 +21,8 @@ public class MainActivity extends BridgeActivity {
      */
     private String pendingSafeAreaJs;
 
-    /**
-     * Idle keep-alive lifetime for the platform HttpURLConnection pool that
-     * CapacitorHttp uses. The default is 5 minutes, but routers/NAT on the path can
-     * silently drop an idle TCP connection sooner (no FIN/RST). The pool then hands
-     * that dead socket to the next request after a pause between turns: the request
-     * is written, never ACKed, and waits out the read timeout (seen on device as
-     * sockets to nano-gpt stuck retransmitting with ~10KB unacked while the
-     * recommender call hung for its full deadline). 30s keeps reuse within one
-     * turn's burst of utility calls but redials after any real pause.
-     */
-    private static final String HTTP_KEEP_ALIVE_MS = "30000";
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Must run before the first HttpURLConnection: the pool reads it once, when it is created.
-        System.setProperty("http.keepAliveDuration", HTTP_KEEP_ALIVE_MS);
         registerPlugin(SaveFilePlugin.class);
         super.onCreate(savedInstanceState);
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);

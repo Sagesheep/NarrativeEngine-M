@@ -2,6 +2,7 @@ import type { LLMProvider } from '../../types';
 import { getApiFormat, getBaseUrl, buildChatHeaders } from '../../utils/llmApiHelper';
 import { getQueueForEndpoint, type LLMCallPriority } from '../llm/llmRequestQueue';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { noKeepAlive } from '../../utils/nativeHttp';
 
 const MAX_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 500;
@@ -82,7 +83,7 @@ async function generateOpenAI(
             try {
                 nativeRes = await CapacitorHttp.post({
                     url,
-                    headers,
+                    headers: noKeepAlive(headers),
                     data: body,
                     readTimeout: 120000,
                     connectTimeout: 15000,

@@ -2,6 +2,7 @@ import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
 import { thinkingHostOf, type CatalogModel } from '../../utils/thinkingControl';
 import type { ServiceTier } from '../../types';
+import { noKeepAlive } from '../../utils/nativeHttp';
 
 /**
  * Per-model thinking options from hosts that publish them, read by
@@ -114,7 +115,7 @@ export function parseOpenRouterCatalog(data: unknown): Record<string, CatalogMod
 
 async function fetchJson(url: string): Promise<unknown> {
     if (Capacitor.isNativePlatform()) {
-        const res = await CapacitorHttp.get({ url, headers: { Accept: 'application/json' }, connectTimeout: 15000, readTimeout: 30000 });
+        const res = await CapacitorHttp.get({ url, headers: noKeepAlive({ Accept: 'application/json' }), connectTimeout: 15000, readTimeout: 30000 });
         if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
         return typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
     }

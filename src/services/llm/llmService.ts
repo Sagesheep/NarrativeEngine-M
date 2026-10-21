@@ -10,6 +10,7 @@ import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { startUtilityCall } from './utilityCallTracker';
 import { recordCacheUsage } from './cacheTelemetry';
 import { DEFAULT_STORY_TIMEOUT_SECONDS, normalizeTimeoutSeconds } from './timeouts';
+import { noKeepAlive } from '../../utils/nativeHttp';
 
 const STORY_LABEL = 'story-generation';
 
@@ -71,7 +72,7 @@ async function nativeNonStreamStory(
         const nativePayload = buildChatBody(provider, messages, { stream: false, tools, sampling });
         const nativeRes = await CapacitorHttp.post({
             url: nativeUrl,
-            headers,
+            headers: noKeepAlive(headers),
             data: nativePayload,
             readTimeout: timeoutMs,
             connectTimeout: 15000,
@@ -421,7 +422,7 @@ export async function testConnection(provider: LLMProvider): Promise<{ ok: boole
 
     try {
         if (Capacitor.isNativePlatform()) {
-            const res = await CapacitorHttp.get({ url, headers });
+            const res = await CapacitorHttp.get({ url, headers: noKeepAlive(headers) });
             if (res.status >= 200 && res.status < 300) {
                 return { ok: true, detail: 'Connection successful' };
             }

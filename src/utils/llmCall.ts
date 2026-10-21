@@ -6,6 +6,7 @@ import { ensureModelCatalog, ensureOpenRouterServiceTiers } from '../services/ll
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { startUtilityCall } from '../services/llm/utilityCallTracker';
 import { recordCacheUsage } from '../services/llm/cacheTelemetry';
+import { noKeepAlive } from './nativeHttp';
 import type { LLMUsage } from '../types/llmMessages';
 
 const MAX_RETRIES = 3;
@@ -152,7 +153,7 @@ async function runInner(
             try {
                 const nativeRes = await CapacitorHttp.post({
                     url: nativeUrl,
-                    headers,
+                    headers: noKeepAlive(headers),
                     data: body,
                     readTimeout: Math.max(600000, opts?.timeoutMs ?? 0),
                     connectTimeout: 15000,
