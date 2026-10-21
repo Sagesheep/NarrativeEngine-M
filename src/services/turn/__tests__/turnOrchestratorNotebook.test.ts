@@ -148,6 +148,40 @@ describe('runTurn — Scene Notebook moved to the auxiliary model', () => {
         expect(sendMessageMock).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+        { lore: false, dice: false, pool: false, expected: [] },
+        { lore: false, dice: true, pool: false, expected: ['roll_dice'] },
+        { lore: false, dice: true, pool: true, expected: [] },
+        { lore: true, dice: false, pool: false, expected: ['query_campaign_lore'] },
+        { lore: undefined, dice: false, pool: false, expected: ['query_campaign_lore'] },
+    ])('offers only enabled tools with lore=$lore dice=$dice pool=$pool', async ({ lore, dice, pool, expected }) => {
+        script([{ text: 'The gate creaks open.' }]);
+        const { state, callbacks } = makeTurn();
+        state.context.loreToolEnabled = lore;
+        state.context.diceToolEnabled = dice;
+        state.context.diceFairnessActive = pool;
+        await runTurn(state, callbacks, new AbortController());
+        const tools = sendMessageMock.mock.calls[0][5] as any[] | undefined;
+        expect(tools?.map(t => t.function.name) ?? []).toEqual(expected);
+        if (expected.length === 0) expect(tools).toBeUndefined();
+        expect(sendMessageMock).toHaveBeenCalledTimes(1);
+        expect(loreSearchMock).not.toHaveBeenCalled();
+    });
+
+    it('still resolves manual dice with both Story tools off', async () => {
+        script([{ text: 'You force the gate open.' }]);
+        manualRollMock.mockReturnValueOnce({ rolls: [12], tier: 'Success', faceValue: 12, detail: '1d20' });
+        const { state, callbacks, messages } = makeTurn();
+        state.context.loreToolEnabled = false;
+        state.context.diceToolEnabled = false;
+        state.armedRoll = '1d20';
+        await runTurn(state, callbacks, new AbortController());
+        expect(manualRollMock).toHaveBeenCalledWith('1d20', state.context.diceSystem);
+        expect(messages[0].content).toContain('[RESOLVED ROLL');
+        expect(sendMessageMock.mock.calls[0][5]).toBeUndefined();
+        expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    });
+
     it('can still look up lore with AI dice tools disabled', async () => {
         script([
             { text: '', toolCall: { id: 'lore', name: 'query_campaign_lore', arguments: '{"query":"gate"}' } },

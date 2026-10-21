@@ -102,7 +102,7 @@ export function DiceRollModal() {
                         >
                             {diceToolEnabled ? 'Turn off AI dice tools' : 'Turn on AI dice tools'}
                         </button>
-                        <p className="text-[10px] text-text-dim/70">Saved for this campaign. Campaign lookup stays available.</p>
+                        <p className="text-[10px] text-text-dim/70">Saved for this campaign. Manage campaign lookup in Engines → Story AI tool calls.</p>
                     </div>
 
                     {/* Die type selector */}

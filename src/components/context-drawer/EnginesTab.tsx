@@ -42,6 +42,34 @@ export function EnginesTab() {
             </p>
 
             <div className="space-y-4">
+                <section className="bg-void border border-border p-3 space-y-3">
+                    <h3 className="text-[11px] text-terminal uppercase tracking-wider font-bold">Story AI tool calls</h3>
+                    <p className="text-xs text-text-dim leading-relaxed">
+                        Each tool call sends the result back to Story AI in another request, which can add cost. Saved for this campaign; changes apply to the next turn.
+                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <div className="text-sm text-text-primary">Campaign lore lookup</div>
+                            <p className="text-xs text-text-dim">Let Story search campaign notes with query_campaign_lore. Turning this off keeps lore already included in the prompt.</p>
+                        </div>
+                        <button type="button" role="switch" aria-label="Campaign lore lookup" aria-checked={context.loreToolEnabled !== false}
+                            onClick={() => updateContext({ loreToolEnabled: context.loreToolEnabled === false })}
+                            className="min-h-[44px] min-w-[64px] px-3 text-xs text-terminal border border-terminal/30 rounded">
+                            {context.loreToolEnabled !== false ? 'On' : 'Off'}
+                        </button>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <div className="text-sm text-text-primary">AI dice rolls</div>
+                            <p className="text-xs text-text-dim">Let Story request roll_dice. Manual rolls stay available.{context.diceFairnessActive !== false ? ' Currently inactive while Pool mode is on.' : ''}</p>
+                        </div>
+                        <button type="button" role="switch" aria-label="AI dice rolls" aria-checked={context.diceToolEnabled !== false}
+                            onClick={() => updateContext({ diceToolEnabled: context.diceToolEnabled === false })}
+                            className="min-h-[44px] min-w-[64px] px-3 text-xs text-terminal border border-terminal/30 rounded">
+                            {context.diceToolEnabled !== false ? 'On' : 'Off'}
+                        </button>
+                    </div>
+                </section>
                 {/* Surprise Engine */}
                 <div className="space-y-2">
                     <div className="text-[10px] text-terminal uppercase tracking-wider font-bold border-b border-terminal/20 pb-1 flex items-center justify-between">

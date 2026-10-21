@@ -285,7 +285,10 @@ export async function runTurn(
         callbacks.setPipelinePhase?.('generating');
         callbacks.setStreamingStats?.(null);
 
-        const allowTools = toolCallCount < 2 && apiRetryCount < 2;
+        // Manual rolls already supply a resolved fact; pool mode supplies pre-rolled dice.
+        const allowDiceTool = context.diceToolEnabled !== false && context.diceFairnessActive === false && !armed;
+        const availableTools = getToolDefinitions({ allowDiceTool, allowLoreTool: context.loreToolEnabled !== false });
+        const allowTools = availableTools.length > 0 && toolCallCount < 2 && apiRetryCount < 2;
         // The Scene Note is placed at its depth on the outgoing request only, so it never
         // enters currentPayload (tool loop, snapshot, swipes) or the saved chat.
         const requestPayload = applySceneNote(
@@ -293,10 +296,7 @@ export async function runTurn(
             context, getApiFormat(provider),
         );
 
-        // Suppress the dice tool when the player armed a manual roll — the resolved fact is
-        // already in the payload; offering the tool too would let the model double-roll.
-        const allowDiceTool = context.diceToolEnabled !== false && context.diceFairnessActive === false && !armed;
-        const tools = allowTools ? getToolDefinitions({ allowDiceTool }) : undefined;
+        const tools = allowTools ? availableTools : undefined;
 
         const activePreset = settings.presets.find(p => p.id === settings.activePresetId);
         const sampling = activePreset?.sampling;

@@ -82,8 +82,8 @@ const ROLL_DICE_TOOL = {
     }
 } as const;
 
-export function getToolDefinitions(opts: { allowDiceTool: boolean }) {
-    return [...BASE_TOOLS as unknown as OpenAITool[], ...(opts.allowDiceTool ? [ROLL_DICE_TOOL] as unknown as OpenAITool[] : [])];
+export function getToolDefinitions(opts: { allowDiceTool: boolean; allowLoreTool?: boolean }) {
+    return [...(opts.allowLoreTool !== false ? BASE_TOOLS as unknown as OpenAITool[] : []), ...(opts.allowDiceTool ? [ROLL_DICE_TOOL] as unknown as OpenAITool[] : [])];
 }
 
 export const TOOL_DEFINITIONS = BASE_TOOLS;

@@ -260,6 +260,8 @@ export type GameContext = {
     diceFairnessActive: boolean;
     /** Offer roll_dice to Story AI when Pool mode is off. Defaults to true. */
     diceToolEnabled?: boolean;
+    /** Offer query_campaign_lore to Story AI. Defaults to true. */
+    loreToolEnabled?: boolean;
     sceneNote: string;
     sceneNoteActive: boolean;
     sceneNoteDepth: number;
