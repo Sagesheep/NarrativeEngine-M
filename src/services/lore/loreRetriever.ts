@@ -174,12 +174,12 @@ export function retrieveRelevantLore(
 
 /**
  * Search lore chunks based on an explicit query string (from LLM tool call).
- * Uses keyword scoring against the query. Enforces max 3 results or 1500 tokens.
+ * Uses keyword scoring against the query. Enforces max 3 results or 4000 tokens by default.
  */
 export function searchLoreByQuery(
     chunks: LoreChunk[],
     query: string,
-    tokenBudget = 1500,
+    tokenBudget = 4000,
     maxResults = 3
 ): LoreChunk[] {
     if (chunks.length === 0 || !query.trim()) return [];

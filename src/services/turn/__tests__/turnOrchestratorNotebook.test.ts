@@ -21,7 +21,10 @@ const manualRollMock = vi.fn();
 vi.mock('../../chatEngine', () => ({ sendMessage: (...a: unknown[]) => sendMessageMock(...a) }));
 vi.mock('../../llm/payloadSanitizer', () => ({ sanitizePayloadForApi: (p: unknown) => p }));
 vi.mock('../../ports/notify', () => ({ notify: { warning: vi.fn(), error: vi.fn(), success: vi.fn() } }));
-vi.mock('../../lore', () => ({ searchLoreByQuery: vi.fn(() => [{ header: 'Gate', content: 'The gate is iron.' }]) }));
+const loreSearchMock = vi.fn<(...args: unknown[]) => { header: string; content: string }[]>(
+    () => [{ header: 'Gate', content: 'The gate is iron.' }],
+);
+vi.mock('../../lore', () => ({ searchLoreByQuery: (...a: unknown[]) => loreSearchMock(...a) }));
 vi.mock('../../engine', () => ({
     rollEngines: vi.fn(() => ({ appendToInput: '', updatedDCs: {} })),
     rollDiceFairness: vi.fn(() => ''),
@@ -155,6 +158,7 @@ describe('runTurn — Scene Notebook moved to the auxiliary model', () => {
         await runTurn(state, callbacks, new AbortController());
         await flush(700);
         expect(sendMessageMock).toHaveBeenCalledTimes(2);
+        expect(loreSearchMock).toHaveBeenCalledWith(state.loreChunks, 'gate', 4000);
         for (const call of sendMessageMock.mock.calls) {
             expect((call[5] as any[]).map(t => t.function.name)).toEqual(['query_campaign_lore']);
         }
@@ -162,7 +166,7 @@ describe('runTurn — Scene Notebook moved to the auxiliary model', () => {
 
     it('lore and dice calls still loop back to the story model before the prefetch', async () => {
         script([
-            { text: '', toolCall: { id: 't1', name: 'query_campaign_lore', arguments: '{"query":"gate"}' } },
+            { text: '', toolCall: { id: 't1', name: 'query_campaign_lore', arguments: '{"query":"gate","max_tokens":8000}' } },
             { text: '', toolCall: { id: 't2', name: 'roll_dice', arguments: '{"dice":"1d20","reason":"Force the gate"}' } },
             { text: 'You heave the iron gate aside.' },
         ]);
@@ -170,6 +174,7 @@ describe('runTurn — Scene Notebook moved to the auxiliary model', () => {
         await runTurn(state, callbacks, new AbortController());
         await flush(700); // the lore branch dwells 400 ms on its 'checking notes' state
         expect(sendMessageMock).toHaveBeenCalledTimes(3);
+        expect(loreSearchMock).toHaveBeenCalledWith(state.loreChunks, 'gate', 8000);
         const toolMsgs = messages.filter(m => m.role === 'tool');
         expect(toolMsgs.map(m => m.name)).toEqual(['query_campaign_lore', 'roll_dice']);
         expect(toolMsgs[0].content).toContain('The gate is iron.');

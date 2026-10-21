@@ -31,7 +31,16 @@ const BASE_TOOLS = [
             description: 'Search the Game Master notes for specific lore, rules, characters, or locations. Do NOT call this sequentially or spam it. If no relevant lore is found, immediately proceed with the narrative response. IMPORTANT: You MUST use the standard JSON tool call format. NEVER output raw XML <|DSML|> tags in your response text.',
             parameters: {
                 type: 'object' as const,
-                properties: { query: { type: 'string' as const, description: 'The specific search query' } },
+                properties: {
+                    query: { type: 'string' as const, description: 'The specific search query' },
+                    max_tokens: {
+                        type: 'integer' as const,
+                        minimum: 4000,
+                        maximum: 8000,
+                        default: 4000,
+                        description: 'Lore result token budget. Defaults to 4000; request up to 8000 for broader questions.',
+                    },
+                },
                 required: ['query'],
             },
         },
@@ -84,11 +93,18 @@ export function handleLoreTool(
     ctx: ToolContext
 ): LoreHandlerResult {
     let query = '';
-    try { query = JSON.parse(toolArguments).query || ''; } catch { /* ignore */ }
+    let tokenBudget = 4000;
+    try {
+        const args = JSON.parse(toolArguments);
+        query = typeof args?.query === 'string' ? args.query : '';
+        if (typeof args?.max_tokens === 'number' && Number.isFinite(args.max_tokens)) {
+            tokenBudget = Math.max(4000, Math.min(8000, Math.floor(args.max_tokens)));
+        }
+    } catch { /* ignore */ }
 
     let toolResult = 'No relevant lore found.';
     if (query) {
-        const found = searchLoreByQuery(ctx.loreChunks, query);
+        const found = searchLoreByQuery(ctx.loreChunks, query, tokenBudget);
         if (found.length > 0) {
             toolResult = found.map(c => `### ${c.header}\n${c.content}`).join('\n\n');
         }
