@@ -95,6 +95,7 @@ export function LoreCheckModal() {
                     signal: ac.signal,
                     hint: checkHint,
                     categories: checkCategories,
+                    utilityTimeoutSeconds: state.settings.utilityTimeoutSeconds,
                 });
                 setResult(res);
                 setStage('done');

@@ -1,17 +1,17 @@
 /**
  * deepArchiveSearch.ts
  * --------------------
- * Two-phase AI-driven archive scan for "narrative archaeology" — surfaces
- * scattered non-contiguous scenes that semantic/keyword scoring would miss.
+ * AI-driven archive scan for "narrative archaeology" — surfaces scattered
+ * non-contiguous scenes that semantic/keyword scoring would miss.
  *
- * Phase 1: Compact chapter summaries → utility AI selects all relevant chapters.
- * Phase 2: Compact scene entries (within selected chapters only) → utility AI
- *          selects all relevant scene IDs.
- * Round 2: Optional follow-up if phase 2 reveals scenes in un-scanned chapters.
- * Final:   Fetch verbatim scene content, then summarize to fit available budget.
- *          Large content uses MapReduce (partition → summarize each → combine).
+ * Retrieve: vector probes ∥ utility AI chapter pick → tiered union.
+ * Verify:   one utility AI call keeps the relevant scenes.
+ * Final:    fetch verbatim scene content (by importance, to the budget), put it
+ *           back in story order, then summarize. Large content uses MapReduce
+ *           (scene-aligned partitions → summarize each → combine).
  *
  * One-shot per turn. Nothing persisted — condenser captures the output.
+ * Spec: Upgrade/FablePlans/DeepArchiveUpgrade/00_SPEC.md
  */
 
 import type { LLMProvider, ArchiveIndexEntry, ArchiveChapter, ChatMessage } from '../../types';
@@ -31,6 +31,51 @@ import {
 
 const EST_TOKENS = (text: string) => countTokens(text);
 
+const PROBE_TOP_K = 60;
+const PROBE_FLOOR = 0.28;
+const MAX_PER_CHAPTER_C = 8;
+const VERIFY_OVERVIEW_CAP = 20_000;
+
+// Summarize sizing is set by what a utility model handles well in one call,
+// not by the story model's context (45% of a 128k context would otherwise put
+// ~170k tokens into a single utility call).
+const PARTITION_SIZE_TOKENS = 8_000;
+/** Most raw scene text a single summarize call sees before MapReduce kicks in. */
+const MAX_SINGLE_CALL_TOKENS = 24_000;
+/** Most raw scene text fetched at all (highest importance first). */
+const MAX_FETCH_TOKENS = 64_000;
+/** Longest brief asked of the utility model. */
+const MAX_BRIEF_TOKENS = 6_000;
+
+/** Matches the `utilityTimeoutSeconds` setting's default. */
+const DEFAULT_TIMEOUT_MS = 45_000;
+
+export type DeepScanOptions = {
+    /** Per-call deadline (the `utilityTimeoutSeconds` setting). The call is aborted on expiry. */
+    timeoutMs?: number;
+    /** Cancels every in-flight call; the scan then returns ''. */
+    signal?: AbortSignal;
+};
+
+type CallCtx = { timeoutMs: number; signal?: AbortSignal };
+
+/** Utility call with the user's deadline, tracker countdown/EXTEND and abort. */
+function utilityCall(
+    endpoint: LLMProvider,
+    prompt: string,
+    label: string,
+    ctx: CallCtx,
+    opts: { temperature: number; maxTokens?: number },
+): Promise<string> {
+    return llmCall(endpoint, prompt, {
+        ...opts,
+        priority: 'high',
+        trackingLabel: `deep-archive-${label}`,
+        timeoutMs: ctx.timeoutMs,
+        signal: ctx.signal,
+    });
+}
+
 // ── Compact formatters ──
 
 function buildChapterOverview(chapters: ArchiveChapter[]): string {
@@ -42,42 +87,6 @@ function buildChapterOverview(chapters: ArchiveChapter[]): string {
         if (ch.keywords.length > 0) parts.push(`  Keywords: ${ch.keywords.slice(0, 8).join(', ')}`);
         return parts.join('\n');
     }).join('\n\n');
-}
-
-function buildSceneOverview(
-    entries: ArchiveIndexEntry[],
-    sceneRecords: SceneRecord[],
-    softTokenCap: number
-): string {
-    const recordMap = new Map(sceneRecords.map(s => [s.sceneId, s]));
-    const useCompact = entries.length > 150;
-
-    const parts: string[] = [];
-    let tokensUsed = 0;
-
-    // entries are sorted highest-importance first; soft cap drops low-importance tail
-    for (const entry of entries) {
-        const importance = entry.importance?.toFixed(1) ?? '?';
-        const npcs = entry.npcsMentioned.slice(0, 5).join(', ') || 'none';
-        const kws = entry.keywords.slice(0, 6).join(', ');
-        const userSnippet = (entry.userSnippet || '').slice(0, 120);
-
-        let entryText: string;
-        if (useCompact) {
-            entryText = `[Scene ${entry.sceneId}] imp:${importance} | NPCs: ${npcs} | KWs: ${kws}\nPlayer: "${userSnippet}"`;
-        } else {
-            const record = recordMap.get(entry.sceneId);
-            const gmExcerpt = record ? record.assistantContent.slice(0, 130) : '';
-            entryText = `[Scene ${entry.sceneId}] imp:${importance} | NPCs: ${npcs} | KWs: ${kws}\nPlayer: "${userSnippet}"\nGM: "${gmExcerpt}..."`;
-        }
-
-        const entryTokens = EST_TOKENS(entryText);
-        if (tokensUsed + entryTokens > softTokenCap) break;
-        parts.push(entryText);
-        tokensUsed += entryTokens;
-    }
-
-    return parts.join('\n\n');
 }
 
 function buildConversationExcerpt(messages: ChatMessage[], userMessage: string): string {
@@ -112,273 +121,134 @@ async function parseSceneIds(raw: string): Promise<string[]> {
     } catch { return []; }
 }
 
-// ── Helpers ──
-
-function getScenesInChapters(
-    archiveIndex: ArchiveIndexEntry[],
-    chapters: ArchiveChapter[]
-): ArchiveIndexEntry[] {
-    const ranges = chapters.map(ch => ({
-        min: parseInt(ch.sceneRange[0], 10),
-        max: parseInt(ch.sceneRange[1], 10),
-    }));
-    return archiveIndex
-        .filter(entry => {
-            const num = parseInt(entry.sceneId, 10);
-            return ranges.some(r => num >= r.min && num <= r.max);
-        })
-        .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0)); // highest importance first
-}
+// ── Fetch ──
 
 /**
- * Fetches verbatim scene text (Player + GM turns) for the given ids, in the
- * given order, stopping at the raw-token budget. Shared by v1 and v2.
+ * Fetches verbatim scene text (Player + GM turns). Scenes are taken in the
+ * given order (importance) until the raw-token budget runs out, so the budget
+ * keeps the important ones — then the kept scenes are put back in story order
+ * so the summary sees cause before effect.
  */
 function fetchSceneText(
-    sceneIdsSorted: string[],
+    sceneIdsByImportance: string[],
     recordMap: Map<string, SceneRecord>,
     maxFetchTokens: number
 ): { combinedText: string; fetchedCount: number; fetchedTokens: number } {
-    const parts: string[] = [];
+    const kept: { id: string; text: string }[] = [];
     let fetchedTokens = 0;
-    for (const id of sceneIdsSorted) {
+    for (const id of sceneIdsByImportance) {
         const record = recordMap.get(id);
         if (!record) continue;
         const sceneText = `--- SCENE ${id} ---\n[Player]: ${record.userContent}\n[GM]: ${record.assistantContent}`;
         const t = EST_TOKENS(sceneText);
         if (fetchedTokens + t > maxFetchTokens) break;
-        parts.push(sceneText);
+        kept.push({ id, text: sceneText });
         fetchedTokens += t;
     }
-    return { combinedText: parts.join('\n\n'), fetchedCount: parts.length, fetchedTokens };
-}
-
-function makeScenePrompt(conversation: string, sceneOverview: string): string {
-    return joinPromptSections(
-        'You are a narrative continuity analyst for a tabletop RPG campaign.',
-
-        `TASK: Given the current narrative moment and the archived scene index below, identify ALL scenes relevant to the current moment.
-Output schema: {"scenes": ["042", "011", ...]}`,
-
-        `RULES:
-- Include scenes with: mentioned NPCs/locations, decisions with current consequences, events that inform current action, unresolved threads, foreshadowing.
-- Return EVERY relevant scene — do not arbitrarily limit.`,
-
-        JSON_ONLY_FOOTER,
-        ANCHOR_BEFORE_INPUT,
-        INPUT_DELIMITER,
-
-        `[CURRENT INPUT]\n${conversation}`,
-        `[SCENE INDEX]\n${sceneOverview}`,
-    );
+    kept.sort((a, b) => parseInt(a.id, 10) - parseInt(b.id, 10));
+    return { combinedText: kept.map(s => s.text).join('\n\n'), fetchedCount: kept.length, fetchedTokens };
 }
 
 // ── Summarization (single-pass or MapReduce) ──
 
-async function summarizeSceneContent(
-    utilityEndpoint: LLMProvider,
-    sceneText: string,
-    targetTokens: number,
-    onStatus: (msg: string) => void,
-    focusQuery?: string
-): Promise<string> {
-    const PARTITION_SIZE_TOKENS = 8000;
-    const totalTokens = EST_TOKENS(sceneText);
-    const focusLine = focusQuery ? ` Prioritize facts that answer: "${focusQuery}".` : '';
-
-    if (totalTokens <= targetTokens * 3) {
-        onStatus('[3/5] Deep Archive — synthesizing context brief...');
-        const prompt = joinPromptSections(
-            'You are a narrative memory synthesizer for a tabletop RPG.',
-
-            `TASK: Output terse fact bullets and short verbatim quotes only. No narrative prose, no interpretation. Preserve names, places, numbers, outcomes, and unresolved threads. Target approximately ${targetTokens} tokens.${focusLine}`,
-
-            ANCHOR_BEFORE_INPUT,
-            INPUT_DELIMITER,
-
-            `SCENES:\n${sceneText}`,
-        );
-        return llmCall(utilityEndpoint, prompt, { temperature: 0.2, priority: 'high' });
-    }
-
-    // MapReduce path for very large content
-    const approxCharsPerPartition = PARTITION_SIZE_TOKENS * 4;
+/**
+ * Packs `--- SCENE` blocks into partitions of at most `maxTokens`, never
+ * splitting a scene. A single scene larger than the cap gets a partition of
+ * its own. Pure — exported for tests.
+ */
+export function partitionScenes(sceneText: string, maxTokens: number): string[] {
+    const scenes = sceneText.split(/\n\n(?=--- SCENE )/).filter(s => s.trim().length > 0);
     const partitions: string[] = [];
-    for (let i = 0; i < sceneText.length; i += approxCharsPerPartition) {
-        partitions.push(sceneText.slice(i, i + approxCharsPerPartition));
+    let current: string[] = [];
+    let currentTokens = 0;
+    for (const scene of scenes) {
+        const t = EST_TOKENS(scene);
+        if (current.length > 0 && currentTokens + t > maxTokens) {
+            partitions.push(current.join('\n\n'));
+            current = [];
+            currentTokens = 0;
+        }
+        current.push(scene);
+        currentTokens += t;
     }
-
-    const partitionQuota = Math.floor(targetTokens / partitions.length);
-
-    onStatus(`[3/5] Deep Archive — summarizing ${partitions.length} parts...`);
-    const partitionSummaries: string[] = await Promise.all(partitions.map((partition) => {
-        const prompt = `Output terse fact bullets and short verbatim quotes only. No narrative prose, no interpretation. Preserve names, places, numbers, outcomes, and unresolved threads. Target approximately ${partitionQuota} tokens.${focusLine}
-
-${partition}
-
-Summary:`;
-        return llmCall(utilityEndpoint, prompt, { temperature: 0.2, priority: 'high' });
-    }));
-
-    onStatus('[3/5] Deep Archive — combining summaries...');
-    const combinedPrompt = `Merge these fact bullets and quotes into one coherent set. Target approximately ${targetTokens} tokens. Preserve all critical lore, NPC states, and unresolved threads. No narrative prose, no interpretation.${focusLine}
-
-${partitionSummaries.map((s, i) => `[Part ${i + 1}]\n${s}`).join('\n\n')}
-
-Combined brief:`;
-    return llmCall(utilityEndpoint, combinedPrompt, { temperature: 0.2, priority: 'high' });
+    if (current.length > 0) partitions.push(current.join('\n\n'));
+    return partitions;
 }
 
-// ── Main entry point ──
+function makeSummarizePrompt(sceneText: string, targetTokens: number, focusLine: string): string {
+    return joinPromptSections(
+        'You are a narrative memory synthesizer for a tabletop RPG.',
 
-export async function deepArchiveScan(
-    utilityEndpoint: LLMProvider,
-    archiveIndex: ArchiveIndexEntry[],
-    sealedChapters: ArchiveChapter[],
-    campaignId: string,
-    messages: ChatMessage[],
-    userMessage: string,
-    availableBudget: number,
-    onStatus: (msg: string) => void
-): Promise<string> {
-    if (sealedChapters.length === 0 || archiveIndex.length === 0) return '';
+        `TASK: Output terse fact bullets and short verbatim quotes only. No narrative prose, no interpretation. Preserve names, places, numbers, outcomes, and unresolved threads. Scenes are in story order — keep cause before effect. Target approximately ${targetTokens} tokens.${focusLine}`,
 
-    const conversation = buildConversationExcerpt(messages, userMessage);
-    const allSceneRecords: SceneRecord[] = await getList(k(campaignId, 'scenes'));
-
-    // ── Phase 1: Chapter scan ──
-    onStatus('[3/5] Deep Archive — scanning chapters (round 1)...');
-    const chapterOverview = buildChapterOverview(sealedChapters);
-    const chapterPrompt = joinPromptSections(
-        'You are a narrative continuity analyst for a tabletop RPG campaign.',
-
-        `TASK: Given the current player input and recent conversation, identify ALL chapters that contain scenes relevant to the current narrative moment.
-Output schema: {"chapters": ["ch01", "ch03", ...]}`,
-
-        `RULES:
-- Include chapters with: direct NPC/location references, related plotlines, earlier decisions with current consequences, foreshadowing, or thematic echoes.
-- Do NOT arbitrarily limit — include every relevant chapter.`,
-
-        JSON_ONLY_FOOTER,
         ANCHOR_BEFORE_INPUT,
         INPUT_DELIMITER,
 
-        `[CURRENT INPUT]\n${conversation}`,
-        `[CHAPTER INDEX]\n${chapterOverview}`,
+        `SCENES:\n${sceneText}`,
     );
+}
 
-    let selectedChapterIds: string[] = [];
-    try {
-        const raw = await Promise.race([
-            llmCall(utilityEndpoint, chapterPrompt, { temperature: 0.1, priority: 'high' }),
-            new Promise<null>(resolve => setTimeout(() => resolve(null), 20_000)),
-        ]);
-        if (raw) selectedChapterIds = await parseChapterIds(raw);
-    } catch (err) {
-        console.warn('[DeepArchiveSearch] Phase 1 (chapter scan) failed:', err);
-        return '';
+function makeCombinePrompt(partSummaries: string[], targetTokens: number, focusLine: string): string {
+    return joinPromptSections(
+        'You are a narrative memory synthesizer for a tabletop RPG.',
+
+        `TASK: Merge these fact bullets and quotes into one coherent set. The parts are in story order — keep it. Target approximately ${targetTokens} tokens. Preserve all critical lore, NPC states, and unresolved threads. No narrative prose, no interpretation.${focusLine}`,
+
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
+
+        partSummaries.map((s, i) => `[Part ${i + 1}]\n${s}`).join('\n\n'),
+    );
+}
+
+async function summarizeSceneContent(
+    utilityEndpoint: LLMProvider,
+    sceneText: string,
+    budgetTokens: number,
+    onStatus: (msg: string) => void,
+    ctx: CallCtx,
+    focusQuery?: string
+): Promise<string> {
+    const targetTokens = Math.min(budgetTokens, MAX_BRIEF_TOKENS);
+    const totalTokens = EST_TOKENS(sceneText);
+    const focusLine = focusQuery ? ` Prioritize facts that answer: "${focusQuery}".` : '';
+
+    const partitions = totalTokens <= Math.min(targetTokens * 3, MAX_SINGLE_CALL_TOKENS)
+        ? [sceneText]
+        : partitionScenes(sceneText, PARTITION_SIZE_TOKENS);
+
+    if (partitions.length === 1) {
+        onStatus('[3/5] Deep Archive — synthesizing context brief...');
+        return utilityCall(utilityEndpoint, makeSummarizePrompt(sceneText, targetTokens, focusLine), 'summarize', ctx, { temperature: 0.2 });
     }
 
-    if (selectedChapterIds.length === 0) {
-        console.log('[DeepArchiveSearch] Round 1: no chapters selected.');
-        return '';
+    // MapReduce path for large content. A failed part is dropped rather than
+    // sinking the whole brief.
+    const partitionQuota = Math.floor(targetTokens / partitions.length);
+
+    onStatus(`[3/5] Deep Archive — summarizing ${partitions.length} parts...`);
+    const settled = await Promise.allSettled(partitions.map(partition =>
+        utilityCall(utilityEndpoint, makeSummarizePrompt(partition, partitionQuota, focusLine), 'summarize-part', ctx, { temperature: 0.2 })));
+    const partitionSummaries = settled
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value.trim().length > 0)
+        .map(r => r.value);
+
+    if (partitionSummaries.length === 0) {
+        const firstError = settled.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+        throw firstError?.reason ?? new Error('Deep Archive: every partition summary came back empty');
+    }
+    if (partitionSummaries.length < partitions.length) {
+        console.warn(`[DeepArchiveV2] ${partitions.length - partitionSummaries.length}/${partitions.length} partition summaries failed — combining the rest`);
     }
 
-    const selectedChapters = sealedChapters.filter(ch => selectedChapterIds.includes(ch.chapterId));
-    console.log(`[DeepArchiveSearch] Round 1: ${sealedChapters.length} chapters → ${selectedChapters.length} selected`);
-
-    // ── Phase 2: Scene scan within selected chapters ──
-    onStatus('[3/5] Deep Archive — scanning scenes (round 1)...');
-    const filteredEntries = getScenesInChapters(archiveIndex, selectedChapters);
-    const sceneOverview1 = buildSceneOverview(filteredEntries, allSceneRecords, 20_000);
-
-    const notebookIds = new Set<string>();
-    try {
-        const raw = await Promise.race([
-            llmCall(utilityEndpoint, makeScenePrompt(conversation, sceneOverview1), { temperature: 0.1, priority: 'high' }),
-            new Promise<null>(resolve => setTimeout(() => resolve(null), 35_000)),
-        ]);
-        if (raw) {
-            const parsed = await parseSceneIds(raw);
-            parsed.forEach(id => notebookIds.add(id));
-        }
-    } catch (err) {
-        console.warn('[DeepArchiveSearch] Phase 2 round 1 failed:', err);
-        return '';
-    }
-
-    console.log(`[DeepArchiveSearch] Round 1 scenes: ${filteredEntries.length} in scope → ${notebookIds.size} selected`);
-
-    // ── Round 2: follow up on scenes outside scanned chapter ranges ──
-    const scannedRanges = selectedChapters.map(ch => ({
-        min: parseInt(ch.sceneRange[0], 10),
-        max: parseInt(ch.sceneRange[1], 10),
-    }));
-    const uncoveredIds = [...notebookIds].filter(id => {
-        const num = parseInt(id, 10);
-        return !scannedRanges.some(r => num >= r.min && num <= r.max);
-    });
-
-    if (uncoveredIds.length > 0) {
-        const uncoveredNums = uncoveredIds.map(id => parseInt(id, 10));
-        const extraChapters = sealedChapters.filter(ch => {
-            const min = parseInt(ch.sceneRange[0], 10);
-            const max = parseInt(ch.sceneRange[1], 10);
-            return uncoveredNums.some(n => n >= min && n <= max) && !selectedChapterIds.includes(ch.chapterId);
-        });
-
-        if (extraChapters.length > 0) {
-            onStatus('[3/5] Deep Archive — scanning scenes (round 2)...');
-            const extraEntries = getScenesInChapters(archiveIndex, extraChapters);
-            const sceneOverview2 = buildSceneOverview(extraEntries, allSceneRecords, 20_000);
-            try {
-                const raw = await Promise.race([
-                    llmCall(utilityEndpoint, makeScenePrompt(conversation, sceneOverview2), { temperature: 0.1, priority: 'high' }),
-                    new Promise<null>(resolve => setTimeout(() => resolve(null), 35_000)),
-                ]);
-                if (raw) {
-                    const parsed = await parseSceneIds(raw);
-                    parsed.forEach(id => notebookIds.add(id));
-                }
-                console.log(`[DeepArchiveSearch] Round 2: ${extraChapters.length} extra chapters → ${notebookIds.size} total selected`);
-            } catch (err) {
-                console.warn('[DeepArchiveSearch] Phase 2 round 2 failed (non-fatal):', err);
-            }
-        }
-    }
-
-    if (notebookIds.size === 0) return '';
-
-    // ── Fetch scene content (sorted by importance, highest first) ──
-    onStatus('[3/5] Deep Archive — fetching scene content...');
-    const indexMap = new Map(archiveIndex.map(e => [e.sceneId, e]));
-    const notebookIdsSorted = [...notebookIds].sort((a, b) => {
-        return (indexMap.get(b)?.importance ?? 0) - (indexMap.get(a)?.importance ?? 0);
-    });
-
-    const recordMap = new Map(allSceneRecords.map(s => [s.sceneId, s]));
-    const MAX_FETCH_TOKENS = availableBudget * 4; // raw content before summarization
-    const fetched = fetchSceneText(notebookIdsSorted, recordMap, MAX_FETCH_TOKENS);
-
-    console.log(`[DeepArchiveSearch] ${notebookIds.size} candidate scenes → ${fetched.fetchedCount} fetched (~${fetched.fetchedTokens} raw tokens)`);
-
-    if (fetched.fetchedCount === 0) return '';
-
-    const brief = await summarizeSceneContent(utilityEndpoint, fetched.combinedText, availableBudget, onStatus);
-    console.log(`[DeepArchiveSearch] Brief generated: ~${EST_TOKENS(brief)} tokens`);
-    return brief;
+    onStatus('[3/5] Deep Archive — combining summaries...');
+    return utilityCall(utilityEndpoint, makeCombinePrompt(partitionSummaries, targetTokens, focusLine), 'combine', ctx, { temperature: 0.2 });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// v2 — Union retrieval: vector probes ∥ chapter batch call → tiered union →
-// single verify call → shared fetch + summarize.
-// Spec: Upgrade/FablePlans/DeepArchiveUpgrade/00_SPEC.md
+// Union retrieval: vector probes ∥ chapter batch call → tiered union →
+// single verify call → fetch + summarize.
 // ═══════════════════════════════════════════════════════════════════════════
-
-const PROBE_TOP_K = 60;
-const PROBE_FLOOR = 0.28;
-const MAX_PER_CHAPTER_C = 8;
-const VERIFY_OVERVIEW_CAP = 20_000;
 
 export type TieredCandidate = {
     entry: ArchiveIndexEntry;
@@ -396,7 +266,7 @@ const TIER_MARK: Record<TieredCandidate['tier'], string> = { A: '◆', B: '○',
  * bandit-fight scene that IS a feat — the probes bridge that abstraction gap.
  * Returns `[searchText]` on any failure.
  */
-async function expandProbes(utilityEndpoint: LLMProvider, searchText: string): Promise<string[]> {
+async function expandProbes(utilityEndpoint: LLMProvider, searchText: string, ctx: CallCtx): Promise<string[]> {
     const fallback = [searchText];
     try {
         const prompt = joinPromptSections(
@@ -412,10 +282,7 @@ Example: "my feats across the campaign" → ["won a difficult battle", "rescued 
             `Search request: "${searchText}"`,
         );
 
-        const raw = await Promise.race([
-            llmCall(utilityEndpoint, prompt, { temperature: 0.2, priority: 'high', maxTokens: 250 }),
-            new Promise<null>(resolve => setTimeout(() => resolve(null), 20_000)),
-        ]);
+        const raw = await utilityCall(utilityEndpoint, prompt, 'probes', ctx, { temperature: 0.2, maxTokens: 250 });
         if (!raw) return fallback;
 
         let clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
@@ -431,7 +298,8 @@ Example: "my feats across the campaign" → ["won a difficult battle", "rescued 
             ? parsed.filter((x: unknown): x is string => typeof x === 'string' && x.trim().length > 0).slice(0, 6)
             : [];
         return probes.length > 0 ? [searchText, ...probes] : fallback;
-    } catch {
+    } catch (err) {
+        console.warn('[DeepArchiveV2] Probe expansion failed (non-fatal, using raw query):', err);
         return fallback;
     }
 }
@@ -534,7 +402,7 @@ function renderTieredEntry(c: TieredCandidate, recordMap: Map<string, SceneRecor
 
 /**
  * With a user query, relevance is judged against `[SEARCH QUERY]` and the
- * conversation is secondary context; without one, keying matches v1 exactly.
+ * conversation is secondary context; without one, the conversation is the input.
  */
 function buildKeyedInput(searchKey: string | null, conversation: string): string {
     return searchKey
@@ -588,9 +456,10 @@ Output schema: {"scenes": ["042", "011", ...]}`,
 /**
  * Deep Archive Scan v2 — union retrieval.
  *
- * Degradation ladder: embedder off → chapter path only (≈v1); chapter call
- * fails → probes only; verify fails → tier-A fallback; everything fails →
- * `''` (caller falls back to standard recall).
+ * Degradation ladder: embedder off → chapter path only; chapter call fails or
+ * times out → probes only; verify fails or times out → tier-A fallback;
+ * everything fails → `''` (caller falls back to standard recall). Each utility
+ * call is bounded by `opts.timeoutMs` and aborted when it expires.
  */
 export async function deepArchiveScanV2(
     utilityEndpoint: LLMProvider,
@@ -602,8 +471,12 @@ export async function deepArchiveScanV2(
     availableBudget: number,
     onStatus: (msg: string) => void,
     searchQuery?: string,
+    opts: DeepScanOptions = {},
 ): Promise<string> {
     if (sealedChapters.length === 0 || archiveIndex.length === 0) return '';
+
+    const ctx: CallCtx = { timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, signal: opts.signal };
+    const cancelled = () => ctx.signal?.aborted === true;
 
     const conversation = buildConversationExcerpt(messages, userMessage);
     const searchKey = searchQuery?.trim() || null;
@@ -621,11 +494,12 @@ export async function deepArchiveScanV2(
     let probes: string[] = [];
     if (embedderReady) {
         onStatus('[3/5] Deep Archive v2 — expanding search probes...');
-        probes = await expandProbes(utilityEndpoint, searchText);
+        probes = await expandProbes(utilityEndpoint, searchText, ctx);
         console.log(`[DeepArchiveV2] ${probes.length} probe(s) for "${searchText.slice(0, 80)}"`);
     } else {
         console.log('[DeepArchiveV2] Embedder not ready — chapter path only.');
     }
+    if (cancelled()) return '';
 
     // ── Phase 1a ∥ 1b: vector probes + chapter batch call ──
     onStatus('[3/5] Deep Archive v2 — probing index + scanning chapters...');
@@ -645,23 +519,22 @@ export async function deepArchiveScanV2(
         : Promise.resolve([]);
 
     const chapterOverview = buildChapterOverview(sealedChapters);
-    const chaptersPromise: Promise<ArchiveChapter[]> = Promise.race([
-        llmCall(utilityEndpoint, makeChapterPromptV2(searchKey, conversation, chapterOverview), { temperature: 0.1, priority: 'high' }),
-        new Promise<null>(resolve => setTimeout(() => resolve(null), 20_000)),
-    ])
-        .then(async raw => {
-            if (!raw) return [];
-            const ids = await parseChapterIds(raw);
-            return sealedChapters.filter(ch => ids.includes(ch.chapterId));
-        })
-        .catch(err => {
-            console.warn('[DeepArchiveV2] Chapter scan failed (non-fatal, probes-only):', err);
-            return [];
-        });
+    const chaptersPromise: Promise<ArchiveChapter[]> =
+        utilityCall(utilityEndpoint, makeChapterPromptV2(searchKey, conversation, chapterOverview), 'chapters', ctx, { temperature: 0.1 })
+            .then(async raw => {
+                if (!raw) return [];
+                const ids = await parseChapterIds(raw);
+                return sealedChapters.filter(ch => ids.includes(ch.chapterId));
+            })
+            .catch(err => {
+                console.warn('[DeepArchiveV2] Chapter scan failed (non-fatal, probes-only):', err);
+                return [];
+            });
 
     const [probeHits, selectedChapters] = await Promise.all([probesPromise, chaptersPromise]);
     console.log(`[DeepArchiveV2] Retrieval: ${probeHits.length} probe hits, ${selectedChapters.length}/${sealedChapters.length} chapters selected`);
 
+    if (cancelled()) return '';
     if (probeHits.length === 0 && selectedChapters.length === 0) return '';
 
     // ── Tier the union, trim to the verify budget ──
@@ -688,14 +561,12 @@ export async function deepArchiveScanV2(
     const candidateIds = new Set(kept.map(c => c.entry.sceneId));
     let selectedIds: string[] | null = null;
     try {
-        const raw = await Promise.race([
-            llmCall(utilityEndpoint, makeVerifyPrompt(searchKey, conversation, kept.map(renderOf).join('\n\n')), { temperature: 0.1, priority: 'high' }),
-            new Promise<null>(resolve => setTimeout(() => resolve(null), 35_000)),
-        ]);
+        const raw = await utilityCall(utilityEndpoint, makeVerifyPrompt(searchKey, conversation, kept.map(renderOf).join('\n\n')), 'verify', ctx, { temperature: 0.1 });
         if (raw) selectedIds = (await parseSceneIds(raw)).filter(id => candidateIds.has(id));
     } catch (err) {
         console.warn('[DeepArchiveV2] Verify call failed:', err);
     }
+    if (cancelled()) return '';
 
     if (selectedIds === null) {
         // Verify unavailable → trust the strongest signal (both retrievers agreed).
@@ -704,17 +575,17 @@ export async function deepArchiveScanV2(
     }
     if (selectedIds.length === 0) return '';
 
-    // ── Phase 3: fetch + summarize (shared with v1) ──
+    // ── Phase 3: fetch (importance decides what fits) + summarize (story order) ──
     onStatus('[3/5] Deep Archive v2 — fetching scene content...');
     const indexMap = new Map(archiveIndex.map(e => [e.sceneId, e]));
-    const sorted = [...new Set(selectedIds)].sort((a, b) =>
+    const byImportance = [...new Set(selectedIds)].sort((a, b) =>
         (indexMap.get(b)?.importance ?? 0) - (indexMap.get(a)?.importance ?? 0));
 
-    const fetched = fetchSceneText(sorted, recordMap, availableBudget * 4);
+    const fetched = fetchSceneText(byImportance, recordMap, Math.min(availableBudget * 4, MAX_FETCH_TOKENS));
     console.log(`[DeepArchiveV2] ${selectedIds.length} verified scenes → ${fetched.fetchedCount} fetched (~${fetched.fetchedTokens} raw tokens)`);
     if (fetched.fetchedCount === 0) return '';
 
-    const brief = await summarizeSceneContent(utilityEndpoint, fetched.combinedText, availableBudget, onStatus, searchKey ?? undefined);
+    const brief = await summarizeSceneContent(utilityEndpoint, fetched.combinedText, availableBudget, onStatus, ctx, searchKey ?? undefined);
     console.log(`[DeepArchiveV2] Brief generated: ~${EST_TOKENS(brief)} tokens`);
     return brief;
 }

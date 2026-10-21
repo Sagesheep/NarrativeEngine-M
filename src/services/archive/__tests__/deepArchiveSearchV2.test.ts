@@ -3,8 +3,10 @@ import {
     deepArchiveScanV2,
     tierCandidates,
     trimTieredToBudget,
+    partitionScenes,
     type TieredCandidate
 } from '../deepArchiveSearch';
+import { countTokens, ANCHOR_BEFORE_INPUT, INPUT_DELIMITER } from '../../infrastructure';
 
 import { llmCall } from '../../../utils/llmCall';
 import { isEmbedderReady, semanticSearchScored } from '../../embedding';
@@ -58,6 +60,13 @@ function makeIndexEntry(sceneId: string, overrides: Partial<ArchiveIndexEntry> =
         importance: 1.0,
         ...overrides,
     } as ArchiveIndexEntry;
+}
+
+/** Stand-in for llmCall's UtilityTimeoutError (the real module is mocked out). */
+function utilityTimeout(ms: number, label: string): Error {
+    const err = new Error(`Utility call "${label}" exceeded deadline (${ms}ms)`);
+    err.name = 'UtilityTimeoutError';
+    return err;
 }
 
 const defaultMockLlm = (prompts: string[]) => async (_provider: any, prompt: string, _opts: any) => {
@@ -413,8 +422,6 @@ describe('Deep Archive Search V2 Tests', () => {
         });
 
         it('falls back to Tier A scenes when verify call times out', async () => {
-            vi.useFakeTimers();
-
             vi.mocked(isEmbedderReady).mockReturnValue(true);
             vi.mocked(semanticSearchScored).mockResolvedValue([
                 { id: '001', score: 0.9 }
@@ -431,7 +438,8 @@ describe('Deep Archive Search V2 Tests', () => {
                     return Promise.resolve(JSON.stringify({ chapters: ['ch01'] }));
                 }
                 if (prompt.includes('[CANDIDATE SCENES]')) {
-                    return new Promise(() => {}); // never resolves
+                    // What llmCall does when its timeoutMs deadline passes (it also aborts the request).
+                    return Promise.reject(utilityTimeout(_opts.timeoutMs, _opts.trackingLabel));
                 }
                 if (prompt.includes('memory synthesizer')) {
                     return Promise.resolve('fallback brief');
@@ -442,7 +450,7 @@ describe('Deep Archive Search V2 Tests', () => {
             const archiveIndex = [makeIndexEntry('001')];
             const sealedChapters = [makeChapter('ch01', '001', '010')];
 
-            const scanPromise = deepArchiveScanV2(
+            const brief = await deepArchiveScanV2(
                 { provider: 'openai' } as any,
                 archiveIndex,
                 sealedChapters,
@@ -453,12 +461,7 @@ describe('Deep Archive Search V2 Tests', () => {
                 () => {}
             );
 
-            await vi.advanceTimersByTimeAsync(35_001);
-
-            const brief = await scanPromise;
             expect(brief).toBe('fallback brief');
-
-            vi.useRealTimers();
         });
 
         it('falls back to Tier A scenes when verify call throws an error', async () => {
@@ -668,6 +671,262 @@ describe('Deep Archive Search V2 Tests', () => {
             const trim5 = trimTieredToBudget(tiered, tokenOf, 5);
             expect(trim5).toHaveLength(1);
             expect(trim5[0].entry.sceneId).toBe('001');
+        });
+    });
+
+    // ── Group 7: Timeout setting ──
+    describe('7. Timeout setting', () => {
+        async function runScan(opts?: { timeoutMs?: number; signal?: AbortSignal }) {
+            vi.mocked(llmCall).mockImplementation(defaultMockLlm([]));
+            vi.mocked(isEmbedderReady).mockReturnValue(true);
+            vi.mocked(semanticSearchScored).mockResolvedValue([{ id: '001', score: 0.9 }]);
+            vi.mocked(getList).mockResolvedValue([
+                { sceneId: '001', userContent: 'user content', assistantContent: 'assistant content' } as any
+            ]);
+            return deepArchiveScanV2(
+                { provider: 'openai' } as any,
+                [makeIndexEntry('001')],
+                [makeChapter('ch01', '001', '010')],
+                'campaign-1',
+                [] as any,
+                'world',
+                500,
+                () => {},
+                'q',
+                opts,
+            );
+        }
+
+        it('gives every utility call the configured timeout, a tracking label and the caller signal', async () => {
+            const ac = new AbortController();
+            const brief = await runScan({ timeoutMs: 90_000, signal: ac.signal });
+            expect(brief).toBe('synthesized memory');
+
+            const calls = vi.mocked(llmCall).mock.calls;
+            expect(calls.length).toBe(4); // probes, chapters, verify, summarize
+            for (const [, , opts] of calls) {
+                expect(opts?.timeoutMs).toBe(90_000);
+                expect(opts?.trackingLabel).toMatch(/^deep-archive-/);
+                expect(opts?.signal).toBe(ac.signal);
+            }
+            expect(calls.map(c => c[2]?.trackingLabel)).toEqual([
+                'deep-archive-probes', 'deep-archive-chapters', 'deep-archive-verify', 'deep-archive-summarize',
+            ]);
+        });
+
+        it('defaults to 45s (the utilityTimeoutSeconds default) when no timeout is passed', async () => {
+            await runScan();
+            for (const [, , opts] of vi.mocked(llmCall).mock.calls) {
+                expect(opts?.timeoutMs).toBe(45_000);
+            }
+        });
+
+        it('stops without verifying or summarizing once the caller aborts', async () => {
+            const ac = new AbortController();
+            vi.mocked(llmCall).mockImplementation(async (_p: any, prompt: string) => {
+                if (prompt.includes('[CHAPTER INDEX]')) {
+                    ac.abort();
+                    throw new DOMException('Aborted', 'AbortError');
+                }
+                return defaultMockLlm([])(_p, prompt, {});
+            });
+            vi.mocked(isEmbedderReady).mockReturnValue(true);
+            vi.mocked(semanticSearchScored).mockResolvedValue([{ id: '001', score: 0.9 }]);
+
+            const brief = await deepArchiveScanV2(
+                { provider: 'openai' } as any,
+                [makeIndexEntry('001')],
+                [makeChapter('ch01', '001', '010')],
+                'campaign-1', [] as any, 'world', 500, () => {}, 'q',
+                { signal: ac.signal },
+            );
+
+            expect(brief).toBe('');
+            const prompts = vi.mocked(llmCall).mock.calls.map(c => c[1]);
+            expect(prompts.some(p => p.includes('[CANDIDATE SCENES]'))).toBe(false);
+            expect(prompts.some(p => p.includes('memory synthesizer'))).toBe(false);
+        });
+    });
+
+    // ── Group 8: Story order ──
+    describe('8. Story order', () => {
+        const sceneRecord = (id: string) => ({
+            sceneId: id,
+            userContent: `player action in scene ${id}`,
+            assistantContent: `gm narration for scene ${id} `.repeat(30),
+        });
+        const sceneTokens = (id: string) => {
+            const r = sceneRecord(id);
+            return countTokens(`--- SCENE ${id} ---\n[Player]: ${r.userContent}\n[GM]: ${r.assistantContent}`);
+        };
+
+        async function scanAndGetSummarizePrompt(availableBudget: number): Promise<string> {
+            const prompts: string[] = [];
+            vi.mocked(llmCall).mockImplementation(async (_p: any, prompt: string) => {
+                prompts.push(prompt);
+                if (prompt.includes('[CHAPTER INDEX]')) return JSON.stringify({ chapters: ['ch01'] });
+                // Verify answers in importance order, not story order.
+                if (prompt.includes('[CANDIDATE SCENES]')) return JSON.stringify({ scenes: ['005', '003', '001'] });
+                if (prompt.includes('memory synthesizer')) return 'brief';
+                return '';
+            });
+            vi.mocked(isEmbedderReady).mockReturnValue(false);
+            vi.mocked(getList).mockResolvedValue(['001', '003', '005'].map(sceneRecord) as any);
+
+            const brief = await deepArchiveScanV2(
+                { provider: 'openai' } as any,
+                [
+                    makeIndexEntry('001', { importance: 1.0 }),
+                    makeIndexEntry('003', { importance: 2.0 }),
+                    makeIndexEntry('005', { importance: 3.0 }),
+                ],
+                [makeChapter('ch01', '001', '010')],
+                'campaign-1', [] as any, 'world', availableBudget, () => {},
+            );
+            expect(brief).toBe('brief');
+            const summarize = prompts.find(p => p.includes('memory synthesizer'));
+            expect(summarize).toBeDefined();
+            return summarize!;
+        }
+
+        it('summarizes the kept scenes in chronological (sceneId) order', async () => {
+            const prompt = await scanAndGetSummarizePrompt(5_000);
+            const i1 = prompt.indexOf('--- SCENE 001 ---');
+            const i3 = prompt.indexOf('--- SCENE 003 ---');
+            const i5 = prompt.indexOf('--- SCENE 005 ---');
+            expect(i1).toBeGreaterThan(-1);
+            expect(i1).toBeLessThan(i3);
+            expect(i3).toBeLessThan(i5);
+        });
+
+        it('lets importance decide what fits the budget, then restores story order', async () => {
+            // Fetch cap is budget × 4: room for the two most important scenes, not the third.
+            const twoScenes = sceneTokens('005') + sceneTokens('003');
+            const budget = Math.floor((twoScenes + sceneTokens('001') / 2) / 4);
+
+            const prompt = await scanAndGetSummarizePrompt(budget);
+            expect(prompt).not.toContain('--- SCENE 001 ---'); // least important, dropped
+            const i3 = prompt.indexOf('--- SCENE 003 ---');
+            const i5 = prompt.indexOf('--- SCENE 005 ---');
+            expect(i3).toBeGreaterThan(-1);
+            expect(i3).toBeLessThan(i5);
+        });
+    });
+
+    // ── Group 9: Scene-boundary splitting ──
+    describe('9. Scene-boundary splitting', () => {
+        const scene = (id: string, words: number) =>
+            `--- SCENE ${id} ---\n[Player]: act ${id}\n[GM]: ${Array.from({ length: words }, (_, i) => `w${id}x${i}`).join(' ')} END_${id}`;
+
+        it('partitionScenes packs whole scenes and never cuts one in half', () => {
+            const scenes = ['001', '002', '003', '004', '005'].map(id => scene(id, 120));
+            const text = scenes.join('\n\n');
+            const per = countTokens(scenes[0]);
+            const parts = partitionScenes(text, Math.floor(per * 2.5));
+
+            expect(parts).toHaveLength(3); // 2 + 2 + 1
+            expect(parts.join('\n\n')).toBe(text);
+            for (const part of parts) {
+                expect(part.startsWith('--- SCENE ')).toBe(true);
+                const headers = part.match(/--- SCENE (\d+) ---/g) ?? [];
+                for (const h of headers) {
+                    const id = h.match(/\d+/)![0];
+                    expect(part).toContain(`END_${id}`);
+                }
+            }
+        });
+
+        it('partitionScenes gives an oversized scene a partition of its own', () => {
+            const big = scene('002', 400);
+            const text = [scene('001', 20), big, scene('003', 20)].join('\n\n');
+            const parts = partitionScenes(text, Math.floor(countTokens(big) / 2));
+            expect(parts).toHaveLength(3);
+            expect(parts[1]).toBe(big);
+        });
+
+        it('MapReduce sends whole scenes per partition and uses the shared prompt framing', async () => {
+            const ids = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(3, '0'));
+            const records = ids.map(id => ({
+                sceneId: id,
+                userContent: `act ${id}`,
+                assistantContent: `${Array.from({ length: 1500 }, (_, i) => `w${id}x${i}`).join(' ')} END_${id}`,
+            }));
+            const prompts: { prompt: string; opts: any }[] = [];
+            vi.mocked(llmCall).mockImplementation(async (_p: any, prompt: string, opts: any) => {
+                prompts.push({ prompt, opts });
+                if (prompt.includes('[CHAPTER INDEX]')) return JSON.stringify({ chapters: ['ch01'] });
+                if (prompt.includes('[CANDIDATE SCENES]')) return JSON.stringify({ scenes: ids });
+                if (prompt.includes('Merge these')) return 'combined brief';
+                if (prompt.includes('memory synthesizer')) return '- a fact';
+                return '';
+            });
+            vi.mocked(isEmbedderReady).mockReturnValue(false);
+            vi.mocked(getList).mockResolvedValue(records as any);
+
+            // 128k-context-sized budget: must not turn into one giant call.
+            const brief = await deepArchiveScanV2(
+                { provider: 'openai' } as any,
+                ids.map(id => makeIndexEntry(id)),
+                [makeChapter('ch01', '001', '020')],
+                'campaign-1', [] as any, 'world', 57_600, () => {}, undefined,
+                { timeoutMs: 60_000 },
+            );
+            expect(brief).toBe('combined brief');
+
+            const partPrompts = prompts.filter(p => p.opts?.trackingLabel === 'deep-archive-summarize-part');
+            expect(partPrompts.length).toBeGreaterThan(1);
+            const seen = new Set<string>();
+            for (const { prompt, opts } of partPrompts) {
+                expect(opts.timeoutMs).toBe(60_000);
+                expect(prompt).toContain(INPUT_DELIMITER);
+                expect(prompt).toContain(ANCHOR_BEFORE_INPUT);
+                const scenesSection = prompt.slice(prompt.indexOf('SCENES:\n') + 'SCENES:\n'.length);
+                // No single partition call is oversized (8k partitions, nothing like 170k).
+                expect(countTokens(scenesSection)).toBeLessThanOrEqual(8_000);
+                for (const h of scenesSection.match(/--- SCENE (\d+) ---/g) ?? []) {
+                    const id = h.match(/\d+/)![0];
+                    expect(scenesSection).toContain(`END_${id}`);
+                    seen.add(id);
+                }
+            }
+            expect(seen.size).toBeGreaterThan(0);
+
+            const combine = prompts.find(p => p.opts?.trackingLabel === 'deep-archive-combine');
+            expect(combine).toBeDefined();
+            expect(combine!.prompt).toContain(INPUT_DELIMITER);
+            expect(combine!.prompt).toContain(ANCHOR_BEFORE_INPUT);
+            expect(combine!.opts.timeoutMs).toBe(60_000);
+        });
+
+        it('a failed partition is dropped, not fatal', async () => {
+            const ids = Array.from({ length: 6 }, (_, i) => String(i + 1).padStart(3, '0'));
+            const records = ids.map(id => ({
+                sceneId: id,
+                userContent: `act ${id}`,
+                assistantContent: `${Array.from({ length: 3000 }, (_, i) => `w${id}x${i}`).join(' ')} END_${id}`,
+            }));
+            let partCalls = 0;
+            vi.mocked(llmCall).mockImplementation(async (_p: any, prompt: string, opts: any) => {
+                if (prompt.includes('[CHAPTER INDEX]')) return JSON.stringify({ chapters: ['ch01'] });
+                if (prompt.includes('[CANDIDATE SCENES]')) return JSON.stringify({ scenes: ids });
+                if (opts?.trackingLabel === 'deep-archive-summarize-part') {
+                    if (partCalls++ === 0) throw utilityTimeout(opts.timeoutMs, opts.trackingLabel);
+                    return '- a fact';
+                }
+                if (prompt.includes('Merge these')) return 'combined brief';
+                return '';
+            });
+            vi.mocked(isEmbedderReady).mockReturnValue(false);
+            vi.mocked(getList).mockResolvedValue(records as any);
+
+            const brief = await deepArchiveScanV2(
+                { provider: 'openai' } as any,
+                ids.map(id => makeIndexEntry(id)),
+                [makeChapter('ch01', '001', '020')],
+                'campaign-1', [] as any, 'world', 57_600, () => {},
+            );
+            expect(partCalls).toBeGreaterThan(1);
+            expect(brief).toBe('combined brief');
         });
     });
 

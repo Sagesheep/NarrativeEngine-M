@@ -12,7 +12,7 @@ import type {
 } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { retrieveRelevantLore } from './loreRetriever';
-import { deepArchiveScan } from '../archive';
+import { deepArchiveScanV2 } from '../archive';
 import { semanticSearch, isEmbedderReady } from '../embedding';
 import { expandQuery } from '../turn/stages/expandQueryStage';
 import { realUtilityLLM } from '../turn/utilityLLM';
@@ -39,6 +39,8 @@ export type LoreCheckInput = {
     signal?: AbortSignal;
     hint?: string;
     categories?: LoreCheckCategory[];
+    /** The `utilityTimeoutSeconds` setting; bounds each archive-scan call. */
+    utilityTimeoutSeconds?: number;
 };
 
 export function buildSearchQuery(selectedText: string, hint?: string): string {
@@ -51,7 +53,7 @@ export async function runLoreCheck(input: LoreCheckInput): Promise<LoreCheckResu
         utilityEndpoint, selectedText, surroundingContext,
         messages, targetMessageId, loreChunks,
         archiveIndex, sealedChapters, campaignId,
-        npcLedger, onStatus, signal, hint, categories,
+        npcLedger, onStatus, signal, hint, categories, utilityTimeoutSeconds,
     } = input;
 
     const searchQuery = buildSearchQuery(selectedText, hint);
@@ -89,7 +91,7 @@ export async function runLoreCheck(input: LoreCheckInput): Promise<LoreCheckResu
     let archiveBrief = '';
     if (sealedChapters.length > 0 && archiveIndex.length > 0) {
         try {
-            archiveBrief = await deepArchiveScan(
+            archiveBrief = await deepArchiveScanV2(
                 utilityEndpoint,
                 archiveIndex,
                 sealedChapters,
@@ -98,9 +100,12 @@ export async function runLoreCheck(input: LoreCheckInput): Promise<LoreCheckResu
                 searchQuery,
                 1500,
                 onStatus,
+                searchQuery,
+                { timeoutMs: (utilityTimeoutSeconds ?? 45) * 1000, signal },
             );
         } catch (err) {
-            console.warn('[LoreCheck] deepArchiveScan failed (non-fatal):', err);
+            if (signal?.aborted) throw err;
+            console.warn('[LoreCheck] deepArchiveScanV2 failed (non-fatal):', err);
             archiveBrief = '';
         }
     }

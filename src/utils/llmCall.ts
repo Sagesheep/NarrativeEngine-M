@@ -35,15 +35,26 @@ export async function llmCall(
         thinkingEffort?: ThinkingEffort;
         /** If set, registers this call with utilityCallTracker so UI can show countdown + EXTEND. */
         trackingLabel?: string;
-        /** Soft deadline in ms. On expiry, rejects with UtilityTimeoutError. Caller should fall back. */
+        /** Soft deadline in ms. On expiry, aborts the request and rejects with UtilityTimeoutError. Caller should fall back. */
         timeoutMs?: number;
     }
 ): Promise<string> {
-    const inner = runInner(provider, prompt, opts, opts?.trackingLabel ?? 'utility');
-
     if (!opts?.trackingLabel || !opts?.timeoutMs) {
-        return inner;
+        return runInner(provider, prompt, opts, opts?.trackingLabel ?? 'utility');
     }
+
+    // Own controller so a timeout cancels the request instead of leaving it
+    // running (and billed) after the caller has moved on. The caller's signal
+    // still cancels it too.
+    const controller = new AbortController();
+    const callerSignal = opts.signal;
+    const onCallerAbort = () => controller.abort(callerSignal?.reason);
+    if (callerSignal?.aborted) controller.abort(callerSignal.reason);
+    else callerSignal?.addEventListener('abort', onCallerAbort, { once: true });
+
+    const inner = runInner(provider, prompt, { ...opts, signal: controller.signal }, opts.trackingLabel);
+    // After a timeout the aborted request rejects with nobody awaiting it.
+    inner.catch(() => {});
 
     const label = opts.trackingLabel;
     const handle = startUtilityCall(label, provider.modelName || provider.endpoint, opts.timeoutMs);
@@ -57,6 +68,7 @@ export async function llmCall(
 
         if (result.kind === 'timeout') {
             handle.settleError('timeout');
+            controller.abort();
             throw new UtilityTimeoutError(Date.now() - startedAt, label);
         }
 
@@ -66,9 +78,11 @@ export async function llmCall(
         // If inner threw before deadline, record it.
         if (!(e instanceof UtilityTimeoutError)) {
             const msg = e instanceof Error ? e.message : String(e);
-            handle.settleError('error', msg);
+            handle.settleError(controller.signal.aborted ? 'aborted' : 'error', msg);
         }
         throw e;
+    } finally {
+        callerSignal?.removeEventListener('abort', onCallerAbort);
     }
 }
 
@@ -120,6 +134,12 @@ async function runInner(
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         await queue.acquireSlot(priority);
+        // Cancelled while queued or backing off: don't send it. A native request
+        // can't be aborted once sent, so this is the only cancel point there.
+        if (opts?.signal?.aborted) {
+            queue.releaseSlot();
+            throw opts.signal.reason ?? new DOMException('Aborted', 'AbortError');
+        }
 
         if (isNative) {
             let nativeUrl = url;

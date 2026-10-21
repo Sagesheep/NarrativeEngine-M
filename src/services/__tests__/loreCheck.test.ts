@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runLoreCheck, buildVerifierPrompt, buildSearchQuery } from '../lore';
 
 vi.mock('../../utils/llmCall', () => ({ llmCall: vi.fn() }));
-vi.mock('../archive', () => ({ deepArchiveScan: vi.fn(async () => 'mock archive brief') }));
+vi.mock('../archive', () => ({ deepArchiveScanV2: vi.fn(async () => 'mock archive brief') }));
 vi.mock('../lore/loreRetriever', () => ({
     retrieveRelevantLore: vi.fn(() => [
         { id: '1', header: 'Eldra the Pale', content: 'Eldra is a high elf, not a dwarf.', tokens: 10,
@@ -94,11 +94,26 @@ describe('runLoreCheck', () => {
         expect(res.verdict).toBe('consistent');
     });
 
-    it('skips deepArchiveScan when no sealed chapters', async () => {
-        const { deepArchiveScan } = await import('../archive');
+    it('skips deepArchiveScanV2 when no sealed chapters', async () => {
+        const { deepArchiveScanV2 } = await import('../archive');
         (llmCall as any).mockResolvedValue('{"verdict":"consistent","issues":[],"citations":[],"suggestedRewrite":null}');
         await runLoreCheck(baseInput({ sealedChapters: [], archiveIndex: [] }));
-        expect(deepArchiveScan).not.toHaveBeenCalled();
+        expect(deepArchiveScanV2).not.toHaveBeenCalled();
+    });
+
+    it('scans the archive with v2, keyed on the search query, with the utility timeout and signal', async () => {
+        const { deepArchiveScanV2 } = await import('../archive');
+        (llmCall as any).mockResolvedValue('{"verdict":"consistent","issues":[],"citations":[],"suggestedRewrite":null}');
+        const ac = new AbortController();
+        await runLoreCheck(baseInput({ hint: 'race', utilityTimeoutSeconds: 90, signal: ac.signal }));
+
+        expect(deepArchiveScanV2).toHaveBeenCalledTimes(1);
+        const args = (deepArchiveScanV2 as any).mock.calls[0];
+        const query = buildSearchQuery('Eldra the dwarf nodded.', 'race');
+        expect(args[5]).toBe(query);       // userMessage
+        expect(args[6]).toBe(1500);        // budget
+        expect(args[8]).toBe(query);       // searchQuery → [SEARCH QUERY] keying
+        expect(args[9]).toEqual({ timeoutMs: 90_000, signal: ac.signal });
     });
 
     it('calls retrieveRelevantLore (not searchLoreByQuery)', async () => {

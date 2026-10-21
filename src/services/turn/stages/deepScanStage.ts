@@ -4,7 +4,7 @@ import { tierAllows } from '../aiTier';
 
 /**
  * Deep Archive Scan — a one-shot, opt-in (armed via the Deep Search sheet)
- * multi-round LLM sweep over sealed chapters that returns a continuity brief.
+ * probe + chapter + verify sweep over sealed chapters that returns a continuity brief.
  * Gated on the deepScan tier + an explicit request. Returns undefined when not
  * requested, gated off, or on failure (the turn falls back to standard recall).
  */
@@ -34,6 +34,7 @@ export async function deepScanStage(params: {
                     deepBudget,
                     (msg) => callbacks.setLoadingStatus?.(msg),
                     state.deepSearchQuery,
+                    { timeoutMs: (settings.utilityTimeoutSeconds ?? 45) * 1000 },
                 );
                 if (brief) return brief;
             } catch (err) {

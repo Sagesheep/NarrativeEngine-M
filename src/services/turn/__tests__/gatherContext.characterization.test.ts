@@ -23,7 +23,7 @@ const h = vi.hoisted(() => ({
     recallArchiveScenes: vi.fn(),
     retrieveArchiveMemory: vi.fn(),
     fetchArchiveScenes: vi.fn(),
-    deepArchiveScan: vi.fn(),
+    deepArchiveScanV2: vi.fn(),
     recallWithChapterFunnel: vi.fn(),
     recommendContext: vi.fn(),
     rerankCandidates: vi.fn(),
@@ -47,7 +47,7 @@ vi.mock('../../archive', () => ({
     recallArchiveScenes: h.recallArchiveScenes,
     retrieveArchiveMemory: h.retrieveArchiveMemory,
     fetchArchiveScenes: h.fetchArchiveScenes,
-    deepArchiveScan: h.deepArchiveScan,
+    deepArchiveScanV2: h.deepArchiveScanV2,
     recallWithChapterFunnel: h.recallWithChapterFunnel,
 }));
 vi.mock('../../payload', () => ({ recommendContext: h.recommendContext, rerankCandidates: h.rerankCandidates }));
@@ -152,7 +152,7 @@ beforeEach(() => {
     h.recallArchiveScenes.mockResolvedValue([{ sceneId: '010', content: 'flat scene', tokens: 5 }]);
     h.retrieveArchiveMemory.mockReturnValue([]);
     h.fetchArchiveScenes.mockResolvedValue([]);
-    h.deepArchiveScan.mockResolvedValue('');
+    h.deepArchiveScanV2.mockResolvedValue('');
     h.recallWithChapterFunnel.mockResolvedValue({ scenes: '', usedTokens: 0 });
     h.recommendContext.mockResolvedValue({ relevantNPCNames: [], relevantLoreIds: [] });
     h.rerankCandidates.mockResolvedValue([]);
