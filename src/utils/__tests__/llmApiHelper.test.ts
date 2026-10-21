@@ -9,6 +9,7 @@ import {
     extractStreamDelta,
 } from '../../utils/llmApiHelper';
 import type { LLMProvider } from '../../types';
+import { __setModelCatalogForTests, __setOpenRouterTiersForTests } from '../../services/llm/modelCatalog';
 
 const openaiProvider: LLMProvider = {
     id: 'openai-test',
@@ -191,6 +192,23 @@ describe('service tier', () => {
     it('sends flex and priority to OpenRouter', () => {
         expect(buildChatBody({ ...router, serviceTier: 'flex' }, messages).service_tier).toBe('flex');
         expect(buildChatBody({ ...router, serviceTier: 'priority' }, messages).service_tier).toBe('priority');
+    });
+
+    it('sends nothing when the host says the model does not offer the tier', () => {
+        __setModelCatalogForTests('nanogpt', {
+            'openai/gpt-5.5': { reasoning: true, serviceTiers: ['flex', 'priority'] },
+            'plain/model': { reasoning: false, serviceTiers: [] },
+        });
+        __setOpenRouterTiersForTests('openai/gpt-5.5', ['priority']);
+        try {
+            expect(buildChatBody({ ...nano, serviceTier: 'priority' }, messages).service_tier).toBe('fast');
+            expect(buildChatBody({ ...nano, modelName: 'plain/model', serviceTier: 'flex' }, messages).service_tier).toBeUndefined();
+            expect(buildChatBody({ ...router, serviceTier: 'flex' }, messages).service_tier).toBeUndefined();
+            expect(buildChatBody({ ...router, serviceTier: 'priority' }, messages).service_tier).toBe('priority');
+        } finally {
+            __setModelCatalogForTests('nanogpt', null);
+            __setOpenRouterTiersForTests('openai/gpt-5.5', null);
+        }
     });
 
     it('sends nothing to other hosts or formats', () => {

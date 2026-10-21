@@ -1,6 +1,6 @@
 import type { LLMProvider, ApiFormat, SamplingConfig, ThinkingEffort } from '../types';
 import { resolveThinkingControl, thinkingHostOf, type ThinkingControl } from './thinkingControl';
-import { lookupCatalogModel } from '../services/llm/modelCatalog';
+import { lookupCatalogModel, lookupServiceTiers } from '../services/llm/modelCatalog';
 
 type AnyProvider = LLMProvider;
 
@@ -56,11 +56,15 @@ export function thinkingControlFor(provider: AnyProvider, effort?: ThinkingEffor
  * The `service_tier` value for this provider, or undefined to send none.
  * Only NanoGPT and OpenRouter take one from this app. NanoGPT calls priority
  * `fast` (`priority` is its legacy alias); OpenRouter calls it `priority`.
- * Both route a tiered request only to providers that offer the tier.
+ * Both route a tiered request only to providers that offer the tier. When the
+ * host's list says the model does not offer it, nothing is sent and the request
+ * runs at the default tier (an OpenRouter flex request would otherwise fail).
  */
 export function serviceTierFor(provider: AnyProvider): string | undefined {
     const tier = provider.serviceTier;
     if (!tier || getApiFormat(provider) !== 'openai') return undefined;
+    const offered = lookupServiceTiers(provider.endpoint, provider.modelName ?? '');
+    if (offered && !offered.includes(tier)) return undefined;
     const host = thinkingHostOf(provider.endpoint);
     if (host === 'nanogpt') return tier === 'priority' ? 'fast' : 'flex';
     if (host === 'openrouter') return tier;
