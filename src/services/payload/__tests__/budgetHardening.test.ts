@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { ChatMessage, DivergenceEntry, DivergenceRegister, PayloadTrace } from '../../../types';
 import { trimWorldBlocks, type WorldBlock } from '../payloadWorldContext';
 import { fitHistory } from '../payloadHistoryFitting';
-import { buildDivergenceBlock } from '../payloadStableContent';
+import { buildDivergenceBlock, orderChaptersOldestFirst } from '../payloadStableContent';
 import { countTokens } from '../../infrastructure';
 
 const noTrace = (_t: PayloadTrace) => {};
@@ -132,6 +132,32 @@ describe('divergence register cap (AUDIT F6)', () => {
         const capped = buildDivergenceBlock({ divergenceRegister: register, cap: 100_000, addTrace: noTrace });
         expect(capped.divergenceContent).not.toContain('collapsed');
         expect(capped.divergenceContent).toContain('CH01');
+    });
+
+    it('orders chapters naturally (CH100 after CH11) and arc buckets by recency', () => {
+        const at = (chapterId: string, sceneRef: string): DivergenceEntry => ({ ...entry(chapterId, 0), sceneRef });
+        const register: DivergenceRegister = {
+            entries: [at('CH100', '010'), at('CH11', '010'), at('arc:x', '005'), at('CH02', '003')],
+            chapterToggles: {}, categoryToggles: {},
+            lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 2,
+        };
+        expect(orderChaptersOldestFirst(register)).toEqual(['CH02', 'arc:x', 'CH11', 'CH100']);
+    });
+
+    it('keeps pinned facts from collapsed chapters', () => {
+        const entries: DivergenceEntry[] = [];
+        for (const ch of ['CH01', 'CH02', 'CH03']) {
+            for (let i = 0; i < 6; i++) entries.push(entry(ch, i));
+        }
+        entries[0] = { ...entries[0], pinned: true };
+        const register: DivergenceRegister = {
+            entries, chapterToggles: {}, categoryToggles: {},
+            lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 2,
+        };
+        const uncapped = buildDivergenceBlock({ divergenceRegister: register, addTrace: noTrace });
+        const capped = buildDivergenceBlock({ divergenceRegister: register, cap: Math.floor(uncapped.divergenceTokens / 3), addTrace: noTrace });
+        expect(capped.divergenceContent).toContain('number 0 in chapter CH01');
+        expect(capped.divergenceContent).not.toContain('number 1 in chapter CH01');
     });
 
     // Cache safety rail: the canon block sits in the cached prompt prefix and must

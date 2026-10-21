@@ -1,7 +1,7 @@
 import type { AppSettings, ArchiveChapter, DivergenceRegister, PayloadTrace } from '../../types';
 import { applySlotThinking } from '../../store/slices/slotThinking';
 import { countTokens } from '../infrastructure';
-import { renderRegisterForPayload } from '../campaign-state';
+import { renderRegisterForPayload, compareSceneRef } from '../campaign-state';
 import type { BudgetMap } from './payloadBudgeter';
 
 // ── Thinking-mode detector (WO-B §4.2) ────────────────────────────────────────
@@ -143,6 +143,11 @@ export function buildStablePreamble(opts: {
     return { stableContent, stableTokens, divergenceContent: '', divergenceTokens: 0, retrievedRulesContent };
 }
 
+/** Share of the context window the cached canon block may use before oldest chapters collapse. */
+export function divergenceCapFor(contextLimit: number): number {
+    return Math.floor(contextLimit * 0.20);
+}
+
 export function buildDivergenceBlock(opts: {
     divergenceRegister?: DivergenceRegister;
     chapters?: ArchiveChapter[];
@@ -172,28 +177,52 @@ export function buildDivergenceBlock(opts: {
 }
 
 /**
+ * Chapter ids oldest-first. Ordered by each chapter's latest sceneRef so `arc:*`
+ * buckets interleave by recency; ties fall back to a natural sort of the id, so
+ * CH100 sorts after CH11 (a plain string sort put it before).
+ */
+export function orderChaptersOldestFirst(register: DivergenceRegister): string[] {
+    const latest = new Map<string, string>();
+    for (const e of register.entries) {
+        const cur = latest.get(e.chapterId);
+        if (cur === undefined || compareSceneRef(e.sceneRef, cur) > 0) latest.set(e.chapterId, e.sceneRef);
+    }
+    return [...latest.keys()].sort((a, b) =>
+        compareSceneRef(latest.get(a)!, latest.get(b)!) ||
+        a.localeCompare(b, undefined, { numeric: true }));
+}
+
+/**
  * The divergence register grows monotonically (entries merge at every seal) and
  * is otherwise unbudgeted. When it exceeds `cap`, drop oldest non-pinned chapters
  * first — pinned facts and the newest chapters' canon (the most relevant) survive.
+ * Binary-searches the number of chapters to drop, so it costs O(log chapters)
+ * renders instead of one render + tokenize per dropped chapter.
  */
 function capDivergenceRender(
     register: DivergenceRegister,
     chapters: ArchiveChapter[] | undefined,
     cap: number,
 ): string {
-    const chapterIds = [...new Set(register.entries.map(e => e.chapterId))].sort();
-    let working = register;
-    let collapsed = 0;
-    let content = renderRegisterForPayload(working, chapters, undefined, undefined, true);
+    const chapterIds = orderChaptersOldestFirst(register);
+    const withoutOldest = (k: number): DivergenceRegister => {
+        const dropped = new Set(chapterIds.slice(0, k));
+        return { ...register, entries: register.entries.filter(e => e.pinned || !dropped.has(e.chapterId)) };
+    };
+    const render = (r: DivergenceRegister) => renderRegisterForPayload(r, chapters, undefined, undefined, true);
 
-    for (const chId of chapterIds) {
-        if (countTokens(content) <= cap) break;
-        const remaining = working.entries.filter(e => e.chapterId !== chId || e.pinned);
-        collapsed += working.entries.length - remaining.length;
-        working = { ...working, entries: remaining };
-        content = renderRegisterForPayload(working, chapters, undefined, undefined, true);
+    // Smallest k whose render fits; k = chapterIds.length (pinned only) is the floor.
+    let lo = 0;
+    let hi = chapterIds.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (countTokens(render(withoutOldest(mid))) <= cap) hi = mid;
+        else lo = mid + 1;
     }
 
+    const working = withoutOldest(lo);
+    let content = render(working);
+    const collapsed = register.entries.length - working.entries.length;
     if (collapsed > 0) {
         console.warn(`[Payload] divergence register capped: collapsed ${collapsed} older facts to fit ${cap}t`);
         if (content) content += `\n[${collapsed} older established facts collapsed to fit budget]`;

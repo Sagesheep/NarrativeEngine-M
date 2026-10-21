@@ -1,155 +1,29 @@
-import { useState, useRef } from 'react';
-import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, AlertTriangle, Trash2, Sparkles, Users, X, Link2 } from 'lucide-react';
+import { useState, useRef, useMemo, useDeferredValue } from 'react';
+import { Pin, ChevronDown, ChevronUp, AlertTriangle, Trash2, Sparkles, X, Link2, Search, Check } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import type { DivergenceCategory, DivergenceEntry, NPCEntry } from '../../types';
-import { countRegisterTokens, EMPTY_REGISTER, CATEGORY_LABELS, DIVERGENCE_CATEGORIES, runFactDedup, assignSubjectTokens, type DedupResult, type DedupCancelled, type ClusteringCancelled, normalizeFaction, groupDivergencesBySubject } from '../../services/campaign-state';
+import type { DivergenceCategory, DivergenceEntry } from '../../types';
+import { EMPTY_REGISTER, CATEGORY_LABELS, DIVERGENCE_CATEGORIES, runFactDedup, assignSubjectTokens, type DedupResult, type DedupCancelled, type ClusteringCancelled, groupDivergencesBySubject, renderRegisterForPayload } from '../../services/campaign-state';
+import { countTokens } from '../../services/infrastructure';
+import { divergenceCapFor } from '../../services/payload';
 import { DedupReviewModal } from '../DedupReviewModal';
 import { appConfirm } from '../ConfirmSheet';
-import { CATEGORY_COLORS, CATEGORY_DOTS, knownByTokenLabel, knownBySummary, knownByChipClass, subjectLabel } from './memoryTabHelpers';
+import { FactRow, PagedFacts } from './FactRow';
+import { CATEGORY_COLORS, CATEGORY_DOTS, subjectLabel, buildNpcNameMap, matchesFactFilter, FACT_FILTERS, type FactFilter } from './memoryTabHelpers';
 
 type Tab = 'facts' | 'review';
 type FactsView = 'chapter' | 'topic' | 'subject';
 
-/** A later fact replaced this one (guarded supersession); it is no longer sent to the GM. */
-function ReplacedTag({ entry }: { entry: DivergenceEntry }) {
-    if (entry.status !== 'superseded') return null;
-    return (
-        <span className="ml-1 text-[8px] uppercase font-bold text-text-dim bg-white/5 px-1 rounded" title="A later fact replaced this one; it is no longer sent to the GM">
-            replaced
-        </span>
-    );
-}
-
-
-/** KnownBy editor popover — inline, matches existing inline-edit pattern. */
-function KnownByEditor({ entry, npcLedger, onApply, onClose }: {
-    entry: DivergenceEntry;
-    npcLedger: NPCEntry[];
-    onApply: (knownBy: string[] | undefined) => void;
-    onClose: () => void;
-}) {
-    const [tokens, setTokens] = useState<string[]>(entry.knownBy === undefined ? [] : [...entry.knownBy]);
-    const isPublic = entry.knownBy === undefined;
-    const [factionInput, setFactionInput] = useState('');
-
-    const addToken = (tok: string) => {
-        if (tokens.includes(tok)) return;
-        setTokens([...tokens, tok]);
-    };
-    const removeToken = (tok: string) => {
-        setTokens(tokens.filter(t => t !== tok));
-    };
-
-    return (
-        <div className="bg-void border border-amber-500/30 p-1.5 rounded space-y-1.5 text-[10px]">
-            <div className="flex items-center gap-1 flex-wrap">
-                <span className="text-text-dim uppercase tracking-wider text-[8px]">Knows:</span>
-                {isPublic && (
-                    <span className="text-emerald-400 px-1 py-0.5 bg-emerald-500/10 rounded">public</span>
-                )}
-                {!isPublic && tokens.length === 0 && (
-                    <span className="text-red-400 px-1 py-0.5 bg-red-500/10 rounded">secret (player only)</span>
-                )}
-                {!isPublic && tokens.map(t => (
-                    <span key={t} className={`px-1 py-0.5 rounded flex items-center gap-0.5 ${t === 'player' ? 'text-ice bg-ice/10' : t.startsWith('faction:') ? 'text-purple-400 bg-purple-500/10' : 'text-amber-400 bg-amber-500/10'}`}>
-                        {knownByTokenLabel(t, npcLedger)}
-                        <button onClick={() => removeToken(t)} className="hover:text-red-400"><X size={8} /></button>
-                    </span>
-                ))}
-            </div>
-
-            <div className="space-y-1">
-                <div className="text-text-dim text-[9px] uppercase tracking-wider">Add knower:</div>
-                <div className="flex items-center gap-1 flex-wrap">
-                    <button
-                        onClick={() => addToken('player')}
-                        className={`px-1 py-0.5 rounded text-ice bg-ice/10 hover:bg-ice/20 ${tokens.includes('player') ? 'opacity-40 cursor-not-allowed' : ''}`}
-                        disabled={tokens.includes('player')}
-                    >
-                        + player
-                    </button>
-                    <button
-                        onClick={() => onApply(undefined)}
-                        className="px-1 py-0.5 rounded text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
-                        title="Set to public/broadcast (knownBy = undefined)"
-                    >
-                        make public
-                    </button>
-                </div>
-
-                <div className="flex items-center gap-0.5 flex-wrap">
-                    <span className="text-text-dim text-[9px] flex items-center gap-0.5"><Users size={9} /> NPC:</span>
-                    {npcLedger.length === 0 && <span className="text-text-dim/50 italic">no NPCs in ledger</span>}
-                    {npcLedger.slice(0, 12).map(n => {
-                        const tok = `npc:${n.id}`;
-                        return (
-                            <button
-                                key={n.id}
-                                onClick={() => addToken(tok)}
-                                disabled={tokens.includes(tok)}
-                                className={`px-1 py-0.5 rounded text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 ${tokens.includes(tok) ? 'opacity-40 cursor-not-allowed' : ''}`}
-                            >
-                                + {n.name}
-                            </button>
-                        );
-                    })}
-                </div>
-
-                <div className="flex items-center gap-0.5">
-                    <span className="text-text-dim text-[9px]">faction:</span>
-                    <input
-                        type="text"
-                        value={factionInput}
-                        onChange={ev => setFactionInput(ev.target.value)}
-                        placeholder="e.g. Ironspire Knights"
-                        className="flex-1 bg-void border border-white/10 text-text-primary text-[10px] px-1 py-0.5 rounded outline-none min-w-0"
-                        onKeyDown={ev => {
-                            if (ev.key === 'Enter' && factionInput.trim()) {
-                                const f = normalizeFaction(factionInput);
-                                if (f) { addToken(`faction:${f}`); setFactionInput(''); }
-                            }
-                        }}
-                    />
-                    <button
-                        onClick={() => {
-                            const f = normalizeFaction(factionInput);
-                            if (f) { addToken(`faction:${f}`); setFactionInput(''); }
-                        }}
-                        disabled={!factionInput.trim()}
-                        className="px-1 py-0.5 rounded text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-40"
-                    >
-                        + add
-                    </button>
-                </div>
-            </div>
-
-            <div className="flex gap-1.5 justify-end">
-                <button
-                    onClick={() => onApply(tokens)}
-                    className="flex items-center gap-0.5 text-emerald-400 hover:text-emerald-300 px-1"
-                >
-                    <Check size={8} /> Save
-                </button>
-                <button onClick={onClose} className="text-text-dim hover:text-red-400 px-1">Cancel</button>
-            </div>
-        </div>
-    );
-}
+const UNGROUPED = '__ungrouped';
 
 export function MemoryTab() {
     const divergenceRegister = useAppStore(s => s.divergenceRegister);
     const chapters = useAppStore(s => s.chapters);
-    const settings = useAppStore(s => s.settings);
-    const deleteDivergenceFact = useAppStore(s => s.deleteDivergenceFact);
+    const contextLimit = useAppStore(s => s.settings.contextLimit) || 8192;
     const deleteDivergenceChapter = useAppStore(s => s.deleteDivergenceChapter);
-    const toggleDivergenceFact = useAppStore(s => s.toggleDivergenceFact);
     const confirmReviewEntry = useAppStore(s => s.confirmReviewEntry);
     const deleteReviewedEntry = useAppStore(s => s.deleteReviewedEntry);
     const toggleDivergenceChapter = useAppStore(s => s.toggleDivergenceChapter);
     const toggleDivergenceCategory = useAppStore(s => s.toggleDivergenceCategory);
-    const pinDivergenceFact = useAppStore(s => s.pinDivergenceFact);
-    const editDivergenceFact = useAppStore(s => s.editDivergenceFact);
-    const editDivergenceKnownBy = useAppStore(s => s.editDivergenceKnownBy);
     const applySubjectTokens = useAppStore(s => s.applySubjectTokens);
     const setManyFactsEnabled = useAppStore(s => s.setManyFactsEnabled);
     const npcLedger = useAppStore(s => s.npcLedger);
@@ -157,13 +31,13 @@ export function MemoryTab() {
 
     const [tab, setTab] = useState<Tab>('facts');
     const [factsView, setFactsView] = useState<FactsView>('chapter');
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editText, setEditText] = useState('');
-    const [knownByEditingId, setKnownByEditingId] = useState<string | null>(null);
     const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
     const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
     const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
+    const [query, setQuery] = useState('');
+    const [filter, setFilter] = useState<FactFilter>('all');
+    const deferredQuery = useDeferredValue(query.trim());
 
     const [dedupOpen, setDedupOpen] = useState(false);
     const [dedupRunning, setDedupRunning] = useState(false);
@@ -181,50 +55,75 @@ export function MemoryTab() {
     const simCancelRef = useRef<ClusteringCancelled>({ cancelled: false });
 
     const reg = divergenceRegister ?? EMPTY_REGISTER;
-    const tokenBudget = settings.divergenceTokenBudget ?? 2000;
-    const regTokens = countRegisterTokens(reg);
     const entries = reg.entries;
-    const reviewEntries = entries.filter(e => e.reviewFlag);
+    const npcNames = useMemo(() => buildNpcNameMap(npcLedger ?? []), [npcLedger]);
 
-    const pinnedEntries = entries.filter(e => e.pinned);
-    const unpinnedEntries = entries.filter(e => !e.pinned);
+    // Tokens of the cached canon block as actually sent (public facts only), against
+    // the cap that collapses oldest chapters. Tokenizing is the expensive bit — only
+    // redo it when the register or chapter titles change.
+    const canonTokens = useMemo(
+        () => countTokens(renderRegisterForPayload(reg, chapters, undefined, undefined, true)),
+        [reg, chapters],
+    );
+    const canonCap = divergenceCapFor(contextLimit);
 
-    const byChapter = new Map<string, DivergenceEntry[]>();
-    for (const e of unpinnedEntries) {
-        if (!byChapter.has(e.chapterId)) byChapter.set(e.chapterId, []);
-        byChapter.get(e.chapterId)!.push(e);
-    }
-
-    const chapterTitleMap = new Map<string, string>();
-    if (chapters) {
-        for (const ch of chapters) {
-            chapterTitleMap.set(ch.chapterId, ch.title);
+    // Everything below depends only on the register — recomputed when it changes,
+    // not on every expand/collapse or keystroke.
+    const derived = useMemo(() => {
+        const pinned: DivergenceEntry[] = [];
+        const unpinned: DivergenceEntry[] = [];
+        const review: DivergenceEntry[] = [];
+        let active = 0;
+        for (const e of entries) {
+            (e.pinned ? pinned : unpinned).push(e);
+            if (e.reviewFlag) review.push(e);
+            if (e.enabled === false || e.status === 'superseded' || e.status === 'retracted') continue;
+            if (!e.pinned) {
+                if (reg.chapterToggles[e.chapterId] === false) continue;
+                if (reg.categoryToggles[e.chapterId]?.[e.category] === false) continue;
+            }
+            active++;
         }
-    }
 
-    const activeCount = entries.filter(e => {
-        if (e.enabled === false) return false;
-        if (e.status === 'superseded' || e.status === 'retracted') return false;
-        if (e.pinned) return true;
-        const chapterOn = reg.chapterToggles[e.chapterId] !== false;
-        if (!chapterOn) return false;
-        const catToggles = reg.categoryToggles[e.chapterId];
-        if (catToggles && catToggles[e.category] === false) return false;
-        return true;
-    }).length;
+        const byChapter = new Map<string, Map<DivergenceCategory, DivergenceEntry[]>>();
+        const byCategory = new Map<DivergenceCategory, DivergenceEntry[]>(DIVERGENCE_CATEGORIES.map(c => [c, []]));
+        for (const e of unpinned) {
+            let cats = byChapter.get(e.chapterId);
+            if (!cats) byChapter.set(e.chapterId, cats = new Map());
+            let list = cats.get(e.category);
+            if (!list) cats.set(e.category, list = []);
+            list.push(e);
+            byCategory.get(e.category)!.push(e);
+        }
+
+        // Untagged facts would each be their own one-fact "group" — fold them into
+        // a single Ungrouped bucket at the end instead.
+        const subjectGroups: Array<{ token: string; entries: DivergenceEntry[] }> = [];
+        const ungrouped: DivergenceEntry[] = [];
+        for (const g of groupDivergencesBySubject(unpinned)) {
+            if (g.entries[0].subjectToken === undefined) ungrouped.push(...g.entries);
+            else subjectGroups.push(g);
+        }
+        if (ungrouped.length > 0) subjectGroups.push({ token: UNGROUPED, entries: ungrouped });
+
+        return { pinned, review, active, byChapter, byCategory, subjectGroups };
+    }, [entries, reg.chapterToggles, reg.categoryToggles]);
+    const { pinned: pinnedEntries, review: reviewEntries, active: activeCount, byChapter, byCategory, subjectGroups } = derived;
+
+    const chapterTitleMap = useMemo(
+        () => new Map((chapters ?? []).map(ch => [ch.chapterId, ch.title])),
+        [chapters],
+    );
+
+    const searching = deferredQuery !== '' || filter !== 'all';
+    const searchResults = useMemo(
+        () => searching ? entries.filter(e => matchesFactFilter(e, filter, deferredQuery, npcNames)) : [],
+        [searching, entries, filter, deferredQuery, npcNames],
+    );
+
+    const renderRow = (e: DivergenceEntry) => <FactRow key={e.id} entry={e} npcNames={npcNames} />;
+    const renderRowWithCategory = (e: DivergenceEntry) => <FactRow key={e.id} entry={e} npcNames={npcNames} showCategory />;
     const pinnedCount = pinnedEntries.length;
-
-    const handleStartEdit = (e: DivergenceEntry) => {
-        setEditingId(e.id);
-        setEditText(e.text);
-    };
-
-    const handleSaveEdit = () => {
-        if (!editingId) return;
-        editDivergenceFact(editingId, editText);
-        setEditingId(null);
-        setEditText('');
-    };
 
     const handleToggleGroup = (factIds: string[], allEnabled: boolean) => {
         setManyFactsEnabled(factIds.map(id => ({ id, enabled: !allEnabled })));
@@ -332,7 +231,6 @@ export function MemoryTab() {
         setSimError(null);
         simCancelRef.current = { cancelled: false };
 
-        const contextLimit = settings.contextLimit || 8192;
         assignSubjectTokens(reg, utilityProvider, contextLimit, simCancelRef.current, setSimStatus)
             .then(result => {
                 if (result.updates.length > 0) {
@@ -360,14 +258,6 @@ export function MemoryTab() {
         setSimStatus(null);
     };
 
-    // By-category grouping — computed from existing data, no AI needed
-    const byCategory = new Map<DivergenceCategory, DivergenceEntry[]>();
-    for (const cat of DIVERGENCE_CATEGORIES) byCategory.set(cat, []);
-    for (const e of unpinnedEntries) byCategory.get(e.category)!.push(e);
-
-    // By-subject grouping (WO3 timeline).
-    const subjectGroups = groupDivergencesBySubject(unpinnedEntries);
-
     return (
         <div className="p-3 space-y-3">
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
@@ -388,8 +278,10 @@ export function MemoryTab() {
                 )}
             </div>
 
-            <div className="text-[9px] text-text-dim">
-                {regTokens}/{tokenBudget} tkns · {activeCount} active{pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}
+            <div className="text-[9px] text-text-dim" title="Tokens of the public-facts block sent every turn, against the cap (20% of context) past which the oldest chapters are collapsed">
+                <span className={canonTokens > canonCap ? 'text-amber-400' : ''}>{canonTokens}/{canonCap} tkns</span>
+                {' '}· {activeCount} active{pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}
+                {canonTokens > canonCap && <span className="text-amber-400"> · oldest chapters collapsed when sent</span>}
             </div>
 
             {tab === 'facts' && (
@@ -432,7 +324,43 @@ export function MemoryTab() {
                 <div className="text-[9px] text-red-400">{simError}</div>
             )}
 
-            {tab === 'facts' && (
+            {tab === 'facts' && entries.length > 0 && (
+                <div className="space-y-1">
+                    <div className="flex items-center gap-1 bg-void border border-border/40 rounded px-1.5">
+                        <Search size={10} className="text-text-dim shrink-0" />
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={ev => setQuery(ev.target.value)}
+                            placeholder="Search facts, subjects, NPCs, scene #"
+                            className="flex-1 min-w-0 bg-transparent text-[16px] md:text-[11px] text-text-primary py-1 outline-none"
+                        />
+                        {query && (
+                            <button onClick={() => setQuery('')} className="text-text-dim hover:text-red-400 p-0.5" title="Clear search"><X size={10} /></button>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                        {FACT_FILTERS.map(f => (
+                            <button
+                                key={f.id}
+                                onClick={() => setFilter(f.id)}
+                                className={`text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${filter === f.id ? 'text-ice bg-ice/10' : 'text-text-dim'}`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {tab === 'facts' && searching && (
+                <div className="space-y-0.5">
+                    <div className="text-[9px] text-text-dim">{searchResults.length} match{searchResults.length === 1 ? '' : 'es'}</div>
+                    <PagedFacts key={`${filter}|${deferredQuery}`} entries={searchResults} render={renderRowWithCategory} />
+                </div>
+            )}
+
+            {tab === 'facts' && !searching && (
                 <div className="flex items-center gap-1">
                     <button
                         onClick={() => setFactsView('chapter')}
@@ -455,7 +383,16 @@ export function MemoryTab() {
                 </div>
             )}
 
-            {tab === 'facts' && factsView === 'topic' && (
+            {tab === 'facts' && !searching && factsView !== 'topic' && pinnedEntries.length > 0 && (
+                <div className="space-y-1">
+                    <div className="text-[9px] uppercase font-bold text-amber-400 tracking-wider flex items-center gap-1">
+                        <Pin size={9} /> Pinned
+                    </div>
+                    <PagedFacts entries={pinnedEntries} render={renderRowWithCategory} />
+                </div>
+            )}
+
+            {tab === 'facts' && !searching && factsView === 'topic' && (
                 <div className="space-y-2">
                     {DIVERGENCE_CATEGORIES.map(cat => {
                         const catEntries = byCategory.get(cat) ?? [];
@@ -487,56 +424,7 @@ export function MemoryTab() {
 
                                 {isExpanded && (
                                     <div className="border-t border-border/20 px-3 pb-1.5 pt-1 space-y-0.5">
-                                        {catEntries.map(e => (
-                                            editingId === e.id ? (
-                                                <div key={e.id} className="bg-void border border-amber-500/30 p-1.5 rounded space-y-1">
-                                                    <textarea
-                                                        value={editText}
-                                                        onChange={ev => setEditText(ev.target.value)}
-                                                        className="w-full bg-void border border-white/10 text-text-primary text-[10px] px-1 py-0.5 rounded outline-none resize-y min-h-[24px] max-h-[48px]"
-                                                        rows={2}
-                                                    />
-                                                    <div className="flex gap-1.5 justify-end">
-                                                        <button onClick={handleSaveEdit} className="flex items-center gap-0.5 text-[9px] text-emerald-400 hover:text-emerald-300 px-1">
-                                                            <Check size={8} /> Save
-                                                        </button>
-                                                        <button onClick={() => setEditingId(null)} className="text-[9px] text-text-dim hover:text-red-400 px-1">
-                                                            Cancel
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ) : knownByEditingId === e.id ? (
-                                                <KnownByEditor
-                                                    key={e.id}
-                                                    entry={e}
-                                                    npcLedger={npcLedger ?? []}
-                                                    onApply={(kb) => { editDivergenceKnownBy(e.id, kb); setKnownByEditingId(null); }}
-                                                    onClose={() => setKnownByEditingId(null)}
-                                                />
-                                            ) : (
-                                                <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={e.enabled !== false}
-                                                        onChange={() => toggleDivergenceFact(e.id, e.enabled === false)}
-                                                        className="w-3 h-3 accent-terminal shrink-0"
-                                                    />
-                                                    <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                                    <span className="min-w-0 flex-1">
-                                                        {e.text}
-                                                        <ReplacedTag entry={e} />
-                                                        <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]</span>
-                                                        <span className={`text-[9px] ml-1 ${knownByChipClass(e.knownBy)}`}>(known to: {knownBySummary(e.knownBy, npcLedger ?? [])})</span>
-                                                    </span>
-                                                    <span className="flex items-center gap-0.5 shrink-0">
-                                                        <button onClick={() => setKnownByEditingId(e.id)} className="text-text-muted hover:text-amber-400 p-0.5" title="Edit who knows"><Users size={9} /></button>
-                                                        <button onClick={() => pinDivergenceFact(e.id)} className="text-text-muted hover:text-amber-400 p-0.5"><Pin size={9} /></button>
-                                                        <button onClick={() => handleStartEdit(e)} className="text-text-muted hover:text-amber-400 p-0.5"><Edit2 size={9} /></button>
-                                                        <button onClick={() => deleteDivergenceFact(e.id)} className="text-text-muted hover:text-red-400 p-0.5"><Trash2 size={9} /></button>
-                                                    </span>
-                                                </div>
-                                            )
-                                        ))}
+                                        <PagedFacts entries={catEntries} render={renderRow} />
                                     </div>
                                 )}
                             </div>
@@ -545,44 +433,14 @@ export function MemoryTab() {
                 </div>
             )}
 
-            {tab === 'facts' && factsView === 'chapter' && (
+            {tab === 'facts' && !searching && factsView === 'chapter' && (
                 <div className="space-y-3">
-                    {pinnedEntries.length > 0 && (
-                        <div className="space-y-1">
-                            <div className="text-[9px] uppercase font-bold text-amber-400 tracking-wider flex items-center gap-1">
-                                <Pin size={9} /> Pinned
-                            </div>
-                            {pinnedEntries.map(e => (
-                                <div key={e.id} className="flex items-start gap-1 text-[11px] text-text-primary">
-                                    <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                    <span className="min-w-0 flex-1">
-                                        <span className={`${CATEGORY_COLORS[e.category]} text-[9px] uppercase`}>{CATEGORY_LABELS[e.category]}</span>
-                                        {' '}{e.text}
-                                        <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
-                                    </span>
-                                    <span className="flex items-center gap-0.5 shrink-0">
-                                        <button onClick={() => pinDivergenceFact(e.id)} className="text-amber-400 p-0.5" title="Unpin">
-                                            <PinOff size={9} />
-                                        </button>
-                                        <button onClick={() => deleteDivergenceFact(e.id)} className="text-text-dim hover:text-red-400 p-0.5" title="Delete">
-                                            <Edit2 size={7} className="inline" />
-                                        </button>
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {[...byChapter.entries()].map(([chapterId, chapterEntries]) => {
+                    {[...byChapter.entries()].map(([chapterId, catGroups]) => {
                         const chapterTitle = chapterTitleMap.get(chapterId) ?? chapterId;
                         const chapterOn = reg.chapterToggles[chapterId] !== false;
                         const isExpanded = expandedChapter === chapterId;
-
-                        const catGroups = new Map<DivergenceCategory, DivergenceEntry[]>();
-                        for (const e of chapterEntries) {
-                            if (!catGroups.has(e.category)) catGroups.set(e.category, []);
-                            catGroups.get(e.category)!.push(e);
-                        }
+                        let chapterCount = 0;
+                        for (const list of catGroups.values()) chapterCount += list.length;
 
                         return (
                             <div key={chapterId} className="border border-border/30 rounded">
@@ -599,7 +457,7 @@ export function MemoryTab() {
                                             onClick={(ev) => ev.stopPropagation()}
                                         />
                                         <span className="text-[11px] font-bold text-text-primary">{chapterTitle}</span>
-                                        <span className="text-[9px] text-text-dim">{chapterEntries.length} facts</span>
+                                        <span className="text-[9px] text-text-dim">{chapterCount} facts</span>
                                     </div>
                                     <div className="flex items-center gap-1">
                                         <button
@@ -607,7 +465,7 @@ export function MemoryTab() {
                                                 ev.stopPropagation();
                                                 if (await appConfirm({
                                                     title: 'Delete facts',
-                                                    body: `Delete all ${chapterEntries.length} facts in "${chapterTitle}"?`,
+                                                    body: `Delete all ${chapterCount} facts in "${chapterTitle}"?`,
                                                     confirmLabel: 'Delete',
                                                     danger: true,
                                                 })) {
@@ -649,57 +507,7 @@ export function MemoryTab() {
 
                                             {catExpanded && (
                                                 <div className="px-3 pb-1.5 space-y-0.5">
-                                                    {catEntries.map(e => (
-                                                        editingId === e.id ? (
-                                                            <div key={e.id} className="bg-void border border-amber-500/30 p-1.5 rounded space-y-1">
-                                                                <textarea
-                                                                    value={editText}
-                                                                    onChange={ev => setEditText(ev.target.value)}
-                                                                    className="w-full bg-void border border-white/10 text-text-primary text-[10px] px-1 py-0.5 rounded outline-none resize-y min-h-[24px] max-h-[48px]"
-                                                                    rows={2}
-                                                                />
-                                                                <div className="flex gap-1.5 justify-end">
-                                                                    <button onClick={handleSaveEdit} className="flex items-center gap-0.5 text-[9px] text-emerald-400 hover:text-emerald-300 px-1">
-                                                                        <Check size={8} /> Save
-                                                                    </button>
-                                                                    <button onClick={() => setEditingId(null)} className="text-[9px] text-text-dim hover:text-red-400 px-1">
-                                                                        Cancel
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ) : knownByEditingId === e.id ? (
-                                                            <KnownByEditor
-                                                                key={e.id}
-                                                                entry={e}
-                                                                npcLedger={npcLedger ?? []}
-                                                                onApply={(kb) => { editDivergenceKnownBy(e.id, kb); setKnownByEditingId(null); }}
-                                                                onClose={() => setKnownByEditingId(null)}
-                                                            />
-                                                        ) : (
-                                                            <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={e.enabled !== false}
-                                                                    onChange={() => toggleDivergenceFact(e.id, e.enabled === false)}
-                                                                    className="w-2.5 h-2.5 mt-0.5 accent-terminal shrink-0"
-                                                                    title={e.enabled !== false ? 'Disable this fact' : 'Enable this fact'}
-                                                                />
-                                                                <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                                                <span className="min-w-0 flex-1">
-                                                                    {e.text}
-                                                                    <ReplacedTag entry={e} />
-                                                                    <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
-                                                                    <span className={`text-[9px] ml-1 ${knownByChipClass(e.knownBy)}`}>(known to: {knownBySummary(e.knownBy, npcLedger ?? [])})</span>
-                                                                </span>
-                                                                <span className="flex items-center gap-0.5 shrink-0">
-                                                                    <button onClick={() => setKnownByEditingId(e.id)} className="text-text-muted hover:text-amber-400 p-0.5" title="Edit who knows"><Users size={9} /></button>
-                                                                    <button onClick={() => pinDivergenceFact(e.id)} className="text-text-muted hover:text-amber-400 p-0.5" title="Pin"><Pin size={9} /></button>
-                                                                    <button onClick={() => handleStartEdit(e)} className="text-text-muted hover:text-amber-400 p-0.5" title="Edit"><Edit2 size={9} /></button>
-                                                                    <button onClick={() => deleteDivergenceFact(e.id)} className="text-text-muted hover:text-red-400 p-0.5" title="Delete"><AlertTriangle size={9} className="inline" /></button>
-                                                                </span>
-                                                            </div>
-                                                        )
-                                                    ))}
+                                                    <PagedFacts entries={catEntries} render={renderRow} />
                                                 </div>
                                             )}
                                         </div>
@@ -708,41 +516,17 @@ export function MemoryTab() {
                             </div>
                         );
                     })}
-
-                    {entries.length === 0 && (
-                        <div className="text-[11px] text-text-dim/50 italic py-4 text-center">
-                            No established facts yet. Facts are extracted when chapters seal.
-                        </div>
-                    )}
                 </div>
             )}
 
-            {tab === 'facts' && factsView === 'subject' && (
+            {tab === 'facts' && !searching && factsView === 'subject' && (
                 <div className="space-y-2">
-                    {pinnedEntries.length > 0 && (
-                        <div className="space-y-1">
-                            <div className="text-[9px] uppercase font-bold text-amber-400 tracking-wider flex items-center gap-1">
-                                <Pin size={9} /> Pinned
-                            </div>
-                            {pinnedEntries.map(e => (
-                                <div key={e.id} className="flex items-start gap-1 text-[11px] text-text-primary">
-                                    <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                    <span className="min-w-0 flex-1">
-                                        <span className={`${CATEGORY_COLORS[e.category]} text-[9px] uppercase`}>{CATEGORY_LABELS[e.category]}</span>
-                                        {' '}{e.text}
-                                        <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
-                                        <span className={`text-[9px] ml-1 ${knownByChipClass(e.knownBy)}`}>(known to: {knownBySummary(e.knownBy, npcLedger ?? [])})</span>
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
                     {subjectGroups.map(group => {
-                        const isTokened = group.entries[0].subjectToken !== undefined;
-                        const label = isTokened ? subjectLabel(group.token) : '(ungrouped)';
+                        const isUngrouped = group.token === UNGROUPED;
+                        const label = isUngrouped ? 'Ungrouped' : subjectLabel(group.token);
                         const isExpanded = expandedSubject === group.token;
                         const latestSceneRef = group.entries[group.entries.length - 1].sceneRef;
+                        const showLatest = !isUngrouped && group.entries.length > 1;
 
                         return (
                             <div key={group.token} className="border border-border/30 rounded">
@@ -751,63 +535,42 @@ export function MemoryTab() {
                                     onClick={() => setExpandedSubject(isExpanded ? null : group.token)}
                                 >
                                     <div className="flex items-center gap-2 min-w-0">
-                                        <span className="text-[11px] font-bold text-text-primary truncate">{label}</span>
-                                        <span className="text-[9px] text-text-dim shrink-0">{group.entries.length} beat{group.entries.length === 1 ? '' : 's'}</span>
+                                        <span className={`text-[11px] font-bold truncate ${isUngrouped ? 'text-text-dim italic' : 'text-text-primary'}`}>{label}</span>
+                                        <span className="text-[9px] text-text-dim shrink-0">
+                                            {group.entries.length} {isUngrouped ? 'fact' : 'beat'}{group.entries.length === 1 ? '' : 's'}
+                                        </span>
                                     </div>
                                     {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                 </button>
 
                                 {isExpanded && (
                                     <div className="border-t border-border/20 px-3 pb-1.5 pt-1 space-y-0.5">
-                                        {group.entries.map(e => {
-                                            const isLatest = e.sceneRef === latestSceneRef;
-                                            return knownByEditingId === e.id ? (
-                                                <KnownByEditor
+                                        {isUngrouped && (
+                                            <div className="text-[9px] text-text-dim/70 italic">No subject yet — run Find Similarity to group these.</div>
+                                        )}
+                                        <PagedFacts
+                                            entries={group.entries}
+                                            render={e => (
+                                                <FactRow
                                                     key={e.id}
                                                     entry={e}
-                                                    npcLedger={npcLedger ?? []}
-                                                    onApply={(kb) => { editDivergenceKnownBy(e.id, kb); setKnownByEditingId(null); }}
-                                                    onClose={() => setKnownByEditingId(null)}
+                                                    npcNames={npcNames}
+                                                    showCategory={isUngrouped}
+                                                    isLatest={showLatest && e.sceneRef === latestSceneRef}
                                                 />
-                                            ) : (
-                                                <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={e.enabled !== false}
-                                                        onChange={() => toggleDivergenceFact(e.id, e.enabled === false)}
-                                                        className="w-2.5 h-2.5 mt-0.5 accent-terminal shrink-0"
-                                                    />
-                                                    <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                                    <span className="min-w-0 flex-1">
-                                                        <span className="text-text-dim/50 text-[9px]">[#{e.sceneRef}]</span>{' '}
-                                                        {e.text}
-                                                        <ReplacedTag entry={e} />
-                                                        {isLatest && group.entries.length > 1 && (
-                                                            <span className="ml-1 text-[8px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded">latest</span>
-                                                        )}
-                                                        <span className={`text-[9px] ml-1 ${knownByChipClass(e.knownBy)}`}>(known to: {knownBySummary(e.knownBy, npcLedger ?? [])})</span>
-                                                    </span>
-                                                    <span className="flex items-center gap-0.5 shrink-0">
-                                                        <button onClick={() => setKnownByEditingId(e.id)} className="text-text-muted hover:text-amber-400 p-0.5" title="Edit who knows">
-                                                            <Users size={9} />
-                                                        </button>
-                                                        <button onClick={() => pinDivergenceFact(e.id)} className="text-text-muted hover:text-amber-400 p-0.5"><Pin size={9} /></button>
-                                                        <button onClick={() => deleteDivergenceFact(e.id)} className="text-text-muted hover:text-red-400 p-0.5"><Trash2 size={9} /></button>
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
+                                            )}
+                                        />
                                     </div>
                                 )}
                             </div>
                         );
                     })}
+                </div>
+            )}
 
-                    {entries.length === 0 && (
-                        <div className="text-[11px] text-text-dim/50 italic py-4 text-center">
-                            No established facts yet. Facts are extracted when chapters seal.
-                        </div>
-                    )}
+            {tab === 'facts' && entries.length === 0 && (
+                <div className="text-[11px] text-text-dim/50 italic py-4 text-center">
+                    No established facts yet. Facts are extracted when chapters seal.
                 </div>
             )}
 

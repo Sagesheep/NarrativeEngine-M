@@ -3,7 +3,7 @@ import { CORE_FLOOR_TRAITS } from '../../types';
 import type { OpenAIMessage } from '../llm/llmService';
 import { countTokens } from '../infrastructure';
 import { computeBudgets, type BudgetMap } from './payloadBudgeter';
-import { buildStablePreamble, buildDivergenceBlock, isThinkingEnabled } from './payloadStableContent';
+import { buildStablePreamble, buildDivergenceBlock, divergenceCapFor, isThinkingEnabled } from './payloadStableContent';
 import { assembleWorldBlocks, trimWorldBlocks, type WorldBlock, type NpcStrategy } from './payloadWorldContext';
 import { fitHistory, computeHistoryBudget, buildPinnedMemoriesBlock, pinnedExcerptsTokenCost } from './payloadHistoryFitting';
 import { buildChapterRecapBlock } from './lodRenderer';
@@ -96,7 +96,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     const { divergenceContent, divergenceTokens } = buildDivergenceBlock({
         divergenceRegister,
         chapters,
-        cap: Math.floor(limit * 0.20),
+        cap: divergenceCapFor(limit),
         addTrace,
     });
 

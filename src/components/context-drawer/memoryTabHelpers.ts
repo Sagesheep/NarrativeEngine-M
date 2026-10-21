@@ -3,7 +3,7 @@
  * Pure utility functions for divergence display.
  */
 
-import type { DivergenceCategory, NPCEntry } from '../../types';
+import type { DivergenceCategory, DivergenceEntry, NPCEntry } from '../../types';
 import { parseKnownByToken } from '../../services/campaign-state';
 
 export const CATEGORY_COLORS: Record<DivergenceCategory, string> = {
@@ -16,19 +16,25 @@ export const CATEGORY_DOTS: Record<DivergenceCategory, string> = {
     world_state: 'bg-cyan-400', party_facts: 'bg-emerald-400', rules_lore: 'bg-purple-400', misc: 'bg-gray-400',
 };
 
-export function knownByTokenLabel(tok: string, npcLedger: NPCEntry[]): string {
-    const parsed = parseKnownByToken(tok);
-    if (!parsed) { const npc = npcLedger.find(n => n.id === tok.trim()); return npc ? npc.name : 'unknown'; }
-    if (parsed.kind === 'player') return 'the player';
-    if (parsed.kind === 'faction') return `${parsed.name} members`;
-    const npc = npcLedger.find(n => n.id === parsed.id);
-    return npc ? npc.name : 'someone (removed)';
+/** NPC id → name, built once per ledger so per-row labels don't scan the ledger. */
+export type NpcNameMap = ReadonlyMap<string, string>;
+
+export function buildNpcNameMap(npcLedger: NPCEntry[]): NpcNameMap {
+    return new Map(npcLedger.map(n => [n.id, n.name]));
 }
 
-export function knownBySummary(knownBy: string[] | undefined, npcLedger: NPCEntry[]): string {
+export function knownByTokenLabel(tok: string, npcNames: NpcNameMap): string {
+    const parsed = parseKnownByToken(tok);
+    if (!parsed) return npcNames.get(tok.trim()) ?? 'unknown';
+    if (parsed.kind === 'player') return 'the player';
+    if (parsed.kind === 'faction') return `${parsed.name} members`;
+    return npcNames.get(parsed.id) ?? 'someone (removed)';
+}
+
+export function knownBySummary(knownBy: string[] | undefined, npcNames: NpcNameMap): string {
     if (knownBy === undefined) return 'public';
     if (knownBy.length === 0) return 'secret (player only)';
-    return knownBy.map(t => knownByTokenLabel(t, npcLedger)).join(', ');
+    return knownBy.map(t => knownByTokenLabel(t, npcNames)).join(', ');
 }
 
 export function knownByChipClass(knownBy: string[] | undefined): string {
@@ -43,4 +49,33 @@ export function subjectLabel(token: string): string {
     const pretty = parts.map(p => p.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
     if (pretty.length >= 2) { const attr = pretty.pop(); return `${pretty.join(' ')} · ${attr}`; }
     return pretty.join(' ');
+}
+
+export type FactFilter = 'all' | 'enabled' | 'disabled' | 'replaced' | 'secret';
+
+export const FACT_FILTERS: readonly { id: FactFilter; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'enabled', label: 'On' },
+    { id: 'disabled', label: 'Off' },
+    { id: 'replaced', label: 'Replaced' },
+    { id: 'secret', label: 'Scoped' },
+];
+
+/** Status filter + case-insensitive search over text, subject, scene ref and knower names. */
+export function matchesFactFilter(
+    e: DivergenceEntry,
+    filter: FactFilter,
+    query: string,
+    npcNames: NpcNameMap,
+): boolean {
+    if (filter === 'enabled' && e.enabled === false) return false;
+    if (filter === 'disabled' && e.enabled !== false) return false;
+    if (filter === 'replaced' && e.status !== 'superseded') return false;
+    if (filter === 'secret' && e.knownBy === undefined) return false;
+    if (!query) return true;
+    const q = query.toLowerCase();
+    return e.text.toLowerCase().includes(q)
+        || (e.subjectToken?.toLowerCase().includes(q) ?? false)
+        || e.sceneRef.toLowerCase().includes(q)
+        || knownBySummary(e.knownBy, npcNames).toLowerCase().includes(q);
 }
