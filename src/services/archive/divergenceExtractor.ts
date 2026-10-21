@@ -12,7 +12,7 @@ import {
     joinPromptSections,
     buildSubjectTokenRules,
 } from '../infrastructure';
-import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory, stripReasoning, normalizeSubjectToken, normalizeFaction, parseKnownByToken, isFactActive, isValidStateKey } from '../campaign-state';
+import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory, stripReasoning, normalizeSubjectToken, normalizeFaction, parseKnownByToken, isFactActive, isValidStateKey, normalizeStateKey, compareSceneRef, STATE_KEY_KINDS, STATE_KEY_ATTRIBUTES } from '../campaign-state';
 import { uid } from '../../utils/uid';
 import { truncateScenesToBudget } from './saveFileEngine';
 import { parseChapterSummaryOutput, type ChapterSummaryOutput } from './chapterSummaryWriter';
@@ -31,11 +31,13 @@ function buildCombinedSealPrompt(
     activeStateFacts: DivergenceEntry[] = [],
 ): string {
     const truncated = truncateScenesToBudget(scenes, COMBINED_SEAL_TOKEN_BUDGET);
-    // The register's current single-value state facts: the only ids a new fact may supersede.
+    // The register's current slot values. Reusing a listed key replaces that value,
+    // so the extractor must see what each key currently holds. Most recent first.
     const activeStateFactsText = activeStateFacts
         .filter(f => isFactActive(f) && isValidStateKey(f.stateKey))
-        .slice(-40)
-        .map(f => `[ID: ${f.id}] [STATE: ${f.stateKey}] ${f.text}`)
+        .sort((a, b) => compareSceneRef(b.sceneRef, a.sceneRef))
+        .slice(0, 80)
+        .map(f => `[STATE: ${f.stateKey}] ${f.text}`)
         .join('\n');
     const sceneContent = truncated.map(s => `--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n\n');
 
@@ -65,7 +67,7 @@ ${rows}`;
     }
 
     const knownByExample = `     "locations": [
-         { "text": "Eastern gate destroyed by siege", "sceneRef": "014", "npcIds": [], "unrecognizedNpcNames": [], "subjectToken": "eastern_gate.state" }
+         { "text": "Eastern gate destroyed by siege", "sceneRef": "014", "npcIds": [], "unrecognizedNpcNames": [], "subjectToken": "eastern_gate.state", "stateKey": "place:eastern-gate:status" }
      ]`;
 
     const summaryShape = `The "summary" value must be this JSON shape:
@@ -85,7 +87,7 @@ ${rows}`;
 {
 ${knownByExample},
      "npc_events": [
-         { "text": "Grak allied with the player", "sceneRef": "018", "npcIds": ["npc_42"], "knownBy": ["npc:npc_42", "npc:npc_5"], "unrecognizedNpcNames": [], "subjectToken": "grak.allegiance" }
+         { "text": "Grak allied with the player", "sceneRef": "018", "npcIds": ["npc_42"], "knownBy": ["npc:npc_42", "npc:npc_5"], "unrecognizedNpcNames": [], "subjectToken": "grak.allegiance", "stateKey": "npc:npc_42:allegiance" }
      ],
      "promises_debts": [],
      "world_state": [],
@@ -129,13 +131,17 @@ Output: JSON array for this slot, or [] if empty.`;
 - npcIds: list the NPC ledger IDs mentioned. If a name appears that is NOT in the ledger, put it in unrecognizedNpcNames instead.
 - Focus on: permanent changes, new information, relationship shifts, acquisitions, losses, oaths, regime changes.
 - Skip transient details, emotional narration, momentary states, and anything the archive would already surface.
-- For a fact with exactly one current value, you MAY add "stateKey" using only:
-  "item:<slug>:holder", "npc:<id>:location", "npc:<id>:status",
-  "npc:<id>:allegiance", "place:<slug>:controller", or "debt:<slug>:status".
-- Events and observations MUST omit stateKey.
-- To replace a listed CURRENT STATE FACT, set "supersedesFactId" to its ID and use
-  the exact same stateKey. Never supersede a fact not listed in the INPUT.
-- If uncertain, omit both fields and emit an additive fact.
+- STATE KEYS: a fact that states the CURRENT value of something that has exactly one value
+  at a time MUST carry "stateKey": "<kind>:<slug>:<attribute>".
+  kind: ${STATE_KEY_KINDS.join(' | ')}   (npc slug = the NPC ledger id; others = a short-name slug)
+  attribute: ${STATE_KEY_ATTRIBUTES.join(' | ')}
+  e.g. "npc:npc_5:location" (where Mira is now), "item:moon-key:holder", "faction:red-hand:leader",
+  "place:eastern-gate:status", "quest:missing-heir:status", "debt:guild-loan:status".
+- A new fact with the same stateKey REPLACES the current one. To update a CURRENT STATE entry
+  listed in the INPUT, reuse its exact key. Different things get different slugs (two swords = two keys).
+- Events, history, discoveries, oaths and anything that ADDS to what is known rather than
+  replacing a value MUST omit stateKey — they are kept alongside each other.
+- If unsure whether a fact replaces an old value, omit stateKey.
 - If a slot is empty, output [] for that slot.`;
 
     const witnessCorrectionsRule = witnessAuditSection
@@ -203,7 +209,7 @@ TASK 2 — Extract established facts that would BREAK A FUTURE SCENE if the AI c
         `CHAPTER: "${chapterTitle || 'Untitled'}"`,
         `SCENE IDs IN THIS CHAPTER: ${sceneIds.join(', ')}`,
         `NPC LEDGER (resolve names to IDs):\n${npcList || '(no NPCs in ledger)'}`,
-        activeStateFactsText ? `CURRENT STATE FACTS (only these IDs may be superseded):\n${activeStateFactsText}` : '',
+        activeStateFactsText ? `CURRENT STATE (reuse a key to replace its value):\n${activeStateFactsText}` : '',
         witnessAuditSection ? witnessAuditSection.trim() : '',
         ...(openThreads && openThreads.length > 0
             ? [`OPEN THREADS FROM EARLIER CHAPTERS (verbatim — do not rephrase):\n${openThreads.map(t => '- ' + t).join('\n')}`]
@@ -374,9 +380,9 @@ function buildDivergenceEntries(
                 subjectToken = normalizeSubjectToken(rawSubjectToken);
             }
 
-            // Guarded supersession: only a valid single-value state slot may carry a
-            // supersede instruction; mergeLifecycleEntries re-checks the target.
-            const stateKey = isValidStateKey(rawItem.stateKey) ? rawItem.stateKey : undefined;
+            // State slot: a valid key makes this fact the slot's current value at merge
+            // (mergeLifecycleEntries). supersedesFactId is legacy output, still parsed.
+            const stateKey = normalizeStateKey(rawItem.stateKey);
             const supersedesFactId = stateKey && typeof rawItem.supersedesFactId === 'string'
                 ? rawItem.supersedesFactId
                 : undefined;

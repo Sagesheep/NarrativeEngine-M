@@ -9,6 +9,11 @@ export {
     mergeLifecycleEntries,
     isFactActive,
     isValidStateKey,
+    normalizeStateKey,
+    STATE_KEY_KINDS,
+    STATE_KEY_ATTRIBUTES,
+    applyStateKeys,
+    restoreFact,
     renderRegisterForPayload,
     countRegisterTokens,
     getDivergenceSceneIds,
@@ -28,6 +33,8 @@ export {
 } from './divergenceRegister';
 export { runFactClustering, assignSubjectTokens, deriveSubjectTokenUpdates } from './factClusterer';
 export type { ClusteringCancelled, AssignSubjectTokensResult, SubjectTokenUpdate } from './factClusterer';
+export { assignStateKeys } from './stateKeyAssigner';
+export type { StateKeyCancelled, StateKeyUpdate } from './stateKeyAssigner';
 export { runFactDedup } from './factDeduper';
 export type { DedupGroup, DedupCancelled, DedupResult } from './factDeduper';
 export { fetchFacts, extractContextEntities, queryFacts, formatFactsForContext, queryTraits, formatTraitsForContext } from './semanticMemory';

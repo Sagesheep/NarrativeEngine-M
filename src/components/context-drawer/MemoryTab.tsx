@@ -1,8 +1,8 @@
 import { useState, useRef, useMemo, useDeferredValue } from 'react';
-import { Pin, ChevronDown, ChevronUp, AlertTriangle, Trash2, Sparkles, X, Link2, Search, Check } from 'lucide-react';
+import { Pin, ChevronDown, ChevronUp, AlertTriangle, Trash2, Sparkles, X, Link2, Search, Check, Layers } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { DivergenceCategory, DivergenceEntry } from '../../types';
-import { EMPTY_REGISTER, CATEGORY_LABELS, DIVERGENCE_CATEGORIES, runFactDedup, assignSubjectTokens, type DedupResult, type DedupCancelled, type ClusteringCancelled, groupDivergencesBySubject, renderRegisterForPayload } from '../../services/campaign-state';
+import { EMPTY_REGISTER, CATEGORY_LABELS, DIVERGENCE_CATEGORIES, runFactDedup, assignSubjectTokens, type DedupResult, type DedupCancelled, type ClusteringCancelled, groupDivergencesBySubject, renderRegisterForPayload, assignStateKeys, type StateKeyCancelled } from '../../services/campaign-state';
 import { countTokens } from '../../services/infrastructure';
 import { divergenceCapFor } from '../../services/payload';
 import { DedupReviewModal } from '../DedupReviewModal';
@@ -25,6 +25,7 @@ export function MemoryTab() {
     const toggleDivergenceChapter = useAppStore(s => s.toggleDivergenceChapter);
     const toggleDivergenceCategory = useAppStore(s => s.toggleDivergenceCategory);
     const applySubjectTokens = useAppStore(s => s.applySubjectTokens);
+    const applyDivergenceStateKeys = useAppStore(s => s.applyDivergenceStateKeys);
     const setManyFactsEnabled = useAppStore(s => s.setManyFactsEnabled);
     const npcLedger = useAppStore(s => s.npcLedger);
     const getActiveUtilityEndpoint = useAppStore(s => s.getActiveUtilityEndpoint);
@@ -53,6 +54,10 @@ export function MemoryTab() {
     const [simSummary, setSimSummary] = useState<string | null>(null);
     const [simError, setSimError] = useState<string | null>(null);
     const simCancelRef = useRef<ClusteringCancelled>({ cancelled: false });
+
+    // "Build current state" migration — keys old facts into state slots.
+    const [stateRunning, setStateRunning] = useState(false);
+    const stateCancelRef = useRef<StateKeyCancelled>({ cancelled: false });
 
     const reg = divergenceRegister ?? EMPTY_REGISTER;
     const entries = reg.entries;
@@ -252,8 +257,39 @@ export function MemoryTab() {
             });
     };
 
+    const handleBuildCurrentState = async () => {
+        const utilityProvider = getActiveUtilityEndpoint();
+        if (!utilityProvider) {
+            setSimError('No utility AI endpoint configured.');
+            return;
+        }
+        if (!await appConfirm({
+            title: 'Build current state',
+            body: 'The utility AI sorts your existing facts into state slots (where someone is, who holds what, who leads what…). In each slot only the newest fact stays active; older ones are marked "replaced" and stop being sent to the GM. Nothing is deleted — replaced facts can be restored. Large registers take several AI calls.',
+            confirmLabel: 'Build',
+        })) return;
+
+        setStateRunning(true);
+        setSimSummary(null);
+        setSimError(null);
+        stateCancelRef.current = { cancelled: false };
+        try {
+            const updates = await assignStateKeys(reg, npcLedger ?? [], utilityProvider, stateCancelRef.current, setSimStatus);
+            const { keyed, superseded } = applyDivergenceStateKeys(updates);
+            setSimSummary(`Keyed ${keyed} fact${keyed === 1 ? '' : 's'} into state slots · ${superseded} older value${superseded === 1 ? '' : 's'} replaced.`);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg !== 'Build current state cancelled.') setSimError(msg);
+        } finally {
+            setStateRunning(false);
+            setSimStatus(null);
+        }
+    };
+
     const handleStopSimilarity = () => {
         simCancelRef.current.cancelled = true;
+        stateCancelRef.current.cancelled = true;
+        setStateRunning(false);
         setSimRunning(false);
         setSimStatus(null);
     };
@@ -303,7 +339,16 @@ export function MemoryTab() {
                         <Link2 size={9} />
                         Find Similarity
                     </button>
-                    {simRunning && (
+                    <button
+                        onClick={handleBuildCurrentState}
+                        disabled={stateRunning || simRunning}
+                        className="flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded text-ice bg-ice/10 hover:bg-ice/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Sort existing facts into state slots so only the newest value per slot is sent to the GM. Older values are kept as 'replaced'."
+                    >
+                        <Layers size={9} />
+                        Build Current State
+                    </button>
+                    {(simRunning || stateRunning) && (
                         <button
                             onClick={handleStopSimilarity}
                             className="flex items-center gap-0.5 text-[9px] text-red-400 hover:text-red-300 px-1"
@@ -317,10 +362,10 @@ export function MemoryTab() {
             {tab === 'facts' && simStatus && (
                 <div className="text-[9px] text-text-dim">{simStatus}</div>
             )}
-            {tab === 'facts' && simSummary && !simRunning && (
+            {tab === 'facts' && simSummary && !simRunning && !stateRunning && (
                 <div className="text-[9px] text-purple-400">{simSummary}</div>
             )}
-            {tab === 'facts' && simError && !simRunning && (
+            {tab === 'facts' && simError && !simRunning && !stateRunning && (
                 <div className="text-[9px] text-red-400">{simError}</div>
             )}
 

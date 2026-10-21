@@ -1,18 +1,28 @@
 import { memo, useState, type ReactNode } from 'react';
-import { Edit2, Check, Pin, PinOff, Trash2, Users, X } from 'lucide-react';
+import { Edit2, Check, Pin, PinOff, Trash2, Users, X, Undo2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { DivergenceEntry } from '../../types';
 import { CATEGORY_LABELS, normalizeFaction } from '../../services/campaign-state';
 import { CATEGORY_COLORS, CATEGORY_DOTS, knownByTokenLabel, knownBySummary, knownByChipClass, type NpcNameMap } from './memoryTabHelpers';
 
-/** A later fact replaced this one (guarded supersession); it is no longer sent to the GM. */
+/** A later fact in the same state slot replaced this one; it is no longer sent to the GM. */
 function ReplacedTag({ entry }: { entry: DivergenceEntry }) {
+    const restoreDivergenceFact = useAppStore(s => s.restoreDivergenceFact);
     if (entry.status !== 'superseded') return null;
     return (
-        <span className="ml-1 text-[8px] uppercase font-bold text-text-dim bg-white/5 px-1 rounded" title="A later fact replaced this one; it is no longer sent to the GM">
+        <span className="ml-1 inline-flex items-center gap-0.5 text-[8px] uppercase font-bold text-text-dim bg-white/5 px-1 rounded" title="A later fact replaced this one; it is no longer sent to the GM">
             replaced
+            <button onClick={() => restoreDivergenceFact(entry.id)} className="hover:text-emerald-400 normal-case" title="Restore: send this fact to the GM again">
+                <Undo2 size={8} />
+            </button>
         </span>
     );
+}
+
+/** The state slot this fact fills, e.g. npc:npc_5:location. */
+function SlotTag({ stateKey }: { stateKey?: string }) {
+    if (!stateKey) return null;
+    return <span className="ml-1 text-[8px] font-mono text-ice/70" title="State slot — a newer fact in this slot replaces this one">{stateKey}</span>;
 }
 
 /** KnownBy editor popover — inline, matches existing inline-edit pattern. */
@@ -200,6 +210,7 @@ export const FactRow = memo(function FactRow({ entry: e, npcNames, showCategory,
                 {showCategory && <span className={`${CATEGORY_COLORS[e.category]} text-[9px] uppercase`}>{CATEGORY_LABELS[e.category]} </span>}
                 {e.text}
                 <ReplacedTag entry={e} />
+                <SlotTag stateKey={e.stateKey} />
                 {isLatest && (
                     <span className="ml-1 text-[8px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded">latest</span>
                 )}

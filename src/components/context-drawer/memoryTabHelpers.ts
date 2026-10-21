@@ -51,10 +51,11 @@ export function subjectLabel(token: string): string {
     return pretty.join(' ');
 }
 
-export type FactFilter = 'all' | 'enabled' | 'disabled' | 'replaced' | 'secret';
+export type FactFilter = 'all' | 'state' | 'enabled' | 'disabled' | 'replaced' | 'secret';
 
 export const FACT_FILTERS: readonly { id: FactFilter; label: string }[] = [
     { id: 'all', label: 'All' },
+    { id: 'state', label: 'State' },
     { id: 'enabled', label: 'On' },
     { id: 'disabled', label: 'Off' },
     { id: 'replaced', label: 'Replaced' },
@@ -68,6 +69,7 @@ export function matchesFactFilter(
     query: string,
     npcNames: NpcNameMap,
 ): boolean {
+    if (filter === 'state' && (!e.stateKey || e.status === 'superseded')) return false;
     if (filter === 'enabled' && e.enabled === false) return false;
     if (filter === 'disabled' && e.enabled !== false) return false;
     if (filter === 'replaced' && e.status !== 'superseded') return false;
@@ -76,6 +78,7 @@ export function matchesFactFilter(
     const q = query.toLowerCase();
     return e.text.toLowerCase().includes(q)
         || (e.subjectToken?.toLowerCase().includes(q) ?? false)
+        || (e.stateKey?.includes(q) ?? false)
         || e.sceneRef.toLowerCase().includes(q)
         || knownBySummary(e.knownBy, npcNames).toLowerCase().includes(q);
 }

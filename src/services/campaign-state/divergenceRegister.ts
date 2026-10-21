@@ -1,6 +1,7 @@
 import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, NPCEntry } from '../../types';
 import { countTokens } from '../infrastructure';
 import { notify } from '../ports/notify';
+import { compareSceneRef } from './knowledgeScope';
 
 export const EMPTY_REGISTER: DivergenceRegister = {
     entries: [],
@@ -53,8 +54,22 @@ export function stripReasoning(raw: string): string {
     return clean.trim();
 }
 
-/** State slots are intentionally limited to facts with exactly one current value. */
-const STATE_KEY_RE = /^(?:item|npc|place|debt):[a-z0-9][a-z0-9_-]*:(?:holder|location|status|allegiance|controller)$/;
+/**
+ * State slots: `<kind>:<slug>:<attribute>`, each naming something with exactly one
+ * current value. A new fact in a slot replaces the slot's current fact, so the
+ * vocabulary stays closed — free-form attributes would let cumulative facts
+ * ("Mira's secrets") overwrite each other.
+ */
+export const STATE_KEY_KINDS = ['item', 'npc', 'place', 'debt', 'faction', 'quest'] as const;
+export const STATE_KEY_ATTRIBUTES = ['holder', 'location', 'status', 'allegiance', 'controller', 'leader', 'condition', 'role'] as const;
+const STATE_KEY_RE = new RegExp(`^(?:${STATE_KEY_KINDS.join('|')}):[a-z0-9][a-z0-9_-]*:(?:${STATE_KEY_ATTRIBUTES.join('|')})$`);
+
+/** Lowercase + trim an LLM-emitted key; undefined unless it is then a valid slot. */
+export function normalizeStateKey(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const key = value.trim().toLowerCase();
+    return isValidStateKey(key) ? key : undefined;
+}
 
 export function isValidStateKey(value: unknown): value is string {
     return typeof value === 'string' && STATE_KEY_RE.test(value);
@@ -66,11 +81,13 @@ export function isFactActive(entry: DivergenceEntry): boolean {
 }
 
 /**
- * Seal merge with guarded state replacement (port of mainApp 3996b50). A new fact
- * that names `supersedesFactId` replaces that fact only when the target is active,
- * not pinned, and in the exact same state slot (`stateKey`); anything ambiguous
- * becomes a harmless additive fact. `mergeSealEntries` stays append-only for
- * callers that never supersede (NPC avoidance facts).
+ * Seal merge with state replacement. A new fact carrying a valid `stateKey`
+ * becomes that slot's current value: every older active, unpinned fact in the
+ * same slot is marked superseded (kept for history, no longer sent to the GM).
+ * Within one batch the latest sceneRef wins. Facts without a stateKey are
+ * additive. `supersedesFactId` is accepted for older extractor output but no
+ * longer needed — the slot alone decides. `mergeSealEntries` stays append-only
+ * for callers that never supersede (NPC avoidance facts).
  */
 export function mergeLifecycleEntries(
     register: DivergenceRegister,
@@ -80,19 +97,15 @@ export function mergeLifecycleEntries(
     if (newEntries.length === 0) return register;
 
     const entries = [...register.entries];
-    for (const extracted of newEntries) {
+    const ordered = newEntries
+        .map((e, i) => ({ e, i }))
+        .sort((a, b) => compareSceneRef(a.e.sceneRef, b.e.sceneRef) || a.i - b.i)
+        .map(x => x.e);
+    for (const extracted of ordered) {
         // An extraction instruction, not persistent campaign data.
-        const { supersedesFactId, ...entry } = extracted;
+        const { supersedesFactId: _legacy, ...entry } = extracted;
         const nextEntry: DivergenceEntry = { ...entry, status: 'active' };
-
-        if (supersedesFactId && isValidStateKey(nextEntry.stateKey)) {
-            const targetIndex = entries.findIndex(e => e.id === supersedesFactId);
-            const target = targetIndex >= 0 ? entries[targetIndex] : undefined;
-            if (target && isFactActive(target) && !target.pinned && target.stateKey === nextEntry.stateKey) {
-                entries[targetIndex] = { ...target, status: 'superseded', supersededBy: nextEntry.id };
-            }
-        }
-
+        if (isValidStateKey(nextEntry.stateKey)) supersedeSlot(entries, nextEntry.stateKey, nextEntry.id);
         entries.push(nextEntry);
     }
 
@@ -104,6 +117,57 @@ export function mergeLifecycleEntries(
         lastUpdatedAt: Date.now(),
         version: 2,
     };
+}
+
+/** Mark every active, unpinned fact in `stateKey` superseded by `byId` (mutates the array). */
+function supersedeSlot(entries: DivergenceEntry[], stateKey: string, byId: string): number {
+    let count = 0;
+    for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        if (e.stateKey === stateKey && e.id !== byId && isFactActive(e) && !e.pinned) {
+            entries[i] = { ...e, status: 'superseded', supersededBy: byId };
+            count++;
+        }
+    }
+    return count;
+}
+
+/**
+ * Migration: apply stateKey assignments to existing facts, then collapse every
+ * slot to its newest fact (by sceneRef). Older facts become superseded — never
+ * deleted, and restorable from the Knowledge tab.
+ */
+export function applyStateKeys(
+    register: DivergenceRegister,
+    updates: Array<{ id: string; stateKey: string }>,
+): { register: DivergenceRegister; keyed: number; superseded: number } {
+    const keyMap = new Map(updates.filter(u => isValidStateKey(u.stateKey)).map(u => [u.id, u.stateKey]));
+    const entries = register.entries.map(e => keyMap.has(e.id) ? { ...e, stateKey: keyMap.get(e.id) } : e);
+
+    const newestBySlot = new Map<string, DivergenceEntry>();
+    for (const e of entries) {
+        if (!isValidStateKey(e.stateKey) || !isFactActive(e) || e.pinned) continue;
+        const cur = newestBySlot.get(e.stateKey);
+        if (!cur || compareSceneRef(e.sceneRef, cur.sceneRef) >= 0) newestBySlot.set(e.stateKey, e);
+    }
+    let superseded = 0;
+    for (const [slot, newest] of newestBySlot) superseded += supersedeSlot(entries, slot, newest.id);
+
+    return {
+        register: { ...register, entries, lastUpdatedAt: Date.now() },
+        keyed: keyMap.size,
+        superseded,
+    };
+}
+
+/** Undo a supersession: the fact becomes active again (its replacement stays active too). */
+export function restoreFact(register: DivergenceRegister, entryId: string): DivergenceRegister {
+    const entries = register.entries.map(e => {
+        if (e.id !== entryId) return e;
+        const { supersededBy: _by, ...rest } = e;
+        return { ...rest, status: 'active' as const };
+    });
+    return { ...register, entries, lastUpdatedAt: Date.now() };
 }
 
 export function mergeSealEntries(
@@ -195,16 +259,33 @@ export function renderRegisterForPayload(
         return catSections.join('\n\n');
     };
 
-    // If no on-stage partition or no off-stage NPCs, render as before (single block)
-    if (onStageSet.size === 0 || offStageSet.size === 0) {
+    // Slot facts render first as one CURRENT STATE list (sorted by slot so a
+    // subject's slots sit together); everything else stays grouped by chapter.
+    const renderBody = (entries: DivergenceEntry[]): string => {
+        const keyed = entries.filter(e => isValidStateKey(e.stateKey))
+            .sort((a, b) => (a.stateKey! < b.stateKey! ? -1 : a.stateKey! > b.stateKey! ? 1 : 0));
+        const loose = new Map<string, DivergenceEntry[]>();
+        for (const e of entries) {
+            if (isValidStateKey(e.stateKey)) continue;
+            if (!loose.has(e.chapterId)) loose.set(e.chapterId, []);
+            loose.get(e.chapterId)!.push(e);
+        }
         const sections: string[] = [];
-        for (const [chapterId, chapterEntries] of byChapter) {
+        if (keyed.length > 0) {
+            sections.push(`CURRENT STATE:\n${keyed.map(e => `• ${e.text}${e.pinned ? ' ★' : ''}${e.source === 'manual' ? ' ⚡' : ''}`).join('\n')}`);
+        }
+        for (const [chapterId, chapterEntries] of loose) {
             const title = chapterTitleMap.get(chapterId) ?? `Chapter ${chapterId}`;
             sections.push(`${title}:\n${renderEntries(chapterEntries)}`);
         }
+        return sections.join('\n\n');
+    };
+
+    // If no on-stage partition or no off-stage NPCs, render as before (single block)
+    if (onStageSet.size === 0 || offStageSet.size === 0) {
         const pinnedCount = register.entries.filter(e => e.pinned).length;
         const banner = `${activeEntries.length} active facts across ${byChapter.size} chapters${pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}`;
-        return `[ESTABLISHED FACTS]\n[${banner}]\nThese facts are TRUE in this campaign.\n\n${sections.join('\n\n')}\n[END ESTABLISHED FACTS]`;
+        return `[ESTABLISHED FACTS]\n[${banner}]\nThese facts are TRUE in this campaign.\n\n${renderBody(activeEntries)}\n[END ESTABLISHED FACTS]`;
     }
 
     // ── Partitioned rendering ──
@@ -216,46 +297,19 @@ export function renderRegisterForPayload(
         return e.knownBy.some(id => offStageSet.has(id));
     });
 
-    const sections: string[] = [];
-    for (const [chapterId, chapterEntries] of byChapter) {
-        const title = chapterTitleMap.get(chapterId) ?? `Chapter ${chapterId}`;
-        sections.push(`${title}:\n${renderEntries(chapterEntries)}`);
-    }
     const pinnedCount = register.entries.filter(e => e.pinned).length;
     const banner = `${activeEntries.length} active facts across ${byChapter.size} chapters${pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}`;
 
     // If off-stage is the same as full list, no partitioning needed
     if (offStageEntries.length === activeEntries.length) {
-        return `[ESTABLISHED FACTS]\n[${banner}]\nThese facts are TRUE in this campaign.\n\n${sections.join('\n\n')}\n[END ESTABLISHED FACTS]`;
+        return `[ESTABLISHED FACTS]\n[${banner}]\nThese facts are TRUE in this campaign.\n\n${renderBody(activeEntries)}\n[END ESTABLISHED FACTS]`;
     }
 
     // Partitioned: separate blocks
-    const onStageSections: string[] = [];
-    const onStageByChapter = new Map<string, DivergenceEntry[]>();
-    for (const e of onStageEntries) {
-        if (!onStageByChapter.has(e.chapterId)) onStageByChapter.set(e.chapterId, []);
-        onStageByChapter.get(e.chapterId)!.push(e);
-    }
-    for (const [chapterId, chapterEntries] of onStageByChapter) {
-        const title = chapterTitleMap.get(chapterId) ?? `Chapter ${chapterId}`;
-        onStageSections.push(`${title}:\n${renderEntries(chapterEntries)}`);
-    }
-
-    const offStageSections: string[] = [];
-    const offStageByChapter = new Map<string, DivergenceEntry[]>();
-    for (const e of offStageEntries) {
-        if (!offStageByChapter.has(e.chapterId)) offStageByChapter.set(e.chapterId, []);
-        offStageByChapter.get(e.chapterId)!.push(e);
-    }
-    for (const [chapterId, chapterEntries] of offStageByChapter) {
-        const title = chapterTitleMap.get(chapterId) ?? `Chapter ${chapterId}`;
-        offStageSections.push(`${title}:\n${renderEntries(chapterEntries)}`);
-    }
-
     const onStageBanner = `${onStageEntries.length} facts (on-stage view · all)`;
     const offStageBanner = `${offStageEntries.length} facts (off-stage view · bounded)`;
 
-    return `[ESTABLISHED FACTS — ON-STAGE]\n[${onStageBanner}]\n${onStageSections.join('\n\n')}\n[END ON-STAGE FACTS]\n\n[ESTABLISHED FACTS — OFF-STAGE]\n[${offStageBanner}]\n${offStageSections.join('\n\n')}\n[END OFF-STAGE FACTS]`;
+    return `[ESTABLISHED FACTS — ON-STAGE]\n[${onStageBanner}]\n${renderBody(onStageEntries)}\n[END ON-STAGE FACTS]\n\n[ESTABLISHED FACTS — OFF-STAGE]\n[${offStageBanner}]\n${renderBody(offStageEntries)}\n[END OFF-STAGE FACTS]`;
 }
 
 export function countRegisterTokens(register: DivergenceRegister): number {
