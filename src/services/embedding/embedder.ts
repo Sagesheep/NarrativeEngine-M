@@ -1,11 +1,21 @@
-const MODEL_DIMS: Record<string, number> = {
-    'Xenova/all-MiniLM-L6-v2': 384,
-    'Xenova/bge-base-en-v1.5': 768,
+const STANDARD_MODEL = 'Xenova/all-MiniLM-L6-v2';
+const HIGH_MODEL = 'Xenova/bge-base-en-v1.5';
+
+/**
+ * Per-model setup. `floor` turns a similarity cutoff written for MiniLM (every
+ * cutoff in the app is) into the same cutoff for this model. bge scores
+ * everything higher: on the eval campaign (src/services/__evals__) unrelated
+ * scenes scored 0.49–0.73 against bge (median 0.60) and -0.01–0.41 against
+ * MiniLM (median 0.19), so MiniLM's 0.28–0.40 cutoffs dropped nothing under bge.
+ * The mapping keeps every relevant scene there (lowest 0.58) and is stricter
+ * the higher the MiniLM cutoff, like MiniLM's own.
+ */
+const MODEL_PROFILES: Record<string, { dims: number; floor: (miniLmFloor: number) => number }> = {
+    [STANDARD_MODEL]: { dims: 384, floor: f => f },
+    [HIGH_MODEL]: { dims: 768, floor: f => 0.27 + 0.6 * f },
 };
 
 const DEFAULT_DIMS = 384;
-const STANDARD_MODEL = 'Xenova/all-MiniLM-L6-v2';
-const HIGH_MODEL = 'Xenova/bge-base-en-v1.5';
 
 const CALL_TIMEOUT_MS = 60_000;
 const BATCH_CALL_TIMEOUT_MS = 30_000;
@@ -110,7 +120,18 @@ function modelIdFromSetting(setting: 'standard' | 'high'): string {
 }
 
 function dimsFromModelId(modelId: string): number {
-    return MODEL_DIMS[modelId] ?? DEFAULT_DIMS;
+    return MODEL_PROFILES[modelId]?.dims ?? DEFAULT_DIMS;
+}
+
+/** A similarity cutoff written for MiniLM, as the same cutoff for `modelId`. */
+export function scoreFloorFor(modelId: string, miniLmFloor: number): number {
+    if (miniLmFloor <= 0) return miniLmFloor;
+    return (MODEL_PROFILES[modelId]?.floor ?? (f => f))(miniLmFloor);
+}
+
+/** A similarity cutoff written for MiniLM, as the same cutoff for the loaded model. */
+export function calibrateScoreFloor(miniLmFloor: number): number {
+    return scoreFloorFor(currentModelId, miniLmFloor);
 }
 
 function allowRemoteForModel(modelId: string): boolean {

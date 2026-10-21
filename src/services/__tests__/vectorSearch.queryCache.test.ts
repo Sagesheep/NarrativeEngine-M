@@ -13,6 +13,7 @@ vi.mock('../embedding/embedder', () => ({
     embedText: h.embedText,
     isEmbedderReady: () => true,
     getCurrentModelId: () => h.modelId,
+    calibrateScoreFloor: (floor: number) => floor,
 }));
 vi.mock('../storage', () => ({
     offlineStorage: { embeddings: { getAll: h.getAll } },
@@ -56,5 +57,17 @@ describe('semanticSearchScored — query vectors', () => {
         expect(await semanticSearchScored('c', ['a failed query'], 'scene')).toBeUndefined();
         await semanticSearchScored('c', ['a failed query'], 'scene');
         expect(h.embedText).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('semanticSearchScored — vectors from another model', () => {
+    it('leaves out vectors the loaded model did not make', async () => {
+        h.getAll.mockResolvedValue([
+            { id: 'old', vector: [1, 0, 0], modelId: 'model-old' },
+            { id: 'new', vector: [0.9, 0.1, 0], modelId: 'model-a' },
+            { id: 'untagged', vector: [0.8, 0.2, 0] },
+        ]);
+        const hits = await semanticSearchScored('c', ['the gate'], 'lore');
+        expect(hits?.map(x => x.id)).toEqual(['new', 'untagged']);
     });
 });

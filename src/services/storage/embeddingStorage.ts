@@ -24,7 +24,7 @@ export type EmbeddingRecord = {
     modelId?: string;
 };
 
-type CacheEntry = { id: string; vector: VectorLike };
+type CacheEntry = { id: string; vector: VectorLike; modelId: string };
 
 /**
  * In-memory vector cache, keyed `${campaignId}_${type}`. Populated lazily on the
@@ -77,7 +77,7 @@ async function ensureCached(campaignId: string, types: readonly EmbeddingType[])
     for (const t of missing) buckets.set(t, []);
     matched.forEach((m, i) => {
         const rec = values[i];
-        if (rec && rec.vector) buckets.get(m.t)!.push({ id: m.id, vector: rec.vector });
+        if (rec && rec.vector) buckets.get(m.t)!.push({ id: m.id, vector: rec.vector, modelId: rec.modelId ?? LEGACY_MODEL_ID });
     });
     for (const t of missing) cache.set(cacheKey(campaignId, t), buckets.get(t)!);
 }
@@ -97,9 +97,10 @@ export const embeddingStorage = {
         // round-trip. Only touch the cache if this type is already loaded.
         const arr = cache.get(cacheKey(campaignId, type));
         if (arr) {
+            const entry = { id, vector: stored, modelId: record.modelId! };
             const idx = arr.findIndex(e => e.id === id);
-            if (idx >= 0) arr[idx] = { id, vector: stored };
-            else arr.push({ id, vector: stored });
+            if (idx >= 0) arr[idx] = entry;
+            else arr.push(entry);
         }
     },
 
@@ -115,7 +116,8 @@ export const embeddingStorage = {
         return loreEntry?.vector ?? null;
     },
 
-    async getAll(campaignId: string, type?: EmbeddingType): Promise<Array<{ id: string; vector: VectorLike }>> {
+    /** Cached vectors, each tagged with the model that made it (legacy records: MiniLM). */
+    async getAll(campaignId: string, type?: EmbeddingType): Promise<Array<{ id: string; vector: VectorLike; modelId?: string }>> {
         const types = type ? [type] : ALL_TYPES;
         await ensureCached(campaignId, types);
         const results: CacheEntry[] = [];

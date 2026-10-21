@@ -1,4 +1,4 @@
-import type { ApiFormat, LLMProvider, ThinkingEffort } from '../types';
+import type { ApiFormat, LLMProvider, ServiceTier, ThinkingEffort } from '../types';
 
 /**
  * How to switch a model's thinking off (or set its level) on each host.
@@ -33,6 +33,8 @@ export interface CatalogModel {
     mandatory?: boolean;
     /** OpenRouter: whether the model thinks when the request does not ask. */
     defaultOn?: boolean;
+    /** NanoGPT: service tiers the model offers besides the default; undefined when not listed. */
+    serviceTiers?: ServiceTier[];
 }
 
 export type CatalogLookup = (modelId: string) => CatalogModel | undefined;

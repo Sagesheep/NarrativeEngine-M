@@ -1,7 +1,16 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { set as idbSet } from 'idb-keyval';
-import { __setModelCatalogForTests, ensureModelCatalog, lookupCatalogModel } from '../modelCatalog';
+import {
+    __setModelCatalogForTests,
+    __setOpenRouterTiersForTests,
+    ensureModelCatalog,
+    ensureOpenRouterServiceTiers,
+    lookupCatalogModel,
+    lookupServiceTiers,
+    parseNanoGptCatalog,
+    parseOpenRouterEndpoints,
+} from '../modelCatalog';
 
 const NANO_URL = 'https://nano-gpt.com/api/v1';
 const LIST = {
@@ -54,5 +63,49 @@ describe('ensureModelCatalog', () => {
     it('does nothing for hosts without a list', async () => {
         await ensureModelCatalog('https://api.deepseek.com/v1');
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+});
+
+describe('service tiers', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        __setModelCatalogForTests('nanogpt', null);
+        __setOpenRouterTiersForTests('x-ai/grok-argon', null);
+    });
+
+    it('reads NanoGPT supported_service_tiers, fast as priority', () => {
+        const models = parseNanoGptCatalog({
+            data: [
+                { id: 'google/gemini-3.8-flash', supported_service_tiers: ['flex', 'fast'] },
+                { id: 'plain/model', supported_service_tiers: [] },
+                { id: 'old/model' },
+            ],
+        });
+        expect(models['google/gemini-3.8-flash'].serviceTiers).toEqual(['flex', 'priority']);
+        expect(models['plain/model'].serviceTiers).toEqual([]);
+        expect(models['old/model'].serviceTiers).toBeUndefined();
+    });
+
+    it('reads OpenRouter endpoint tiers, ignoring standard and unknown ones', () => {
+        expect(parseOpenRouterEndpoints({
+            data: { endpoints: [{ service_tier: null }, { service_tier: 'priority' }, { service_tier: 'ultrafast' }, { service_tier: 'flex' }] },
+        })).toEqual(['priority', 'flex']);
+        expect(parseOpenRouterEndpoints({ data: {} })).toBeUndefined();
+    });
+
+    it('fetches an OpenRouter model\'s endpoints once, sharing them across routing suffixes', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { endpoints: [{ service_tier: 'flex' }] } }), { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+        const url = 'https://openrouter.ai/api/v1';
+        await ensureOpenRouterServiceTiers(url, 'x-ai/grok-argon');
+        await ensureOpenRouterServiceTiers(url, 'x-ai/grok-argon:nitro');
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledWith('https://openrouter.ai/api/v1/models/x-ai/grok-argon/endpoints', expect.anything());
+        expect(lookupServiceTiers(url, 'x-ai/grok-argon:floor')).toEqual(['flex']);
+    });
+
+    it('lookups are undefined for unknown models and other hosts', () => {
+        expect(lookupServiceTiers('https://openrouter.ai/api/v1', 'nobody/model')).toBeUndefined();
+        expect(lookupServiceTiers('https://api.openai.com/v1', 'gpt-5.5')).toBeUndefined();
     });
 });

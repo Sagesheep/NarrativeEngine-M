@@ -3,7 +3,7 @@ import type { LLMChatMessage, OpenAICompletionResponse } from '../../types/llmMe
 import { uid } from '../../utils/uid';
 import { getApiFormat, getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, extractContent, extractStreamDelta, extractStreamToolCall, thinkingControlFor } from '../../utils/llmApiHelper';
 import { isThinkingControlRejection, markThinkingControlRefused } from '../../utils/thinkingControl';
-import { ensureModelCatalog } from './modelCatalog';
+import { ensureModelCatalog, ensureOpenRouterServiceTiers } from './modelCatalog';
 import { isAbortError } from '../../types/llmMessages';
 import type { LLMUsage } from '../../types/llmMessages';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
@@ -135,6 +135,7 @@ export async function sendMessage(
 
     try {
         await ensureModelCatalog(provider.endpoint);
+        if (provider.serviceTier) await ensureOpenRouterServiceTiers(provider.endpoint, provider.modelName);
 
         // On native with streaming OFF: use CapacitorHttp to bypass WebView CORS restrictions.
         if (Capacitor.isNativePlatform() && !useStreaming) {

@@ -2,7 +2,7 @@ import type { LLMProvider, ThinkingEffort } from '../types';
 import { getQueueForEndpoint, type LLMCallPriority } from '../services/llm/llmRequestQueue';
 import { getApiFormat, getChatUrl, buildChatHeaders, buildChatBody, extractContent, thinkingControlFor } from './llmApiHelper';
 import { isThinkingControlRejection, markThinkingControlRefused } from './thinkingControl';
-import { ensureModelCatalog } from '../services/llm/modelCatalog';
+import { ensureModelCatalog, ensureOpenRouterServiceTiers } from '../services/llm/modelCatalog';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { startUtilityCall } from '../services/llm/utilityCallTracker';
 import { recordCacheUsage } from '../services/llm/cacheTelemetry';
@@ -90,6 +90,7 @@ async function runInner(
     const resolvedEffort = opts?.thinkingEffort !== undefined ? opts.thinkingEffort : provider.thinkingEffort;
 
     await ensureModelCatalog(provider.endpoint);
+    if (provider.serviceTier) await ensureOpenRouterServiceTiers(provider.endpoint, provider.modelName);
     const makeBody = () => {
         const b = buildChatBody(
             provider,
