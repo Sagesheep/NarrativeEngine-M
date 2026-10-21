@@ -11,430 +11,490 @@ export function GlobalSettingsPanel() {
     const updateSettings = useAppStore(s => s.updateSettings);
 
     return (
-        <div className="space-y-8">
-            <label className="text-text-dim text-xs uppercase tracking-widest font-bold block">Global Preferences</label>
+        <div className="space-y-3 min-w-0">
+            <div className="mb-4">
+                <h3 className="text-text-primary text-sm font-bold">Global Preferences</h3>
+                <p className="text-text-dim text-xs mt-1">Open a section to adjust its settings. Changes save automatically.</p>
+            </div>
 
-            <div className="bg-void p-4 border border-border rounded space-y-4">
-                <h3 className="text-[11px] text-text-primary uppercase tracking-wider font-bold">AI Request Timeouts</h3>
-                <p className="text-[10px] text-text-dim">Increase these for slower models or Flex tier. Values are seconds, up to 60 minutes.</p>
-                {[
-                    { key: 'storyTimeoutSeconds' as const, label: 'Story AI timeout (seconds)', fallback: DEFAULT_STORY_TIMEOUT_SECONDS, description: 'Wait for each story reply, retry or swipe. Streaming text automatically extends the deadline.' },
-                    { key: 'utilityTimeoutSeconds' as const, label: 'Utility AI timeout (seconds)', fallback: DEFAULT_UTILITY_TIMEOUT_SECONDS, description: 'Wait for context planning, reranking, recommendations and archive search calls that use the utility deadline. EXTEND adds time while a call is running.' },
-                ].map(({ key, label, fallback, description }) => (
-                    <div key={key}>
-                        <label htmlFor={key} className="block text-[11px] text-text-dim mb-2">{label}</label>
-                        <input
-                            id={key}
-                            key={settings[key] ?? fallback}
-                            type="number"
-                            min={MIN_AI_TIMEOUT_SECONDS}
-                            max={MAX_AI_TIMEOUT_SECONDS}
-                            step={1}
-                            defaultValue={settings[key] ?? fallback}
-                            onBlur={e => updateSettings({ [key]: normalizeTimeoutSeconds(e.target.valueAsNumber, fallback) })}
-                            className="w-full bg-surface border border-border px-3 py-3 text-[16px] font-mono focus:border-terminal focus:outline-none"
-                        />
-                        <div className="flex flex-wrap gap-2 mt-2">
-                            {[{ label: 'Default', value: fallback }, { label: '5 min', value: 300 }, { label: '10 min', value: 600 }, { label: '20 min', value: 1200 }].map(preset => (
-                                <button key={preset.label} onClick={() => updateSettings({ [key]: preset.value })}
-                                    className={`px-3 py-2 text-[10px] font-mono border rounded ${(settings[key] ?? fallback) === preset.value ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim'}`}>
-                                    {preset.label}
+            <details className="rounded-lg border border-border bg-void min-w-0">
+                <summary className="min-h-[64px] cursor-pointer px-4 py-3 text-terminal rounded-lg focus-visible:outline-2 focus-visible:outline-terminal focus-visible:outline-offset-2">
+                    <span className="ml-1 text-sm font-bold text-text-primary">Appearance &amp; Reading</span>
+                    <span className="block mt-1 ml-5 text-xs text-text-dim break-words">{settings.theme === 'light' ? 'Light' : settings.theme === 'dark' ? 'Dark' : 'System theme'} · {clampReadingSize(settings.readingSize)}px story text · Read aloud {settings.ttsEnabled ? 'on' : 'off'}</span>
+                </summary>
+                <div className="border-t border-border p-4 space-y-5 min-w-0">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">UI Theme</label>
+                        <div className="flex border border-border overflow-hidden rounded">
+                            {(['light', 'system', 'dark'] as const).map(t => (
+                                <button
+                                    key={t}
+                                    onClick={() => updateSettings({ theme: t })}
+                                    className={`px-4 py-2 text-[11px] uppercase tracking-wider transition-colors ${settings.theme === t ? 'bg-terminal text-surface font-bold' : 'bg-void text-text-dim'}`}
+                                >
+                                    {t === 'light' ? 'Light' : t === 'dark' ? 'Dark' : 'System'}
                                 </button>
                             ))}
                         </div>
-                        <p className="text-[10px] text-text-dim mt-2">{description}</p>
                     </div>
-                ))}
-            </div>
 
-            <div>
-                <div className="flex items-center justify-between mb-3">
-                    <label className="text-[11px] text-text-dim uppercase tracking-wider">Max Context (Tokens)</label>
-                    <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs">
-                        {settings.contextLimit.toLocaleString()}
-                    </span>
-                </div>
-                <input
-                    type="number"
-                    step={1024}
-                    value={settings.contextLimit || 0}
-                    onChange={(e) => updateSettings({ contextLimit: parseInt(e.target.value) || 0 })}
-                    className="w-full bg-void border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm font-mono focus:border-terminal focus:outline-none mb-4"
-                />
-                <div className="flex flex-wrap gap-2">
-                    {[8192, 16384, 32768, 131072, 1048576].map(limit => (
-                        <button
-                            key={limit}
-                            onClick={() => updateSettings({ contextLimit: limit })}
-                            className={`px-3 py-2 text-[10px] md:text-[9px] font-mono border rounded transition-colors ${settings.contextLimit === limit ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim'}`}
-                        >
-                            {limit >= 1048576 ? `${limit / 1048576}M` : `${limit / 1024}K`}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="bg-void p-4 border border-border rounded">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <label className="block text-[11px] text-amber-400 uppercase tracking-wider font-bold mb-1">Mature Mode</label>
-                        <p className="text-[10px] text-text-dim">
-                            Unlocks mature-tier NPC traits, wants &amp; reactions (darker, adult themes).
-                        </p>
-                    </div>
-                    <button
-                        onClick={() => updateSettings({ matureMode: !settings.matureMode })}
-                        className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.matureMode ? 'bg-amber-400' : 'bg-border'}`}
-                        aria-label="Toggle Mature Mode"
-                    >
-                        <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.matureMode ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
-                    </button>
-                </div>
-            </div>
-
-            <div className="bg-void p-4 border border-border rounded">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <label className="block text-[11px] text-ice uppercase tracking-wider font-bold mb-1">Read Aloud (TTS)</label>
-                        <p className="text-[10px] text-text-dim">
-                            Speaker button on GM messages reads reply aloud. Uses your device's built-in voice (offline, no download).
-                        </p>
-                    </div>
-                    <button
-                        onClick={() => updateSettings({ ttsEnabled: !settings.ttsEnabled })}
-                        className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.ttsEnabled ? 'bg-ice' : 'bg-border'}`}
-                        aria-label="Toggle Read Aloud"
-                    >
-                        <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.ttsEnabled ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
-                    </button>
-                </div>
-
-                {settings.ttsEnabled && (
-                    <div className="mt-4 pt-4 border-t border-border/60">
-                        <div className="flex items-center justify-between mb-2">
-                            <label className="block text-[10px] text-text-dim uppercase tracking-widest">Playback Speed</label>
-                            <span className="text-ice font-bold font-mono bg-ice/10 px-2 py-0.5 rounded text-xs">
-                                {(settings.ttsRate ?? 1).toFixed(2)}×
+                    <div className="flex flex-col">
+                        <div className="flex items-center justify-between mb-3">
+                            <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">UI Scale</label>
+                            <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs">
+                                {Math.round((settings.uiScale ?? 1) * 100)}%
                             </span>
                         </div>
-                        <input
-                            type="range"
-                            min={0.5}
-                            max={2}
-                            step={0.05}
-                            value={settings.ttsRate ?? 1}
-                            onChange={(e) => updateSettings({ ttsRate: parseFloat(e.target.value) })}
-                            className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-ice"
-                        />
-                        <div className="flex justify-between text-[9px] text-text-dim mt-1">
-                            <span>0.5× slow</span>
-                            <span>2× fast</span>
+                        <p className="text-[10px] text-text-dim mb-3">100% is recommended for mobile. Changes apply immediately.</p>
+                        <div className="grid grid-cols-4 gap-2">
+                            {[0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3].map(v => (
+                                <button
+                                    key={v}
+                                    onClick={() => updateSettings({ uiScale: v })}
+                                    className={`py-3 text-[11px] font-mono font-bold border rounded transition-colors min-h-[48px] ${Math.round((settings.uiScale ?? 1) * 100) === Math.round(v * 100) ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:border-terminal/50'}`}
+                                >
+                                    {Math.round(v * 100)}%
+                                </button>
+                            ))}
                         </div>
-                        <p className="text-[9px] text-text-dim mt-2 italic">Voice quality depends on your Android's TTS engine. For a better voice, install "Speech Services & Voices" from the Play Store and download a natural English voice.</p>
                     </div>
-                )}
-            </div>
 
-            <div className="bg-void p-4 border border-border rounded">
-                <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                            <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">Story Text</label>
+                            <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs">
+                                {clampReadingSize(settings.readingSize)}px
+                            </span>
+                        </div>
+                        <p className="text-[10px] text-text-dim -mt-1">Size, spacing and font of the story only. UI Scale still applies on top.</p>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => updateSettings({ readingSize: clampReadingSize((settings.readingSize ?? READING_DEFAULTS.readingSize) - 1) })}
+                                disabled={clampReadingSize(settings.readingSize) <= READING_SIZE_MIN}
+                                className="w-12 min-h-[48px] text-[16px] font-mono font-bold border rounded bg-surface border-border text-text-dim hover:border-terminal/50 disabled:opacity-40"
+                                aria-label="Smaller story text"
+                            >A−</button>
+                            <div className="flex-1 text-center text-text-primary" style={readingStyleVars(settings)}>
+                                <span style={{ fontSize: 'var(--reading-size)', fontFamily: 'var(--reading-font)' }}>The rain kept falling.</span>
+                            </div>
+                            <button
+                                onClick={() => updateSettings({ readingSize: clampReadingSize((settings.readingSize ?? READING_DEFAULTS.readingSize) + 1) })}
+                                disabled={clampReadingSize(settings.readingSize) >= READING_SIZE_MAX}
+                                className="w-12 min-h-[48px] text-[16px] font-mono font-bold border rounded bg-surface border-border text-text-dim hover:border-terminal/50 disabled:opacity-40"
+                                aria-label="Larger story text"
+                            >A+</button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            {READING_FONTS.map(f => (
+                                <button
+                                    key={f.value}
+                                    onClick={() => updateSettings({ readingFont: f.value })}
+                                    className={`py-2 text-[11px] font-bold border rounded transition-colors min-h-[44px] ${normalizeReadingFont(settings.readingFont) === f.value ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:border-terminal/50'}`}
+                                    style={{ fontFamily: f.family }}
+                                >
+                                    {f.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            {READING_LEADINGS.map(l => (
+                                <button
+                                    key={l.value}
+                                    onClick={() => updateSettings({ readingLeading: l.value })}
+                                    className={`py-2 text-[11px] font-mono font-bold border rounded transition-colors min-h-[44px] ${normalizeReadingLeading(settings.readingLeading) === l.value ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:border-terminal/50'}`}
+                                >
+                                    {l.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     <div>
-                        <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Auto-Trim</label>
-                        <p className="text-[10px] text-text-dim">
-                            Trim history at {Math.round((settings.condenseAggressiveness === 'aggressive' ? 50 : settings.condenseAggressiveness === 'quality' ? 90 : 75))}% limit
-                        </p>
-                    </div>
-                    <button
-                        onClick={() => updateSettings({ autoCondenseEnabled: !settings.autoCondenseEnabled })}
-                        className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.autoCondenseEnabled ? 'bg-terminal' : 'bg-border'}`}
-                    >
-                        <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.autoCondenseEnabled ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
-                    </button>
-                </div>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <label className="block text-[11px] text-ice uppercase tracking-wider font-bold mb-1">Read Aloud (TTS)</label>
+                                <p className="text-[10px] text-text-dim">
+                                    Speaker button on GM messages reads reply aloud. Uses your device's built-in voice (offline, no download).
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => updateSettings({ ttsEnabled: !settings.ttsEnabled })}
+                                className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.ttsEnabled ? 'bg-ice' : 'bg-border'}`}
+                                aria-label="Toggle Read Aloud"
+                            >
+                                <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.ttsEnabled ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                            </button>
+                        </div>
 
-                {settings.autoCondenseEnabled && (
-                    <div className="mt-4 pt-4 border-t border-border/60">
-                        <label className="block text-[10px] text-text-dim uppercase tracking-widest mb-3">Context Strategy</label>
+                        {settings.ttsEnabled && (
+                            <div className="mt-4 pt-4 border-t border-border/60">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="block text-[10px] text-text-dim uppercase tracking-widest">Playback Speed</label>
+                                    <span className="text-ice font-bold font-mono bg-ice/10 px-2 py-0.5 rounded text-xs">
+                                        {(settings.ttsRate ?? 1).toFixed(2)}×
+                                    </span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0.5}
+                                    max={2}
+                                    step={0.05}
+                                    value={settings.ttsRate ?? 1}
+                                    onChange={(e) => updateSettings({ ttsRate: parseFloat(e.target.value) })}
+                                    className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-ice"
+                                />
+                                <div className="flex justify-between text-[9px] text-text-dim mt-1">
+                                    <span>0.5× slow</span>
+                                    <span>2× fast</span>
+                                </div>
+                                <p className="text-[9px] text-text-dim mt-2 italic">Voice quality depends on your Android's TTS engine. For a better voice, install "Speech Services & Voices" from the Play Store and download a natural English voice.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </details>
+
+            <details className="rounded-lg border border-border bg-void min-w-0">
+                <summary className="min-h-[64px] cursor-pointer px-4 py-3 text-terminal rounded-lg focus-visible:outline-2 focus-visible:outline-terminal focus-visible:outline-offset-2">
+                    <span className="ml-1 text-sm font-bold text-text-primary">Story &amp; Images</span>
+                    <span className="block mt-1 ml-5 text-xs text-text-dim break-words">Mature mode {settings.matureMode ? 'on' : 'off'} · {settings.imageStylePrompt?.trim() ? 'Custom image style' : 'Default image style'}</span>
+                </summary>
+                <div className="border-t border-border p-4 space-y-5 min-w-0">
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <label className="block text-[11px] text-amber-400 uppercase tracking-wider font-bold mb-1">Mature Mode</label>
+                                <p className="text-[10px] text-text-dim">
+                                    Unlocks mature-tier NPC traits, wants &amp; reactions (darker, adult themes).
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => updateSettings({ matureMode: !settings.matureMode })}
+                                className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.matureMode ? 'bg-amber-400' : 'bg-border'}`}
+                                aria-label="Toggle Mature Mode"
+                            >
+                                <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.matureMode ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col">
+                        <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Image Style Prompt</label>
+                        <p className="text-[10px] text-text-dim mb-2">Prepended to every illustration request. Leave empty for the default style scaffold.</p>
+                        <input
+                            type="text"
+                            value={settings.imageStylePrompt || ''}
+                            onChange={(e) => updateSettings({ imageStylePrompt: e.target.value })}
+                            placeholder="e.g. oil painting, fantasy art, dark atmosphere"
+                            className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary focus:border-terminal focus:outline-none"
+                        />
+                    </div>
+
+                    <div className="flex flex-col">
+                        <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Image Negative Prompt</label>
+                        <p className="text-[10px] text-text-dim mb-2">Elements to exclude from generated images. Only supported by some models (e.g. DALL-E 2, Stable Diffusion).</p>
+                        <input
+                            type="text"
+                            value={settings.imageNegativePrompt || ''}
+                            onChange={(e) => updateSettings({ imageNegativePrompt: e.target.value })}
+                            placeholder="e.g. text, watermark, blurry, deformed"
+                            className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary focus:border-terminal focus:outline-none"
+                        />
+                    </div>
+                </div>
+            </details>
+
+            <details className="rounded-lg border border-border bg-void min-w-0">
+                <summary className="min-h-[64px] cursor-pointer px-4 py-3 text-terminal rounded-lg focus-visible:outline-2 focus-visible:outline-terminal focus-visible:outline-offset-2">
+                    <span className="ml-1 text-sm font-bold text-text-primary">AI &amp; Performance</span>
+                    <span className="block mt-1 ml-5 text-xs text-text-dim break-words">{settings.aiTier === 'lite' ? 'Lite' : settings.aiTier === 'max' ? 'Max' : 'Pro'} call budget · Request timeouts</span>
+                </summary>
+                <div className="border-t border-border p-4 space-y-5 min-w-0">
+                    <div>
+                        <div className="mb-3">
+                            <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">AI Call Budget</label>
+                            <p className="text-[10px] text-text-dim">Controls how many AI calls fire per turn. Lower tiers save cost; the engine and on-device embedder handle recall at every tier.</p>
+                        </div>
                         <div className="grid grid-cols-3 gap-2">
                             {([
-                                { value: 'aggressive' as const, label: 'Tight', pct: 50, desc: 'Lower cost' },
-                                { value: 'balanced' as const, label: 'Smart', pct: 75, desc: 'Best default' },
-                                { value: 'quality' as const, label: 'Deep', pct: 90, desc: 'Higher cost' },
-                            ] as { value: CondenseAggressiveness; label: string; pct: number; desc: string }[]).map(({ value, label, pct, desc }) => (
+                                { value: 'lite' as const, label: 'Lite', calls: '~1', desc: 'Story only' },
+                                { value: 'pro' as const, label: 'Pro', calls: '~4–6', desc: 'Balanced' },
+                                { value: 'max' as const, label: 'Max', calls: '~9–10', desc: 'Full fidelity' },
+                            ] as { value: AiTier; label: string; calls: string; desc: string }[]).map(({ value, label, calls, desc }) => (
                                 <button
                                     key={value}
-                                    onClick={() => updateSettings({ condenseAggressiveness: value })}
+                                    onClick={() => updateSettings({ aiTier: value })}
                                     className={`py-3 text-center border rounded transition-colors ${
-                                        (settings.condenseAggressiveness || 'balanced') === value
+                                        (settings.aiTier ?? 'pro') === value
                                             ? 'bg-terminal border-terminal text-void'
                                             : 'bg-surface border-border text-text-dim hover:border-terminal/50'
                                     }`}
                                 >
                                     <div className="text-[11px] font-bold">{label}</div>
-                                    <div className="text-[16px] font-mono font-bold">{pct}%</div>
+                                    <div className="text-[16px] font-mono font-bold">{calls}</div>
                                     <div className="text-[9px] text-current opacity-60">{desc}</div>
                                 </button>
                             ))}
                         </div>
-                    </div>
-                )}
-            </div>
-
-            <div className="bg-void p-4 border border-border rounded">
-                <div className="mb-3">
-                    <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">AI Call Budget</label>
-                    <p className="text-[10px] text-text-dim">Controls how many AI calls fire per turn. Lower tiers save cost; the engine and on-device embedder handle recall at every tier.</p>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                    {([
-                        { value: 'lite' as const, label: 'Lite', calls: '~1', desc: 'Story only' },
-                        { value: 'pro' as const, label: 'Pro', calls: '~4–6', desc: 'Balanced' },
-                        { value: 'max' as const, label: 'Max', calls: '~9–10', desc: 'Full fidelity' },
-                    ] as { value: AiTier; label: string; calls: string; desc: string }[]).map(({ value, label, calls, desc }) => (
-                        <button
-                            key={value}
-                            onClick={() => updateSettings({ aiTier: value })}
-                            className={`py-3 text-center border rounded transition-colors ${
-                                (settings.aiTier ?? 'pro') === value
-                                    ? 'bg-terminal border-terminal text-void'
-                                    : 'bg-surface border-border text-text-dim hover:border-terminal/50'
-                            }`}
-                        >
-                            <div className="text-[11px] font-bold">{label}</div>
-                            <div className="text-[16px] font-mono font-bold">{calls}</div>
-                            <div className="text-[9px] text-current opacity-60">{desc}</div>
-                        </button>
-                    ))}
-                </div>
-                <div className="mt-3 pt-3 border-t border-border/60 text-[9px] text-text-dim space-y-1.5">
-                    <p><span className="text-text-primary font-bold">Lite</span> — Only the storyteller runs; memory recall, NPC tracking, and bookkeeping are handled by the built-in engine and the free on-device embedder. Past-scene recall still works via semantic similarity, but there is no AI chapter summarization or NPC profiling. Best for tight budgets, local/weak models, and shorter campaigns.</p>
-                    <p><span className="text-text-primary font-bold">Pro</span> — Adds the high-impact context calls (search planner, chapter recall funnel, NPC/lore recommender) and maintains the memory they rely on (chapter summaries + NPC profiles, with throttled NPC updates). Skips polish calls. Balanced cost and quality for long campaigns on a budget.</p>
-                    <p><span className="text-text-primary font-bold">Max</span> — Everything fires: reranking, query expansion, per-turn importance rating, NPC intro engine, and periodic profile/inventory scans. Highest continuity and fidelity, highest cost. Best for capable models where quality outweighs spend.</p>
-                </div>
-                <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between">
-                    <div>
-                        <label className="block text-[10px] text-text-primary uppercase tracking-widest font-bold mb-1">Director Brief</label>
-                        <p className="text-[9px] text-text-dim">One extra call per turn that writes a steering brief for the GM (Pro/Max). Off = the GM writes without it and the turn waits on one less call.</p>
-                    </div>
-                    <button
-                        onClick={() => updateSettings({ directorBriefEnabled: settings.directorBriefEnabled === false })}
-                        aria-label="Toggle Director Brief"
-                        className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.directorBriefEnabled !== false ? 'bg-terminal' : 'bg-border'}`}
-                    >
-                        <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.directorBriefEnabled !== false ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
-                    </button>
-                </div>
-            </div>
-
-            <div className="bg-void p-4 border border-amber-500/20 rounded">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <label className="block text-[11px] text-amber-400 uppercase tracking-wider font-bold mb-1">Divergence Register</label>
-                        <p className="text-[10px] text-text-dim">Auto-extract campaign-altering facts from each turn</p>
-                    </div>
-                    <button
-                        onClick={() => updateSettings({ autoExtractDivergences: !settings.autoExtractDivergences })}
-                        className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.autoExtractDivergences !== false ? 'bg-amber-500' : 'bg-border'}`}
-                    >
-                        <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.autoExtractDivergences !== false ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
-                    </button>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-border/60">
-                    <div className="flex items-center justify-between mb-2">
-                        <label className="block text-[10px] text-text-dim uppercase tracking-widest">Register Token Budget</label>
-                        <span className="text-amber-400 font-bold font-mono bg-amber-500/10 px-2 py-0.5 rounded text-xs">
-                            {(settings.divergenceTokenBudget ?? 2000).toLocaleString()}
-                        </span>
-                    </div>
-                    <input
-                        type="number"
-                        step={500}
-                        min={500}
-                        value={settings.divergenceTokenBudget ?? 2000}
-                        onChange={(e) => updateSettings({ divergenceTokenBudget: Math.max(500, parseInt(e.target.value) || 500) })}
-                        className="w-full bg-void border border-border px-3 py-2 text-[16px] md:text-sm font-mono focus:border-amber-500 focus:outline-none"
-                    />
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-border/60">
-                    <div className="flex items-center justify-between mb-2">
-                        <label className="block text-[10px] text-text-dim uppercase tracking-widest">Divergence Scan Budget (tokens)</label>
-                        <span className="text-amber-400 font-bold font-mono bg-amber-500/10 px-2 py-0.5 rounded text-xs">
-                            {(!settings.divergenceScanBudget || settings.divergenceScanBudget <= 0)
-                                ? `auto (${Math.floor(settings.contextLimit * 0.75).toLocaleString()})`
-                                : settings.divergenceScanBudget.toLocaleString()}
-                        </span>
-                    </div>
-                    <input
-                        type="number"
-                        step={1024}
-                        min={0}
-                        max={settings.contextLimit || 200000}
-                        value={settings.divergenceScanBudget ?? 0}
-                        onChange={(e) => updateSettings({ divergenceScanBudget: Math.max(0, parseInt(e.target.value) || 0) })}
-                        className="w-full bg-void border border-border px-3 py-2 text-[16px] md:text-sm font-mono focus:border-amber-500 focus:outline-none"
-                    />
-                    <p className="text-[9px] text-text-dim mt-1 italic">Max tokens per scene batch scanned for divergence extraction. Set to 0 for auto (75% of context limit). Higher = more thorough but slower.</p>
-                </div>
-            </div>
-
-            <div className="bg-void p-4 border border-border rounded">
-                <div className="flex items-center justify-between mb-3">
-                    <div>
-                        <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">NPC Auto-Archive</label>
-                        <p className="text-[10px] text-text-dim">Archive NPCs with no engagement after N turns. 0 = disabled. Archived NPCs auto-restore on mention.</p>
-                    </div>
-                    <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs ml-3 shrink-0">
-                        {(settings.autoArchiveStaleNPCsTurns ?? 15) === 0 ? 'off' : `${settings.autoArchiveStaleNPCsTurns ?? 15}t`}
-                    </span>
-                </div>
-                <input
-                    type="range"
-                    min={0}
-                    max={50}
-                    step={5}
-                    value={settings.autoArchiveStaleNPCsTurns ?? 15}
-                    onChange={(e) => updateSettings({ autoArchiveStaleNPCsTurns: parseInt(e.target.value) })}
-                    className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-terminal"
-                />
-                <div className="flex justify-between text-[9px] text-text-dim mt-1">
-                    <span>off</span>
-                    <span>50 turns</span>
-                </div>
-            </div>
-
-            <div className="space-y-4">
-                {[
-                    { label: 'Debug Mode', setting: 'debugMode' as const, sub: 'Show raw API payloads' },
-                    { label: 'Show Reasoning', setting: 'showReasoning' as const, sub: 'Display model thinking blocks' },
-                    { label: 'Deep Archive Search', setting: 'enableDeepArchiveSearch' as const, sub: 'Header button opens a search sheet; armed search runs on your next send. ~1–2 min per use. Requires utility endpoint; semantic index recommended.' },
-                    { label: 'Auto-Gen Rule Keywords', setting: 'autoGenerateRuleKeywords' as const, sub: 'Use LLM to extract rule chunk keywords at index time. Disable to use header+bold derivation only (free, no API calls).' },
-                ].map(({ label, setting, sub }) => (
-                    <div key={setting} className="flex items-center justify-between bg-void p-4 border border-border rounded">
-                        <div>
-                            <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">{label}</label>
-                            <p className="text-[10px] text-text-dim">{sub}</p>
+                        <div className="mt-3 pt-3 border-t border-border/60 text-[9px] text-text-dim space-y-1.5">
+                            <p><span className="text-text-primary font-bold">Lite</span> — Only the storyteller runs; memory recall, NPC tracking, and bookkeeping are handled by the built-in engine and the free on-device embedder. Past-scene recall still works via semantic similarity, but there is no AI chapter summarization or NPC profiling. Best for tight budgets, local/weak models, and shorter campaigns.</p>
+                            <p><span className="text-text-primary font-bold">Pro</span> — Adds the high-impact context calls (search planner, chapter recall funnel, NPC/lore recommender) and maintains the memory they rely on (chapter summaries + NPC profiles, with throttled NPC updates). Skips polish calls. Balanced cost and quality for long campaigns on a budget.</p>
+                            <p><span className="text-text-primary font-bold">Max</span> — Everything fires: reranking, query expansion, per-turn importance rating, NPC intro engine, and periodic profile/inventory scans. Highest continuity and fidelity, highest cost. Best for capable models where quality outweighs spend.</p>
                         </div>
-                        <button
-                            onClick={() => updateSettings({ [setting]: !settings[setting] })}
-                            className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings[setting] ? 'bg-terminal' : 'bg-border'}`}
-                        >
-                            <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings[setting] ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
-                        </button>
+                        <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between">
+                            <div>
+                                <label className="block text-[10px] text-text-primary uppercase tracking-widest font-bold mb-1">Director Brief</label>
+                                <p className="text-[9px] text-text-dim">One extra call per turn that writes a steering brief for the GM (Pro/Max). Off = the GM writes without it and the turn waits on one less call.</p>
+                            </div>
+                            <button
+                                onClick={() => updateSettings({ directorBriefEnabled: settings.directorBriefEnabled === false })}
+                                aria-label="Toggle Director Brief"
+                                className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.directorBriefEnabled !== false ? 'bg-terminal' : 'bg-border'}`}
+                            >
+                                <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.directorBriefEnabled !== false ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                            </button>
+                        </div>
                     </div>
-                ))}
-            </div>
 
-            <div className="flex flex-col bg-void p-4 border border-border rounded">
-                <div className="flex items-center justify-between mb-3">
-                    <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">UI Scale</label>
-                    <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs">
-                        {Math.round((settings.uiScale ?? 1) * 100)}%
-                    </span>
-                </div>
-                <p className="text-[10px] text-text-dim mb-3">100% is recommended for mobile. Changes apply immediately.</p>
-                <div className="grid grid-cols-4 gap-2">
-                    {[0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3].map(v => (
-                        <button
-                            key={v}
-                            onClick={() => updateSettings({ uiScale: v })}
-                            className={`py-3 text-[11px] font-mono font-bold border rounded transition-colors min-h-[48px] ${Math.round((settings.uiScale ?? 1) * 100) === Math.round(v * 100) ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:border-terminal/50'}`}
-                        >
-                            {Math.round(v * 100)}%
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* Story Text — the story's own typography, separate from UI Scale (readingPrefs.ts) */}
-            <div className="flex flex-col bg-void p-4 border border-border rounded gap-3">
-                <div className="flex items-center justify-between">
-                    <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">Story Text</label>
-                    <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs">
-                        {clampReadingSize(settings.readingSize)}px
-                    </span>
-                </div>
-                <p className="text-[10px] text-text-dim -mt-1">Size, spacing and font of the story only. UI Scale still applies on top.</p>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => updateSettings({ readingSize: clampReadingSize((settings.readingSize ?? READING_DEFAULTS.readingSize) - 1) })}
-                        disabled={clampReadingSize(settings.readingSize) <= READING_SIZE_MIN}
-                        className="w-12 min-h-[48px] text-[16px] font-mono font-bold border rounded bg-surface border-border text-text-dim hover:border-terminal/50 disabled:opacity-40"
-                        aria-label="Smaller story text"
-                    >A−</button>
-                    <div className="flex-1 text-center text-text-primary" style={readingStyleVars(settings)}>
-                        <span style={{ fontSize: 'var(--reading-size)', fontFamily: 'var(--reading-font)' }}>The rain kept falling.</span>
+                    <div className="space-y-4">
+                        <h3 className="text-[11px] text-text-primary uppercase tracking-wider font-bold">AI Request Timeouts</h3>
+                        <p className="text-[10px] text-text-dim">Increase these for slower models or Flex tier. Values are seconds, up to 60 minutes.</p>
+                        {[
+                            { key: 'storyTimeoutSeconds' as const, label: 'Story AI timeout (seconds)', fallback: DEFAULT_STORY_TIMEOUT_SECONDS, description: 'Wait for each story reply, retry or swipe. Streaming text automatically extends the deadline.' },
+                            { key: 'utilityTimeoutSeconds' as const, label: 'Utility AI timeout (seconds)', fallback: DEFAULT_UTILITY_TIMEOUT_SECONDS, description: 'Wait for context planning, reranking, recommendations and archive search calls that use the utility deadline. EXTEND adds time while a call is running.' },
+                        ].map(({ key, label, fallback, description }) => (
+                            <div key={key}>
+                                <label htmlFor={key} className="block text-[11px] text-text-dim mb-2">{label}</label>
+                                <input
+                                    id={key}
+                                    key={settings[key] ?? fallback}
+                                    type="number"
+                                    min={MIN_AI_TIMEOUT_SECONDS}
+                                    max={MAX_AI_TIMEOUT_SECONDS}
+                                    step={1}
+                                    defaultValue={settings[key] ?? fallback}
+                                    onBlur={e => updateSettings({ [key]: normalizeTimeoutSeconds(e.target.valueAsNumber, fallback) })}
+                                    className="w-full bg-surface border border-border px-3 py-3 text-[16px] font-mono focus:border-terminal focus:outline-none"
+                                />
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                    {[{ label: 'Default', value: fallback }, { label: '5 min', value: 300 }, { label: '10 min', value: 600 }, { label: '20 min', value: 1200 }].map(preset => (
+                                        <button key={preset.label} onClick={() => updateSettings({ [key]: preset.value })}
+                                            className={`px-3 py-2 text-[10px] font-mono border rounded ${(settings[key] ?? fallback) === preset.value ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim'}`}>
+                                            {preset.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="text-[10px] text-text-dim mt-2">{description}</p>
+                            </div>
+                        ))}
                     </div>
-                    <button
-                        onClick={() => updateSettings({ readingSize: clampReadingSize((settings.readingSize ?? READING_DEFAULTS.readingSize) + 1) })}
-                        disabled={clampReadingSize(settings.readingSize) >= READING_SIZE_MAX}
-                        className="w-12 min-h-[48px] text-[16px] font-mono font-bold border rounded bg-surface border-border text-text-dim hover:border-terminal/50 disabled:opacity-40"
-                        aria-label="Larger story text"
-                    >A+</button>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                    {READING_FONTS.map(f => (
-                        <button
-                            key={f.value}
-                            onClick={() => updateSettings({ readingFont: f.value })}
-                            className={`py-2 text-[11px] font-bold border rounded transition-colors min-h-[44px] ${normalizeReadingFont(settings.readingFont) === f.value ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:border-terminal/50'}`}
-                            style={{ fontFamily: f.family }}
-                        >
-                            {f.label}
-                        </button>
-                    ))}
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                    {READING_LEADINGS.map(l => (
-                        <button
-                            key={l.value}
-                            onClick={() => updateSettings({ readingLeading: l.value })}
-                            className={`py-2 text-[11px] font-mono font-bold border rounded transition-colors min-h-[44px] ${normalizeReadingLeading(settings.readingLeading) === l.value ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:border-terminal/50'}`}
-                        >
-                            {l.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
+            </details>
 
-            <div className="flex items-center justify-between bg-void p-4 border border-border rounded">
-                <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">UI Theme</label>
-                <div className="flex border border-border overflow-hidden rounded">
-                    {(['light', 'system', 'dark'] as const).map(t => (
-                        <button
-                            key={t}
-                            onClick={() => updateSettings({ theme: t })}
-                            className={`px-4 py-2 text-[11px] uppercase tracking-wider transition-colors ${settings.theme === t ? 'bg-terminal text-surface font-bold' : 'bg-void text-text-dim'}`}
-                        >
-                            {t === 'light' ? 'Light' : t === 'dark' ? 'Dark' : 'System'}
-                        </button>
-                    ))}
+            <details className="rounded-lg border border-border bg-void min-w-0">
+                <summary className="min-h-[64px] cursor-pointer px-4 py-3 text-terminal rounded-lg focus-visible:outline-2 focus-visible:outline-terminal focus-visible:outline-offset-2">
+                    <span className="ml-1 text-sm font-bold text-text-primary">Memory &amp; Context</span>
+                    <span className="block mt-1 ml-5 text-xs text-text-dim break-words">{settings.contextLimit.toLocaleString()} tokens · Auto-trim {settings.autoCondenseEnabled ? 'on' : 'off'}</span>
+                </summary>
+                <div className="border-t border-border p-4 space-y-5 min-w-0">
+                    <div>
+                        <div className="flex items-center justify-between mb-3">
+                            <label className="text-[11px] text-text-dim uppercase tracking-wider">Max Context (Tokens)</label>
+                            <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs">
+                                {settings.contextLimit.toLocaleString()}
+                            </span>
+                        </div>
+                        <input
+                            type="number"
+                            step={1024}
+                            value={settings.contextLimit || 0}
+                            onChange={(e) => updateSettings({ contextLimit: parseInt(e.target.value) || 0 })}
+                            className="w-full bg-void border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm font-mono focus:border-terminal focus:outline-none mb-4"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                            {[8192, 16384, 32768, 131072, 1048576].map(limit => (
+                                <button
+                                    key={limit}
+                                    onClick={() => updateSettings({ contextLimit: limit })}
+                                    className={`px-3 py-2 text-[10px] md:text-[9px] font-mono border rounded transition-colors ${settings.contextLimit === limit ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim'}`}
+                                >
+                                    {limit >= 1048576 ? `${limit / 1048576}M` : `${limit / 1024}K`}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Auto-Trim</label>
+                                <p className="text-[10px] text-text-dim">
+                                    Trim history at {Math.round((settings.condenseAggressiveness === 'aggressive' ? 50 : settings.condenseAggressiveness === 'quality' ? 90 : 75))}% limit
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => updateSettings({ autoCondenseEnabled: !settings.autoCondenseEnabled })}
+                                className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.autoCondenseEnabled ? 'bg-terminal' : 'bg-border'}`}
+                            >
+                                <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.autoCondenseEnabled ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                            </button>
+                        </div>
+
+                        {settings.autoCondenseEnabled && (
+                            <div className="mt-4 pt-4 border-t border-border/60">
+                                <label className="block text-[10px] text-text-dim uppercase tracking-widest mb-3">Context Strategy</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {([
+                                        { value: 'aggressive' as const, label: 'Tight', pct: 50, desc: 'Lower cost' },
+                                        { value: 'balanced' as const, label: 'Smart', pct: 75, desc: 'Best default' },
+                                        { value: 'quality' as const, label: 'Deep', pct: 90, desc: 'Higher cost' },
+                                    ] as { value: CondenseAggressiveness; label: string; pct: number; desc: string }[]).map(({ value, label, pct, desc }) => (
+                                        <button
+                                            key={value}
+                                            onClick={() => updateSettings({ condenseAggressiveness: value })}
+                                            className={`py-3 text-center border rounded transition-colors ${
+                                                (settings.condenseAggressiveness || 'balanced') === value
+                                                    ? 'bg-terminal border-terminal text-void'
+                                                    : 'bg-surface border-border text-text-dim hover:border-terminal/50'
+                                            }`}
+                                        >
+                                            <div className="text-[11px] font-bold">{label}</div>
+                                            <div className="text-[16px] font-mono font-bold">{pct}%</div>
+                                            <div className="text-[9px] text-current opacity-60">{desc}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <label className="block text-[11px] text-amber-400 uppercase tracking-wider font-bold mb-1">Divergence Register</label>
+                                <p className="text-[10px] text-text-dim">Auto-extract campaign-altering facts from each turn</p>
+                            </div>
+                            <button
+                                onClick={() => updateSettings({ autoExtractDivergences: !settings.autoExtractDivergences })}
+                                className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings.autoExtractDivergences !== false ? 'bg-amber-500' : 'bg-border'}`}
+                            >
+                                <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.autoExtractDivergences !== false ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                            </button>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-border/60">
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="block text-[10px] text-text-dim uppercase tracking-widest">Register Token Budget</label>
+                                <span className="text-amber-400 font-bold font-mono bg-amber-500/10 px-2 py-0.5 rounded text-xs">
+                                    {(settings.divergenceTokenBudget ?? 2000).toLocaleString()}
+                                </span>
+                            </div>
+                            <input
+                                type="number"
+                                step={500}
+                                min={500}
+                                value={settings.divergenceTokenBudget ?? 2000}
+                                onChange={(e) => updateSettings({ divergenceTokenBudget: Math.max(500, parseInt(e.target.value) || 500) })}
+                                className="w-full bg-void border border-border px-3 py-2 text-[16px] md:text-sm font-mono focus:border-amber-500 focus:outline-none"
+                            />
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-border/60">
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="block text-[10px] text-text-dim uppercase tracking-widest">Divergence Scan Budget (tokens)</label>
+                                <span className="text-amber-400 font-bold font-mono bg-amber-500/10 px-2 py-0.5 rounded text-xs">
+                                    {(!settings.divergenceScanBudget || settings.divergenceScanBudget <= 0)
+                                        ? `auto (${Math.floor(settings.contextLimit * 0.75).toLocaleString()})`
+                                        : settings.divergenceScanBudget.toLocaleString()}
+                                </span>
+                            </div>
+                            <input
+                                type="number"
+                                step={1024}
+                                min={0}
+                                max={settings.contextLimit || 200000}
+                                value={settings.divergenceScanBudget ?? 0}
+                                onChange={(e) => updateSettings({ divergenceScanBudget: Math.max(0, parseInt(e.target.value) || 0) })}
+                                className="w-full bg-void border border-border px-3 py-2 text-[16px] md:text-sm font-mono focus:border-amber-500 focus:outline-none"
+                            />
+                            <p className="text-[9px] text-text-dim mt-1 italic">Max tokens per scene batch scanned for divergence extraction. Set to 0 for auto (75% of context limit). Higher = more thorough but slower.</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between mb-3">
+                            <div>
+                                <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">NPC Auto-Archive</label>
+                                <p className="text-[10px] text-text-dim">Archive NPCs with no engagement after N turns. 0 = disabled. Archived NPCs auto-restore on mention.</p>
+                            </div>
+                            <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs ml-3 shrink-0">
+                                {(settings.autoArchiveStaleNPCsTurns ?? 15) === 0 ? 'off' : `${settings.autoArchiveStaleNPCsTurns ?? 15}t`}
+                            </span>
+                        </div>
+                        <input
+                            type="range"
+                            min={0}
+                            max={50}
+                            step={5}
+                            value={settings.autoArchiveStaleNPCsTurns ?? 15}
+                            onChange={(e) => updateSettings({ autoArchiveStaleNPCsTurns: parseInt(e.target.value) })}
+                            className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-terminal"
+                        />
+                        <div className="flex justify-between text-[9px] text-text-dim mt-1">
+                            <span>off</span>
+                            <span>50 turns</span>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        {[
+                            { label: 'Deep Archive Search', setting: 'enableDeepArchiveSearch' as const, sub: 'Header button opens a search sheet; armed search runs on your next send. ~1–2 min per use. Requires utility endpoint; semantic index recommended.' },
+                        ].map(({ label, setting, sub }) => (
+                            <div key={setting} className="flex items-center justify-between">
+                                <div>
+                                    <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">{label}</label>
+                                    <p className="text-[10px] text-text-dim">{sub}</p>
+                                </div>
+                                <button
+                                    onClick={() => updateSettings({ [setting]: !settings[setting] })}
+                                    className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings[setting] ? 'bg-terminal' : 'bg-border'}`}
+                                >
+                                    <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings[setting] ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
                 </div>
-            </div>
+            </details>
 
-            <div className="flex flex-col bg-void p-4 border border-border rounded">
-                <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Image Style Prompt</label>
-                <p className="text-[10px] text-text-dim mb-2">Prepended to every illustration request. Leave empty for the default style scaffold.</p>
-                <input
-                    type="text"
-                    value={settings.imageStylePrompt || ''}
-                    onChange={(e) => updateSettings({ imageStylePrompt: e.target.value })}
-                    placeholder="e.g. oil painting, fantasy art, dark atmosphere"
-                    className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary focus:border-terminal focus:outline-none"
-                />
-            </div>
-
-            <div className="flex flex-col bg-void p-4 border border-border rounded">
-                <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Image Negative Prompt</label>
-                <p className="text-[10px] text-text-dim mb-2">Elements to exclude from generated images. Only supported by some models (e.g. DALL-E 2, Stable Diffusion).</p>
-                <input
-                    type="text"
-                    value={settings.imageNegativePrompt || ''}
-                    onChange={(e) => updateSettings({ imageNegativePrompt: e.target.value })}
-                    placeholder="e.g. text, watermark, blurry, deformed"
-                    className="w-full bg-surface border border-border px-3 py-3 md:py-2 text-[16px] md:text-sm text-text-primary focus:border-terminal focus:outline-none"
-                />
-            </div>
+            <details className="rounded-lg border border-border bg-void min-w-0">
+                <summary className="min-h-[64px] cursor-pointer px-4 py-3 text-terminal rounded-lg focus-visible:outline-2 focus-visible:outline-terminal focus-visible:outline-offset-2">
+                    <span className="ml-1 text-sm font-bold text-text-primary">Developer Options</span>
+                    <span className="block mt-1 ml-5 text-xs text-text-dim break-words">Debug {settings.debugMode ? 'on' : 'off'} · Reasoning {settings.showReasoning ? 'shown' : 'hidden'}</span>
+                </summary>
+                <div className="border-t border-border p-4 space-y-5 min-w-0">
+                    <div className="space-y-4">
+                        {[
+                            { label: 'Debug Mode', setting: 'debugMode' as const, sub: 'Show raw API payloads' },
+                            { label: 'Show Reasoning', setting: 'showReasoning' as const, sub: 'Display model thinking blocks' },
+                            { label: 'Auto-Gen Rule Keywords', setting: 'autoGenerateRuleKeywords' as const, sub: 'Use LLM to extract rule chunk keywords at index time. Disable to use header+bold derivation only (free, no API calls).' },
+                        ].map(({ label, setting, sub }) => (
+                            <div key={setting} className="flex items-center justify-between">
+                                <div>
+                                    <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">{label}</label>
+                                    <p className="text-[10px] text-text-dim">{sub}</p>
+                                </div>
+                                <button
+                                    onClick={() => updateSettings({ [setting]: !settings[setting] })}
+                                    className={`relative w-12 h-6 shrink-0 ml-3 rounded-full transition-colors ${settings[setting] ? 'bg-terminal' : 'bg-border'}`}
+                                >
+                                    <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-surface transition-transform ${settings[setting] ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </details>
         </div>
     );
 }
