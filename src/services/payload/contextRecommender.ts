@@ -218,6 +218,8 @@ export async function recommendContext(
     try {
         rawContent = await llmCall(utilityEndpoint, userContent, {
             temperature: 0.1,
+            // A full 30-NPC roster + lore picks is ~600 tokens; the cap stops a runaway reply.
+            maxTokens: 1024,
             priority: 'high',
             thinkingEffort: 'off',
             ...(timeoutMs ? { timeoutMs, trackingLabel: 'recommender' } : {}),
