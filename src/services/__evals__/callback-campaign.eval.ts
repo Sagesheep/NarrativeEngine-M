@@ -9,7 +9,8 @@ import path from 'node:path';
 // so this one file can iterate every built embedding preset.
 vi.mock('../embedding/embedder', async () => {
     const { buildEmbedderMock } = await import('./evalFixtures');
-    return buildEmbedderMock();
+    const { scoreFloorFor } = await vi.importActual<typeof import('../embedding/embedder')>('../embedding/embedder');
+    return buildEmbedderMock(scoreFloorFor);
 });
 vi.mock('../storage', async () => {
     const { buildStorageMock } = await import('./evalFixtures');

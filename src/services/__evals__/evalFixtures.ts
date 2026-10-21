@@ -49,7 +49,7 @@ export function setActivePreset(id: string, preset: PresetKey): void {
 const currentCache = (): VectorsCache => loadVectors(active.id, active.preset);
 
 /** Replacement for `../embedding/embedder` — embedText resolves the cached query vector by exact text. */
-export function buildEmbedderMock() {
+export function buildEmbedderMock(scoreFloorFor: (modelId: string, floor: number) => number) {
     return {
         isEmbedderReady: () => true,
         embedText: async (text: string): Promise<Float32Array | null> => {
@@ -60,6 +60,7 @@ export function buildEmbedderMock() {
             texts.map(t => (currentCache().queries[t] ? Float32Array.from(currentCache().queries[t]) : null)),
         getEmbedDims: () => currentCache().dims,
         getCurrentModelId: () => currentCache().model,
+        calibrateScoreFloor: (floor: number) => scoreFloorFor(currentCache().model, floor),
         warmupEmbedder: async () => {},
     };
 }

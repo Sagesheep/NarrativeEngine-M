@@ -1,5 +1,5 @@
 import { offlineStorage } from '../storage';
-import { embedText, isEmbedderReady, getCurrentModelId } from './embedder';
+import { embedText, isEmbedderReady, getCurrentModelId, calibrateScoreFloor } from './embedder';
 
 export type SearchHit = {
     id: string;
@@ -121,6 +121,18 @@ function dedupeSubChunks(hits: ScoredVector[]): ScoredVector[] {
     return deduped;
 }
 
+/**
+ * Stored vectors made by the loaded model. After a model switch the store holds
+ * the old model's vectors until the re-index replaces them; scored against the
+ * new model's query vectors they give meaningless numbers (same size) or partial
+ * and NaN ones (different size), so they are left out until re-embedded.
+ */
+async function currentModelEmbeddings(campaignId: string, type: 'scene' | 'lore' | 'npc' | 'rule') {
+    const modelId = getCurrentModelId();
+    const all = await offlineStorage.embeddings.getAll(campaignId, type);
+    return all.filter(e => e.modelId === undefined || e.modelId === modelId);
+}
+
 export async function searchVectors(
     campaignId: string,
     queryVectors: number[][],
@@ -128,7 +140,7 @@ export async function searchVectors(
     topK = 20,
     minScore = 0
 ): Promise<SearchHit[]> {
-    const allEmbeddings = await offlineStorage.embeddings.getAll(campaignId, type);
+    const allEmbeddings = await currentModelEmbeddings(campaignId, type);
     if (allEmbeddings.length === 0) return [];
 
     const scored: ScoredVector[] = allEmbeddings.map(entry => {
@@ -181,10 +193,12 @@ export async function semanticSearchScored(
     }
     if (queryVectors.length === 0) return undefined;
 
-    const hits = await searchVectors(campaignId, queryVectors, type, topK, minScore ?? 0);
+    // Cutoffs are written for MiniLM; other models score on a different scale.
+    const floor = calibrateScoreFloor(minScore ?? 0);
+    const hits = await searchVectors(campaignId, queryVectors, type, topK, floor);
 
-    if (minScore && minScore > 0 && hits.length === 0) {
-        const allEmbeddings = await offlineStorage.embeddings.getAll(campaignId, type);
+    if (floor > 0 && hits.length === 0) {
+        const allEmbeddings = await currentModelEmbeddings(campaignId, type);
         let bestScore = 0;
         for (const entry of allEmbeddings) {
             for (const qv of queryVectors) {
@@ -192,7 +206,7 @@ export async function semanticSearchScored(
                 if (s > bestScore) bestScore = s;
             }
         }
-        console.log(`[turnContext] semantic search returned 0 above floor (best=${bestScore.toFixed(3)})`);
+        console.log(`[turnContext] semantic search returned 0 above floor ${floor.toFixed(3)} (best=${bestScore.toFixed(3)})`);
     }
 
     return hits;
