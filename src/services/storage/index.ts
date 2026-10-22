@@ -39,7 +39,17 @@ export const offlineStorage = {
         },
 
         async deleteFrom(cid: string, fromSceneId: string) {
-            return archiveStorage.deleteFrom(cid, fromSceneId);
+            const fromNum = parseInt(fromSceneId, 10);
+            const dropped = (await archiveStorage.getIndex(cid))
+                .filter(e => parseInt(e.sceneId, 10) >= fromNum)
+                .map(e => e.sceneId);
+            const res = await archiveStorage.deleteFrom(cid, fromSceneId);
+            // Same as deleteScene: a vector left behind keeps winning search slots
+            // for a scene that no longer exists.
+            for (const sceneId of dropped) {
+                await embeddingStorage.deleteByTypeAndId(cid, 'scene', sceneId).catch(() => {});
+            }
+            return res;
         },
 
         async deleteScene(cid: string, sceneId: string) {

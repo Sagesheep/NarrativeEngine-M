@@ -5,6 +5,7 @@ import { debouncedSaveCampaignState } from './campaignSlice';
 import { countTokens } from '../../services/infrastructure';
 import { uid } from '../../utils/uid';
 import { imageStorage } from '../../services/storage/imageStorage';
+import { turnSnapshotStorage } from '../../services/storage/turnSnapshotStorage';
 
 // Re-export PinnedExcerpt from types for consumers that import from this slice
 export type { PinnedExcerpt };
@@ -564,6 +565,7 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set, 
         const newCondenser = { condensedUpToIndex: -1 };
         const newDivReg = { ...EMPTY_REGISTER };
         if (s.activeCampaignId) imageStorage.deleteAll(s.activeCampaignId).catch(() => {});
+        if (s.activeCampaignId) turnSnapshotStorage.clear(s.activeCampaignId).catch(() => {});
         debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: [], condenser: newCondenser, pinnedExcerpts: [] });
         return { messages: [], condenser: newCondenser, divergenceRegister: newDivReg, pinnedExcerpts: [] };
     }),

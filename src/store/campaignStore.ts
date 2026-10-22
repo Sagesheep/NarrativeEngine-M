@@ -45,6 +45,7 @@ export async function deleteCampaign(id: string): Promise<void> {
     await del(`combat_${id}`);
     await del(`items_${id}`);
     await del(`skills_${id}`);
+    await del(`${id}_turn_snapshots`);
     await imageStorage.deleteAll(id);
 }
 

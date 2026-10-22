@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../services/apiClient';
 import { toast } from '../Toast';
 import { removeFactsFromScene } from '../../services/campaign-state';
+import { rewindTurnState } from '../../services/turn/turnRewind';
 import { clearPendingTurnSnapshot, findPendingCommitMessage, findRetryableMessage, getActiveSnapshotId, getCachedSwipePayload, patchCachedUserPrompt } from '../../services/turn';
 
 interface UseMessageEditorDeps {
@@ -103,6 +104,28 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             console.log(`[Archive] Rolled back from scene #${target.sceneId}`);
         } catch {
             toast.warning('Archive rollback failed');
+        }
+    }, []);
+
+    // NPCs, inventory, profile, notebook and engine state live outside the
+    // archive; put them back from the snapshot taken before this turn.
+    const rewindStateTo = useCallback(async (msg: ChatMessage) => {
+        const deps = depsRef.current;
+        if (!deps.activeCampaignId) return;
+        const store = useAppStore.getState();
+        try {
+            const restored = await rewindTurnState(deps.activeCampaignId, msg.id, msg.timestamp, {
+                npcLedger: store.npcLedger,
+                updateContext: store.updateContext,
+                setNPCLedger: store.setNPCLedger,
+                setNpcPressure: store.setNpcPressure,
+                setOnStageNpcIds: store.setOnStageNpcIds,
+            });
+            console.log(restored
+                ? '[Rewind] Restored NPC/inventory/profile state from before the turn'
+                : '[Rewind] No state snapshot for this turn — NPC/inventory/profile left as is');
+        } catch (e) {
+            console.warn('[Rewind] State restore failed:', e);
         }
     }, []);
 
@@ -231,13 +254,15 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
                 setEditingMessageId(null);
                 return;
             }
-            // Hard-rewind path (today's behavior): archive rollback + delete + resend.
+            // Hard-rewind path: state restore + archive rollback + delete + resend.
+            // The resend waits for the restore so the new turn starts from it.
+            const restored = rewindStateTo(msg);
             rollbackArchiveFrom(msg.timestamp);
             deps.deleteMessagesFrom(msg.id);
             setEditingMessageId(null);
-            setTimeout(() => {
+            restored.finally(() => setTimeout(() => {
                 deps.onAfterEdit(newContent.trim());
-            }, 50);
+            }, 50));
         } else {
             // Swipe Generation v1: if this is a pending swipe message, the edit
             // applies to the visible variant ONLY. Update the variant's text in
@@ -267,7 +292,7 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             setEditingMessageId(null);
             syncEditedSceneText(msg.id, newContent.trim());
         }
-    }, [rollbackArchiveFrom, syncEditedSceneText]);
+    }, [rollbackArchiveFrom, rewindStateTo, syncEditedSceneText]);
 
     const handleRegenerate = useCallback((id: string) => {
         const deps = depsRef.current;
@@ -301,13 +326,14 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         }
 
         if (lastUser) {
+            const restored = rewindStateTo(lastUser);
             rollbackArchiveFrom(lastUser.timestamp);
             deps.deleteMessagesFrom(lastUser.id);
-            setTimeout(() => {
+            restored.finally(() => setTimeout(() => {
                 deps.onAfterRegenerate(lastUser.displayContent || lastUser.content);
-            }, 50);
+            }, 50));
         }
-    }, [rollbackArchiveFrom]);
+    }, [rollbackArchiveFrom, rewindStateTo]);
 
     return {
         editingMessageId,

@@ -11,6 +11,8 @@ import { gatherContext } from './turnContext';
 import { getToolDefinitions, handleLoreTool, handleDiceTool } from './toolHandlers';
 import { extractAndStripSceneStakes } from './sceneStakesTag';
 import { capturePendingTurnSnapshot, getActiveSnapshotId, prefetchNotebookForPendingVariant } from './pendingCommit';
+import { turnSnapshotStorage, pickTurnContext } from '../storage/turnSnapshotStorage';
+import { storeAccess } from '../ports/store';
 import { buildWatchdogDossier } from './directorWatchdog';
 import { runDirectorBrief, lastAssistantContent } from './directorBrief';
 import { buildOneShotDirective } from '../oneshot/oneShotEvents';
@@ -19,7 +21,7 @@ import { getApiFormat } from '../../utils/llmApiHelper';
 import type { GatheredContext } from './turnContext';
 
 import type { OpenAIMessage } from '../llm/llmService';
-import type { PayloadTrace, ResolveLootOpts, SwipeVariant } from '../../types';
+import type { NPCPressure, PayloadTrace, ResolveLootOpts, SwipeVariant } from '../../types';
 import { buildAssistantToolCallMessage, buildToolResultMessage } from '../../types/llmMessages';
 
 // Tool handlers run synchronously, so the timer after a tool call only breaks the
@@ -58,6 +60,11 @@ function stampRetryable(
         precontext: { summary: buildPrecontextSummary(gathered), capturedPayloadRef: ref },
     });
     void assistantMsgId;
+}
+
+// The send path doesn't put pressure in TurnState; read it from the store.
+function livePressure(): Record<string, NPCPressure> {
+    try { return storeAccess().getState().npcPressure ?? {}; } catch { return {}; }
 }
 
 export async function runTurn(
@@ -143,12 +150,25 @@ export async function runTurn(
     }
 
     const userMsgId = uid();
+    const userTimestamp = Date.now();
+    // Rewind support: the state this turn is about to change, as it stood before
+    // (state.* was read before rollEngines advanced the DCs above).
+    if (activeCampaignId) {
+        turnSnapshotStorage.save(activeCampaignId, {
+            messageId: userMsgId,
+            timestamp: userTimestamp,
+            context: pickTurnContext(context),
+            npcLedger,
+            npcPressure: state.npcPressure ?? livePressure(),
+            onStageNpcIds: state.onStageNpcIds ?? [],
+        }).catch(e => console.warn('[TurnSnapshot] Save failed:', e));
+    }
     callbacks.addMessage({
         id: userMsgId,
         role: 'user',
         content: finalInput,
         displayContent: displayInputFinal,
-        timestamp: Date.now()
+        timestamp: userTimestamp
     });
     callbacks.setStreaming(true);
 
