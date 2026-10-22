@@ -1,4 +1,5 @@
-import type { ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, SemanticFact, LLMProvider } from '../../types';
+import type { ArchiveBook, ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, SemanticFact, LLMProvider } from '../../types';
+import { bookOf, shortlistBooks } from './bookEngine';
 import { nextChapterNumber, chapterIdFor } from '../../utils/chapterIds';
 import type { SearchHit } from '../embedding/vectorSearch';
 import { extractContextActivations, expandActivationsWithFacts, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
@@ -258,6 +259,8 @@ export async function iterativeChapterFilter(
 /**
  * Main chapter-aware retrieval funnel.
  *
+ * Phase 0: Book shortlist — with books, only chapters in the best-matching books
+ *          (plus chapters not yet in a book) go on to chapter ranking
  * Phase 1: Chapter-level 3D scoring
  * Phase 2: Iterative LLM validation
  * Phase 3: Build scene ranges from confirmed chapters + open chapter
@@ -278,10 +281,22 @@ export async function recallWithChapterFunnel(
     semanticCandidateIds?: string[] | SearchHit[],
     signal?: AbortSignal,
     divergenceSceneIds?: Set<string>,
-    filters?: { characters?: string[]; locations?: string[]; items?: string[]; concepts?: string[]; eventTypes?: string[] }
+    filters?: { characters?: string[]; locations?: string[]; items?: string[]; concepts?: string[]; eventTypes?: string[] },
+    books?: ArchiveBook[],
 ): Promise<{ scenes: string; usedTokens: number }> {
     // ─── Phase 1: Chapter-level 3D scoring ───
-    const ranked = rankChapters(chapters, userMessage, recentMessages, npcLedger, semanticFacts);
+    let ranked = rankChapters(chapters, userMessage, recentMessages, npcLedger, semanticFacts);
+
+    // ─── Phase 0 (applied to the ranking): zoom into the matching books ───
+    if (books && books.length > 0 && ranked.length > 0) {
+        const activations = expandActivationsWithFacts(extractContextActivations(userMessage, recentMessages, npcLedger), semanticFacts);
+        const shortlist = shortlistBooks(books, activations);
+        if (shortlist) {
+            const zoomed = ranked.filter(ch => { const b = bookOf(ch, books); return !b || shortlist.has(b.bookId); });
+            if (zoomed.length > 0) ranked = zoomed;
+            console.log(`[Funnel] books ${[...shortlist].join(', ')} → ${zoomed.length} candidate chapter(s)`);
+        }
+    }
 
     if (ranked.length === 0) {
         // No sealed chapters with summaries — fall back to flat retrieval

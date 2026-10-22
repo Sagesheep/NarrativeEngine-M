@@ -1,4 +1,4 @@
-import type { AppSettings, ArchiveChapter, ArchiveIndexEntry, BackupCreateResult, BackupMeta, ChatMessage, CondenserState, EntityEntry, GameContext, NPCEntry, SemanticFact, TimelineEvent } from '../types';
+import type { AppSettings, ArchiveBook, ArchiveChapter, ArchiveIndexEntry, BackupCreateResult, BackupMeta, ChatMessage, CondenserState, EntityEntry, GameContext, NPCEntry, SemanticFact, TimelineEvent } from '../types';
 import { offlineStorage } from './storage';
 import type { BackupData } from './storage/backupStorage';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
@@ -67,6 +67,10 @@ export const api = {
         split: async (campaignId: string, chapterId: string, atSceneId: string): Promise<{ chapterA: ArchiveChapter; chapterB: ArchiveChapter } | null> => {
             return offlineStorage.chapters.split(campaignId, chapterId, atSceneId);
         },
+    },
+    books: {
+        list: async (campaignId: string): Promise<ArchiveBook[]> => offlineStorage.books.list(campaignId),
+        save: async (campaignId: string, books: ArchiveBook[]): Promise<void> => offlineStorage.books.save(campaignId, books),
     },
     backup: {
         create: async (campaignId: string, opts: { label?: string; trigger?: string; isAuto?: boolean }): Promise<BackupCreateResult> => {

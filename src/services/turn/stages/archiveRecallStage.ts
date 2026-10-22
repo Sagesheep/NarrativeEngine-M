@@ -60,7 +60,7 @@ export async function archiveRecallStage(params: {
             if (!utilityEndpoint) throw new Error('No utility endpoint');
             const funnelPromise = recallWithChapterFunnel(
                 activeCampaignId, chapters, archiveIndex, finalInput, messages, npcLedger, semanticFacts, archiveRecallBudget, utilityEndpoint, undefined, semanticForRecall, funnelAbort.signal,
-                getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), plannerFilters
+                getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), plannerFilters, state.books
             );
             let fallbackTimeoutId: ReturnType<typeof setTimeout>;
             const fallbackPromise = new Promise<{ scenes: string; usedTokens: number } | null>(resolve => {

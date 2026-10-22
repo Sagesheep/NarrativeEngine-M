@@ -1,5 +1,6 @@
 import { archiveStorage } from './archiveStorage';
 import { chapterStorage } from './chapterStorage';
+import { bookStorage } from './bookStorage';
 import { factStorage } from './factStorage';
 import { timelineStorage } from './timelineStorage';
 import { entityStorage } from './entityStorage';
@@ -66,6 +67,7 @@ export const offlineStorage = {
     },
 
     chapters: chapterStorage,
+    books: bookStorage,
     facts: factStorage,
     timeline: timelineStorage,
     entities: entityStorage,

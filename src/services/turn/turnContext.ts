@@ -120,6 +120,7 @@ export async function gatherContext(
         deepContextSummary,
         divergenceRegister: state.divergenceRegister,
         chapters: state.chapters,
+        books: state.books,
         archiveIndex: state.archiveIndex,
         semanticallyRecalledNpcIds,
         pinnedExcerpts: state.pinnedExcerpts,

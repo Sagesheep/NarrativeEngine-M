@@ -75,6 +75,9 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             deps.setTimeline(freshTimeline);
             deps.setChapters(updatedChapters);
 
+            // A book whose chapters were deleted or reopened is dropped on read.
+            useAppStore.getState().setBooks(await api.books.list(deps.activeCampaignId).catch(() => useAppStore.getState().books));
+
             // Facts extracted from the deleted scenes would otherwise stay in the
             // GM's canon (and duplicate on re-seal). Manual/pinned facts stay.
             const store = useAppStore.getState();

@@ -989,6 +989,27 @@ export type ArchiveChapter = {
     resolvedThreads?: string[]; // exact strings from earlier chapters' unresolvedThreads that this chapter settled
 };
 
+/**
+ * A run of sealed chapters with its own summary — the level above chapters.
+ * Membership is by scene range (a chapter belongs to the book its first scene
+ * falls in), so merging or splitting chapters inside a book keeps it valid.
+ */
+export type ArchiveBook = {
+    bookId: string;
+    title: string;
+    sceneRange: [string, string];
+    /** Optional era label the player sets, e.g. "P3 · 2009". */
+    era?: string;
+    summary: string;
+    keywords: string[];
+    npcs: string[];
+    majorEvents: string[];
+    unresolvedThreads: string[];
+    createdAt: number;
+    /** The summary AI call failed: summary is a stand-in built from chapter titles. */
+    summaryPending?: boolean;
+};
+
 export type NotebookNote = {
     id: string;
     text: string;

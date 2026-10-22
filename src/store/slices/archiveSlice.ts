@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { ArchiveIndexEntry, ArchiveChapter, SemanticFact, TimelineEvent, EntityEntry } from '../../types';
+import type { ArchiveIndexEntry, ArchiveChapter, ArchiveBook, SemanticFact, TimelineEvent, EntityEntry } from '../../types';
 
 // ── Slice type ─────────────────────────────────────────────────────────
 
@@ -11,6 +11,9 @@ export type ArchiveSlice = {
     chapters: ArchiveChapter[];
     semanticFacts: SemanticFact[];
     setChapters: (chapters: ArchiveChapter[]) => void;
+    /** Books: runs of sealed chapters with their own summary (bookEngine.ts). */
+    books: ArchiveBook[];
+    setBooks: (books: ArchiveBook[]) => void;
     setSemanticFacts: (facts: SemanticFact[]) => void;
 
     // Timeline / World State
@@ -38,6 +41,8 @@ export const createArchiveSlice: StateCreator<ArchiveSlice, [], [], ArchiveSlice
     chapters: [],
     semanticFacts: [],
     setChapters: (chapters) => set({ chapters }),
+    books: [],
+    setBooks: (books) => set({ books }),
     setSemanticFacts: (facts) => set({ semanticFacts: facts }),
 
     timeline: [],

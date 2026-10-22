@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveChapter, ArchiveIndexEntry, PinnedExcerpt, SceneEventType } from '../../types';
+import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, PayloadTrace, DivergenceRegister, ArchiveChapter, ArchiveBook, ArchiveIndexEntry, PinnedExcerpt, SceneEventType } from '../../types';
 import { CORE_FLOOR_TRAITS } from '../../types';
 import type { OpenAIMessage } from '../llm/llmService';
 import { countTokens } from '../infrastructure';
@@ -35,6 +35,8 @@ export interface BuildPayloadOptions {
     deepContextSummary?: string;
     divergenceRegister?: DivergenceRegister;
     chapters?: ArchiveChapter[];
+    /** Books replace their chapters in the recap. */
+    books?: ArchiveBook[];
     archiveIndex?: ArchiveIndexEntry[];
     semanticallyRecalledNpcIds?: string[];
     pinnedExcerpts?: PinnedExcerpt[];
@@ -67,6 +69,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         deepContextSummary,
         divergenceRegister,
         chapters,
+        books,
         archiveIndex,
         semanticallyRecalledNpcIds,
         pinnedExcerpts,
@@ -236,6 +239,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     // window gets the rest. Deterministic, so it rides in the cached prefix.
     const recap = buildChapterRecapBlock({
         chapters,
+        books,
         archiveIndex,
         messages: history,
         condensedUpToIndex,

@@ -11,6 +11,7 @@ import { computeOpenThreads } from '../../payload/payloadWorldContext';
 import { replaceChapterFacts, resolvePromises } from '../../campaign-state';
 import { tierAllows } from '../aiTier';
 import { tryWithFallback } from './witnessStage';
+import { autoCloseBookIfDue } from '../../archive/bookService';
 
 export async function runCombinedSeal(
     activeCampaignId: string, chapter: ArchiveChapter, provider: LLMProvider,
@@ -140,6 +141,13 @@ export async function handleSealChapter(state: TurnState, callbacks: TurnCallbac
             const updatedChapters = await loadChapters(activeCampaignId);
             if (callbacks.setChapters) callbacks.setChapters(updatedChapters);
             notify.success('Chapter sealed');
+            // Same background step as the seal, so the prompt changes once, not twice.
+            const aiForBook = sealProvider && tierAllows(state.settings.aiTier, 'sealChapter') ? sealProvider : undefined;
+            const books = await autoCloseBookIfDue(activeCampaignId, updatedChapters, aiForBook).catch(e => { console.warn('[Books] Auto-close failed:', e); return null; });
+            if (books) {
+                callbacks.setBooks?.(books);
+                notify.success(`Book closed: ${books[books.length - 1].title}`);
+            }
         } catch (err) {
             console.error('[SealChapter] Failed to seal chapter:', err);
             // Sealed but the AI pass failed: flag it so Regenerate is offered instead

@@ -29,6 +29,7 @@ import {
   loadChapters, loadSemanticFacts, loadDivergenceRegister,
 } from './store/campaignStore';
 import { reconcilePendingCommitOnLaunch } from './services/turn';
+import { api } from './services/apiClient';
 
 const DEFAULT_CONDENSER = { condensedUpToIndex: -1 };
 
@@ -147,9 +148,10 @@ export default function App() {
       ]);
       if (cancelled) return;
 
-      const [chapters, facts] = await Promise.all([
+      const [chapters, facts, books] = await Promise.all([
         loadChapters(activeCampaignId).catch(() => []),
         loadSemanticFacts(activeCampaignId).catch(() => []),
+        api.books.list(activeCampaignId).catch(() => []),
       ]);
       if (cancelled) return;
 
@@ -162,6 +164,7 @@ export default function App() {
         npcLedger: npcs,
         archiveIndex,
         chapters,
+        books,
         semanticFacts: facts,
         divergenceRegister: divReg ?? { entries: [], chapterToggles: {}, categoryToggles: {}, lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 2 as const },
       });

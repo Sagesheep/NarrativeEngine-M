@@ -1,7 +1,7 @@
 import { memo, useState, useEffect, useRef } from 'react';
 import {
     ChevronDown, ChevronUp, Lock, Unlock, AlertCircle,
-    RefreshCcw, Edit2, Check, X, GitMerge, Scissors, Pin, PinOff, XCircle
+    RefreshCcw, Edit2, Check, X, GitMerge, Scissors, Pin, PinOff, XCircle, Library
 } from 'lucide-react';
 import type { ArchiveChapter, TimelineEvent } from '../../types';
 import { TimelineDotRow } from './TimelineDotRow';
@@ -22,6 +22,8 @@ interface ChapterCardProps {
     timelineEvents?: TimelineEvent[];
     onDeleteTimelineEvent?: (eventId: string) => void;
     onDismissThread?: (threadText: string) => void;
+    /** Bind every loose sealed chapter up to this one into a book. Absent = not offered. */
+    onEndBook?: () => void;
 }
 
 export const ChapterCard = memo(function ChapterCard({
@@ -40,6 +42,7 @@ export const ChapterCard = memo(function ChapterCard({
     timelineEvents,
     onDeleteTimelineEvent,
     onDismissThread,
+    onEndBook,
 }: ChapterCardProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState(chapter.title);
@@ -258,6 +261,18 @@ export const ChapterCard = memo(function ChapterCard({
                                 >
                                     <RefreshCcw size={12} />
                                     <span>{status === 'invalidated' ? 'Regenerate Chapter' : 'Regenerate'}</span>
+                                </button>
+                            )}
+
+                            {onEndBook && (
+                                <button
+                                    onClick={onEndBook}
+                                    disabled={isProcessing}
+                                    className="touch-btn flex items-center space-x-1 px-3 py-1.5 rounded bg-void-dark border border-border hover:border-amber-400 hover:text-amber-400 text-text-secondary transition-colors font-bold text-[11px] uppercase disabled:opacity-50"
+                                    title="Close a book here: this chapter and the loose sealed chapters before it become one book with its own summary"
+                                >
+                                    <Library size={12} />
+                                    <span>End Book Here</span>
                                 </button>
                             )}
 

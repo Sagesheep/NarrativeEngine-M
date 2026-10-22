@@ -203,11 +203,13 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             loadArchiveIndex(id),
             loadDivergenceRegister(id),
         ]);
-        const [chapters, semanticFacts, timeline, entities] = await Promise.all([
+        const { api } = await import('../../services/apiClient');
+        const [chapters, semanticFacts, timeline, entities, books] = await Promise.all([
             loadChapters(id).catch(() => []),
             loadSemanticFacts(id).catch(() => []),
             loadTimeline(id).catch(() => []),
             loadEntities(id).catch(() => []),
+            api.books.list(id).catch(() => []),
         ]);
 
         // Canon migration: tag ledger entries that match a lore character (saves from before
@@ -229,6 +231,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             archiveIndex,
             divergenceRegister: divReg ?? { ...EMPTY_REGISTER },
             chapters,
+            books,
             semanticFacts,
             timeline,
             entities,

@@ -210,6 +210,7 @@ function buildCommitCallbacks(activeCampaignId: string): TurnCallbacks {
         setLastPayloadTrace: storeAccess().getState().setLastPayloadTrace,
         setSemanticFacts: (facts) => storeAccess().getState().setSemanticFacts(facts),
         setChapters: (chapters) => storeAccess().getState().setChapters(chapters),
+        setBooks: (books) => storeAccess().getState().setBooks(books),
         setPipelinePhase: (phase: PipelinePhase) => storeAccess().getState().setPipelinePhase(phase),
         setStreamingStats: (stats: StreamingStats | null) => storeAccess().getState().setStreamingStats(stats),
         setDivergenceRegister: (reg) => {
@@ -375,6 +376,7 @@ function rebuildStateFromLiveStore(store: StoreState): TurnState {
         archiveIndex: store.archiveIndex,
         semanticFacts: store.semanticFacts,
         chapters: store.chapters ?? [],
+        books: store.books ?? [],
         activeCampaignId: store.activeCampaignId,
         provider: store.getActiveStoryEndpoint(),
         getMessages: () => storeAccess().getState().messages,

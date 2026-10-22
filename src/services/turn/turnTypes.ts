@@ -10,6 +10,7 @@ import type {
     LLMProvider,
     SemanticFact,
     ArchiveChapter,
+    ArchiveBook,
     TimelineEvent,
     PipelinePhase,
     StreamingStats,
@@ -67,6 +68,7 @@ export type TurnCallbacks = {
     setLoadingStatus?: (status: string | null) => void;
     setSemanticFacts?: (facts: SemanticFact[]) => void;
     setChapters?: (chapters: ArchiveChapter[]) => void;
+    setBooks?: (books: ArchiveBook[]) => void;
     setPipelinePhase?: (phase: PipelinePhase) => void;
     setStreamingStats?: (stats: StreamingStats | null) => void;
     setDivergenceRegister?: (register: DivergenceRegister) => void;
@@ -94,6 +96,8 @@ export type TurnState = {
     archiveIndex: ArchiveIndexEntry[];
     semanticFacts: SemanticFact[];
     chapters: ArchiveChapter[];
+    /** Books (runs of sealed chapters) — recap and the book-first recall funnel. */
+    books?: ArchiveBook[];
     activeCampaignId: string | null;
     provider: LLMProvider | undefined;
     getMessages: () => ChatMessage[];

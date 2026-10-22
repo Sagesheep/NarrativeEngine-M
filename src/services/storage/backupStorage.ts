@@ -1,4 +1,4 @@
-import type { ArchiveChapter, ArchiveIndexEntry, SemanticFact, TimelineEvent, BackupMeta, BackupCreateResult } from '../../types';
+import type { ArchiveBook, ArchiveChapter, ArchiveIndexEntry, SemanticFact, TimelineEvent, BackupMeta, BackupCreateResult } from '../../types';
 import { getList, setList, k, computeHash, type SceneRecord } from './_helpers';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
 
@@ -6,6 +6,8 @@ export type BackupData = {
     scenes: SceneRecord[];
     index: ArchiveIndexEntry[];
     chapters: ArchiveChapter[];
+    /** Absent in backups made before books existed. */
+    books?: ArchiveBook[];
     facts: SemanticFact[];
     timeline: TimelineEvent[];
     chatState: unknown;
@@ -21,11 +23,12 @@ export const backupStorage = {
 
         const index = await getList<ArchiveIndexEntry>(k(cid, 'archive_index'));
         const chapters = await getList<ArchiveChapter>(k(cid, 'chapters'));
+        const books = await getList<ArchiveBook>(k(cid, 'books'));
         const facts = await getList<SemanticFact>(k(cid, 'facts'));
         const timeline = await getList<TimelineEvent>(k(cid, 'timeline'));
         const chatState = await idbGet(`state_${cid}`);
 
-        const hash = computeHash(JSON.stringify({ scenes, index, chapters, facts, timeline, chatState }));
+        const hash = computeHash(JSON.stringify({ scenes, index, chapters, books, facts, timeline, chatState }));
         const backups = await getList<{ timestamp: number; meta: BackupMeta; data: BackupData }>(k(cid, 'backups'));
 
         if (opts.isAuto) {
@@ -46,7 +49,7 @@ export const backupStorage = {
             campaignName: '',
         };
 
-        backups.push({ timestamp: now, meta, data: { scenes, index, chapters, facts, timeline, chatState } });
+        backups.push({ timestamp: now, meta, data: { scenes, index, chapters, books, facts, timeline, chatState } });
 
         if (opts.isAuto) {
             const autoBackups = backups.filter(isPrunable).sort((a, b) => b.timestamp - a.timestamp);
@@ -85,6 +88,9 @@ export const backupStorage = {
         if (d.scenes) await setList(k(cid, 'scenes'), d.scenes);
         if (d.index) await setList(k(cid, 'archive_index'), d.index);
         if (d.chapters) await setList(k(cid, 'chapters'), d.chapters);
+        // Older backups have no books: keep the current ones, and books.list drops
+        // any that no longer match the restored chapters.
+        if (d.books) await setList(k(cid, 'books'), d.books);
         if (d.facts) await setList(k(cid, 'facts'), d.facts);
         if (d.timeline) await setList(k(cid, 'timeline'), d.timeline);
         if (d.chatState) await idbSet(`state_${cid}`, d.chatState);

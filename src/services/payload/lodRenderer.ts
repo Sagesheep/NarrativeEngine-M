@@ -17,7 +17,8 @@
 // system message written after each archived turn maps messages to scenes.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { ArchiveChapter, ArchiveIndexEntry, ChatMessage } from '../../types';
+import type { ArchiveBook, ArchiveChapter, ArchiveIndexEntry, ChatMessage } from '../../types';
+import { bookOf } from '../archive/bookEngine';
 import { countTokens } from '../infrastructure';
 
 export type LodTier = 'summary' | 'synopsis' | 'dropped';
@@ -27,10 +28,14 @@ export interface LodConfig {
     summaryChapters: number;
     /** Subtracted from position-from-end when any scene in the chapter has importance ≥ 8. */
     importanceBonus: number;
+    /** How many of the newest eligible books render as their full summary. */
+    summaryBooks?: number;
 }
 
 export interface LodRenderInput {
     chapters: ArchiveChapter[];
+    /** Books replace their chapters in the recap. */
+    books?: ArchiveBook[];
     archiveIndex: ArchiveIndexEntry[];
     /** Index into `messages` of the last condensed message; -1 means "nothing condensed yet". */
     condensedUpToIndex: number;
@@ -46,7 +51,7 @@ export interface LodRenderResult {
     tierByChapterId: Record<string, LodTier>;
 }
 
-export const DEFAULT_LOD_CONFIG: LodConfig = { summaryChapters: 7, importanceBonus: 2 };
+export const DEFAULT_LOD_CONFIG: LodConfig = { summaryChapters: 7, importanceBonus: 2, summaryBooks: 2 };
 
 /** Numeric scene id ("001" → 1). -1 on parse failure. */
 function sceneNum(id: string): number {
@@ -72,7 +77,7 @@ function markerScene(m: ChatMessage): number {
  * with no markers at all, refuse (safer to omit than to guess).
  */
 function hasCondensedScenes(
-    chapter: ArchiveChapter,
+    chapter: { sceneRange: [string, string] },
     messages: ChatMessage[],
     condensedUpToIndex: number,
 ): boolean {
@@ -134,15 +139,32 @@ function firstSentence(summary: string): string | null {
     return s.length > 0 ? s : null;
 }
 
+/** Books render as their own summary instead of their chapters'. */
+function renderBookSummary(book: ArchiveBook): string {
+    return `Book ${book.bookId} — ${book.title}${book.era ? ` (${book.era})` : ''} [scenes ${book.sceneRange[0]}–${book.sceneRange[1]}]\n${book.summary}`;
+}
+
+function renderBookSynopsis(book: ArchiveBook): string {
+    return `Book ${book.bookId} — ${book.title}${book.era ? ` (${book.era})` : ''}\n${firstSentence(book.summary) ?? book.title}`;
+}
+
+type RecapItem = { id: string; tier: LodTier; summary: () => string; synopsis: () => string };
+
 /** Pure, synchronous, deterministic. See the file header. */
 export function renderLodChapters(input: LodRenderInput): LodRenderResult {
     const config = input.config ?? DEFAULT_LOD_CONFIG;
     const { chapters, archiveIndex, condensedUpToIndex, messages, budgetTokens } = input;
+    const books = input.books ?? [];
 
     // 1. Eligibility: sealed, valid chapters with at least one condensed scene.
+    //    A chapter inside a book is represented by the book instead.
     const eligible = chapters
         .filter(c => c.sealedAt !== undefined && !c.invalidated)
+        .filter(c => !bookOf(c, books))
         .filter(c => hasCondensedScenes(c, messages, condensedUpToIndex));
+    const eligibleBooks = books
+        .filter(b => hasCondensedScenes(b, messages, condensedUpToIndex))
+        .sort((a, b) => sceneNum(a.sceneRange[0]) - sceneNum(b.sceneRange[0]));
 
     // 2. Order oldest → newest by end-scene number (stable on ties by chapterId).
     const ordered = eligible.slice().sort((a, b) => {
@@ -151,6 +173,7 @@ export function renderLodChapters(input: LodRenderInput): LodRenderResult {
     });
 
     // 3. Tier assignment: newest `summaryChapters` by effective age → summary; rest → synopsis.
+    //    Books: the newest `summaryBooks` → summary; older ones → synopsis.
     const effectiveAges = new Map<string, number>();
     for (const ch of ordered) {
         effectiveAges.set(ch.chapterId, effectiveAge(ch, archiveIndex, ordered, config.importanceBonus));
@@ -160,44 +183,49 @@ export function renderLodChapters(input: LodRenderInput): LodRenderResult {
         return diff !== 0 ? diff : a.chapterId.localeCompare(b.chapterId);
     });
     const summarySet = new Set(byEffectiveAge.slice(0, config.summaryChapters).map(c => c.chapterId));
+    const summaryBooks = config.summaryBooks ?? DEFAULT_LOD_CONFIG.summaryBooks ?? 2;
+    const bookSummarySet = new Set(eligibleBooks.slice(-summaryBooks).map(b => b.bookId));
 
-    const tierByChapterId: Record<string, LodTier> = {};
-    for (const ch of ordered) {
-        tierByChapterId[ch.chapterId] = summarySet.has(ch.chapterId) ? 'summary' : 'synopsis';
-    }
+    // Books precede their later chapters, so "oldest first" below covers both.
+    const items: RecapItem[] = [
+        ...eligibleBooks.map(b => ({
+            id: b.bookId, tier: (bookSummarySet.has(b.bookId) ? 'summary' : 'synopsis') as LodTier,
+            summary: () => renderBookSummary(b), synopsis: () => renderBookSynopsis(b),
+        })),
+        ...ordered.map(ch => ({
+            id: ch.chapterId, tier: (summarySet.has(ch.chapterId) ? 'summary' : 'synopsis') as LodTier,
+            summary: () => renderSummary(ch), synopsis: () => renderSynopsis(ch),
+        })),
+    ];
 
     // 4. Render oldest → newest.
-    const renderChapterText = (ch: ArchiveChapter): string =>
-        tierByChapterId[ch.chapterId] === 'summary' ? renderSummary(ch) : renderSynopsis(ch);
-
-    let text = ordered.map(renderChapterText).join('\n\n');
+    const render = () => items
+        .filter(it => it.tier !== 'dropped')
+        .map(it => it.tier === 'summary' ? it.summary() : it.synopsis())
+        .join('\n\n');
+    let text = render();
     let tokens = countTokens(text);
 
     // 5. Over budget: demote the oldest summary → synopsis, one at a time.
-    if (tokens > budgetTokens) {
-        for (let i = 0; i < ordered.length && tokens > budgetTokens; i++) {
-            const ch = ordered[i];
-            if (tierByChapterId[ch.chapterId] === 'summary') {
-                tierByChapterId[ch.chapterId] = 'synopsis';
-                text = ordered.map(renderChapterText).join('\n\n');
-                tokens = countTokens(text);
-            }
+    for (let i = 0; i < items.length && tokens > budgetTokens; i++) {
+        if (items[i].tier === 'summary') {
+            items[i].tier = 'synopsis';
+            text = render();
+            tokens = countTokens(text);
         }
     }
 
     // 6. Still over: drop the oldest synopsis, one at a time.
-    if (tokens > budgetTokens) {
-        for (let i = 0; i < ordered.length && tokens > budgetTokens; i++) {
-            const ch = ordered[i];
-            if (tierByChapterId[ch.chapterId] === 'synopsis') {
-                tierByChapterId[ch.chapterId] = 'dropped';
-                const surviving = ordered.filter(c => tierByChapterId[c.chapterId] !== 'dropped');
-                text = surviving.map(renderChapterText).join('\n\n');
-                tokens = countTokens(text);
-            }
+    for (let i = 0; i < items.length && tokens > budgetTokens; i++) {
+        if (items[i].tier === 'synopsis') {
+            items[i].tier = 'dropped';
+            text = render();
+            tokens = countTokens(text);
         }
     }
 
+    const tierByChapterId: Record<string, LodTier> = {};
+    for (const it of items) tierByChapterId[it.id] = it.tier;
     return { text, tokens, tierByChapterId };
 }
 
@@ -211,12 +239,13 @@ const LOD_ENVELOPE_SUFFIX = '\n[END LOD HISTORY]';
  */
 export function buildChapterRecapBlock(params: {
     chapters: ArchiveChapter[] | undefined;
+    books?: ArchiveBook[];
     archiveIndex: ArchiveIndexEntry[] | undefined;
     messages: ChatMessage[];
     condensedUpToIndex: number | undefined;
     historyBudget: number;
 }): { content: string; tokens: number; tierByChapterId: Record<string, LodTier> } {
-    const { chapters, archiveIndex, messages, condensedUpToIndex, historyBudget } = params;
+    const { chapters, books, archiveIndex, messages, condensedUpToIndex, historyBudget } = params;
     const empty = { content: '', tokens: 0, tierByChapterId: {} };
     if (!chapters || chapters.length === 0 || condensedUpToIndex === undefined || condensedUpToIndex < 0) return empty;
 
@@ -226,6 +255,7 @@ export function buildChapterRecapBlock(params: {
     const envelopeCost = countTokens(LOD_ENVELOPE_PREFIX) + countTokens(LOD_ENVELOPE_SUFFIX);
     const result = renderLodChapters({
         chapters,
+        books,
         archiveIndex: archiveIndex ?? [],
         condensedUpToIndex,
         messages,
