@@ -84,7 +84,8 @@ export function isFactActive(entry: DivergenceEntry): boolean {
  * Seal merge with state replacement. A new fact carrying a valid `stateKey`
  * becomes that slot's current value: every older active, unpinned fact in the
  * same slot is marked superseded (kept for history, no longer sent to the GM).
- * Within one batch the latest sceneRef wins. Facts without a stateKey are
+ * The latest sceneRef wins — within a batch and against the register, so
+ * re-sealing an old chapter cannot overwrite a newer value. Facts without a stateKey are
  * additive. `supersedesFactId` is accepted for older extractor output but no
  * longer needed — the slot alone decides. `mergeSealEntries` stays append-only
  * for callers that never supersede (NPC avoidance facts).
@@ -104,8 +105,15 @@ export function mergeLifecycleEntries(
     for (const extracted of ordered) {
         // An extraction instruction, not persistent campaign data.
         const { supersedesFactId: _legacy, ...entry } = extracted;
-        const nextEntry: DivergenceEntry = { ...entry, status: 'active' };
-        if (isValidStateKey(nextEntry.stateKey)) supersedeSlot(entries, nextEntry.stateKey, nextEntry.id);
+        let nextEntry: DivergenceEntry = { ...entry, status: 'active' };
+        if (isValidStateKey(nextEntry.stateKey)) {
+            // A re-sealed older chapter must not overwrite a newer value: if the slot
+            // already holds a later fact, the incoming one arrives as history.
+            const newer = entries.find(e => e.stateKey === nextEntry.stateKey && isFactActive(e)
+                && compareSceneRef(e.sceneRef, nextEntry.sceneRef) > 0);
+            if (newer) nextEntry = { ...nextEntry, status: 'superseded', supersededBy: newer.id };
+            else supersedeSlot(entries, nextEntry.stateKey, nextEntry.id);
+        }
         entries.push(nextEntry);
     }
 

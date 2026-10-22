@@ -71,6 +71,15 @@ describe('mergeLifecycleEntries', () => {
         expect(merged.entries).toHaveLength(4);
     });
 
+    it('a re-sealed older chapter does not overwrite a newer slot value', () => {
+        const current = entry({ id: 'now', sceneRef: '450', stateKey: 'npc:npc_1:location', text: 'Mira is in the capital' });
+        const merged = mergeLifecycleEntries(register([current]), [
+            entry({ id: 'old', sceneRef: '060', stateKey: 'npc:npc_1:location', text: 'Mira is at the inn' }),
+        ], '060');
+        expect(isFactActive(merged.entries[0])).toBe(true);
+        expect(merged.entries[1]).toMatchObject({ status: 'superseded', supersededBy: 'now' });
+    });
+
     it('within one batch the latest scene wins the slot', () => {
         const merged = mergeLifecycleEntries(register([]), [
             entry({ id: 'late', sceneRef: '014', stateKey: 'npc:npc_1:location', text: 'Mira is at the docks' }),
