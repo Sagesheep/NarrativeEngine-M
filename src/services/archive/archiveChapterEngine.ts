@@ -1,4 +1,5 @@
 import type { ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, SemanticFact, LLMProvider } from '../../types';
+import { nextChapterNumber, chapterIdFor } from '../../utils/chapterIds';
 import type { SearchHit } from '../embedding/vectorSearch';
 import { extractContextActivations, expandActivationsWithFacts, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
 import { llmCall } from '../../utils/llmCall';
@@ -54,9 +55,9 @@ export function sealChapter(
         sceneCount: Array.from(new Set(openChapter.sceneIds ?? [])).length,
     };
 
-    const nextChapterNum = chapters.length + 1;
+    const nextChapterNum = nextChapterNumber(chapters);
     const newOpen: ArchiveChapter = {
-        chapterId: `CH${String(nextChapterNum).padStart(2, '0')}`,
+        chapterId: chapterIdFor(nextChapterNum),
         title: 'Open Chapter',
         sceneRange: [nextScene, nextScene],
         sceneIds: [],

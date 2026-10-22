@@ -26,7 +26,7 @@ import { runNPCPressureScan, runAgencyTick, bumpOnStageActivity, runArcTick } fr
 
 // Re-export for backward compat
 export { parsePresentHeader, resolveNPCIds } from './postTurn/witnessStage';
-export { runCombinedSeal } from './postTurn/sealStage';
+export { runCombinedSeal, buildSealInputs, applySealResult } from './postTurn/sealStage';
 export { autoEnableCharacterProfile } from './postTurn/archiveStage';
 export { runArcTick } from './postTurn/npcStage';
 

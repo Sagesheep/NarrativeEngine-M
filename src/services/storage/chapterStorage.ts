@@ -1,4 +1,5 @@
 import type { ArchiveChapter } from '../../types';
+import { nextChapterNumber, chapterIdFor } from '../../utils/chapterIds';
 import { getList, setList, k, type SceneRecord } from './_helpers';
 
 export function backfillSceneIds(chapters: ArchiveChapter[]): { chapters: ArchiveChapter[]; changed: boolean } {
@@ -29,8 +30,8 @@ export const chapterStorage = {
 
     async create(cid: string, title?: string): Promise<ArchiveChapter> {
         const chapters = await getList<ArchiveChapter>(k(cid, 'chapters'));
-        const nextNum = chapters.length + 1;
-        const chapterId = `CH${String(nextNum).padStart(2, '0')}`;
+        const nextNum = nextChapterNumber(chapters);
+        const chapterId = chapterIdFor(nextNum);
         const scenes: SceneRecord[] = await getList(k(cid, 'scenes'));
         const nextSceneId = String(scenes.length + 1).padStart(3, '0');
         const newChapter: ArchiveChapter = {
@@ -69,9 +70,9 @@ export const chapterStorage = {
         };
         const lastScene = parseInt(sealed.sceneRange[1], 10);
         const nextScene = String(lastScene + 1).padStart(3, '0');
-        const nextNum = chapters.length + 1;
+        const nextNum = nextChapterNumber(chapters);
         const newOpen: ArchiveChapter = {
-            chapterId: `CH${String(nextNum).padStart(2, '0')}`,
+            chapterId: chapterIdFor(nextNum),
             title: 'Open Chapter',
             sceneRange: [nextScene, nextScene],
             sceneIds: [],
@@ -109,6 +110,12 @@ export const chapterStorage = {
             invalidated: true,
             summary: `[MERGED] ${chA.summary}\n\n${chB.summary}`,
         };
+        // Merging into the open chapter keeps it open — otherwise no chapter is left
+        // to receive new scenes. It gets summarized when it seals.
+        if (!chA.sealedAt || !chB.sealedAt) {
+            delete merged.sealedAt;
+            delete merged.invalidated;
+        }
 
         chapters.splice(firstIdx, 2, merged);
         await setList(k(cid, 'chapters'), chapters);

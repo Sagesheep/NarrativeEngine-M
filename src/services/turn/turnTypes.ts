@@ -70,6 +70,9 @@ export type TurnCallbacks = {
     setPipelinePhase?: (phase: PipelinePhase) => void;
     setStreamingStats?: (stats: StreamingStats | null) => void;
     setDivergenceRegister?: (register: DivergenceRegister) => void;
+    /** Live register read. Post-turn writers merge into THIS, not the turn-start
+     *  snapshot in TurnState — a seal's AI call can outlive other writes. */
+    getDivergenceRegister?: () => DivergenceRegister | undefined;
     updateMessageDivergence?: (messageId: string, divergenceIds: string[]) => void;
     applyPressurePatch?: (id: string, p: NPCPressure) => void;
     setOnStageNpcIds?: (ids: string[]) => void;

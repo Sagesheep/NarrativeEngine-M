@@ -594,7 +594,7 @@ export function runArcTick(
     // Write avoidance facts to divergenceRegister (mergeSealEntries appends, same as
     // the seal-audit path at ~line 1016). A world fact, never a penalty counter.
     if (divergenceFacts.length > 0) {
-        const liveRegister = state.divergenceRegister;
+        const liveRegister = callbacks.getDivergenceRegister?.() ?? state.divergenceRegister;
         if (liveRegister && callbacks.setDivergenceRegister) {
             const merged = mergeSealEntries(liveRegister, divergenceFacts, sceneId);
             callbacks.setDivergenceRegister(merged);

@@ -3,6 +3,7 @@ import type { ChatMessage } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../services/apiClient';
 import { toast } from '../Toast';
+import { removeFactsFromScene } from '../../services/campaign-state';
 import { clearPendingTurnSnapshot, findPendingCommitMessage, findRetryableMessage, getActiveSnapshotId, getCachedSwipePayload, patchCachedUserPrompt } from '../../services/turn';
 
 interface UseMessageEditorDeps {
@@ -73,6 +74,15 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             deps.setArchiveIndex(freshIndex);
             deps.setTimeline(freshTimeline);
             deps.setChapters(updatedChapters);
+
+            // Facts extracted from the deleted scenes would otherwise stay in the
+            // GM's canon (and duplicate on re-seal). Manual/pinned facts stay.
+            const store = useAppStore.getState();
+            const { register: rolledBack, removed } = removeFactsFromScene(store.divergenceRegister, target.sceneId);
+            if (removed > 0) {
+                store.setDivergenceRegister(rolledBack);
+                console.log(`[Archive] Removed ${removed} fact(s) from rolled-back scenes`);
+            }
 
             const currentCondenser = useAppStore.getState().condenser;
             const currentMessages = useAppStore.getState().messages;

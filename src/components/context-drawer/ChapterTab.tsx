@@ -6,8 +6,8 @@ import { api } from '../../services/apiClient';
 import { ChapterCard } from './ChapterCard';
 import { toast } from '../Toast';
 import { countTokens } from '../../services/infrastructure';
-import { runCombinedSeal } from '../../services/turn';
-import { mergeLifecycleEntries } from '../../services/campaign-state';
+import { runCombinedSeal, buildSealInputs, applySealResult } from '../../services/turn';
+import { relabelChapterFacts } from '../../services/campaign-state';
 import type { ArchiveChapter } from '../../types';
 import { applyActiveSlotThinking } from '../../store/slices/slotThinking';
 
@@ -97,6 +97,9 @@ export function ChapterTab() {
         try {
             const merged = await api.chapters.merge(activeCampaignId, idA, idB);
             if (merged) {
+                const goneId = merged.chapterId === idA ? idB : idA;
+                const store = useAppStore.getState();
+                store.setDivergenceRegister(relabelChapterFacts(store.divergenceRegister, goneId, () => merged.chapterId));
                 await refreshChapters();
                 toast.success('Chapters merged');
             }
@@ -111,6 +114,11 @@ export function ChapterTab() {
         try {
             const result = await api.chapters.split(activeCampaignId, chapterId, atSceneId);
             if (result) {
+                const { chapterA, chapterB } = result;
+                const splitAt = parseInt(chapterB.sceneRange[0], 10);
+                const store = useAppStore.getState();
+                store.setDivergenceRegister(relabelChapterFacts(store.divergenceRegister, chapterId,
+                    e => parseInt(e.sceneRef, 10) >= splitAt ? chapterB.chapterId : chapterA.chapterId));
                 await refreshChapters();
                 toast.success('Chapter split');
             }
@@ -146,35 +154,20 @@ export function ChapterTab() {
                 return;
             }
 
-            const npcLedger = useAppStore.getState().npcLedger ?? [];
-            const currentFacts = useAppStore.getState().divergenceRegister?.entries ?? [];
-            const sealResult = await runCombinedSeal(activeCampaignId, chapter, provider, npcLedger, undefined, undefined, undefined, currentFacts);
+            const npcLedger = live.npcLedger ?? [];
+            const { openThreads, existingTokens, currentFacts } = buildSealInputs(chapter, live.chapters, live.divergenceRegister);
+            const sealResult = await runCombinedSeal(activeCampaignId, chapter, provider, npcLedger, live.archiveIndex, openThreads, existingTokens, currentFacts);
 
-            if (sealResult.summary) {
-                await api.chapters.update(activeCampaignId, chapter.chapterId, {
-                    title: sealResult.summary.title,
-                    summary: sealResult.summary.summary,
-                    keywords: sealResult.summary.keywords,
-                    npcs: sealResult.summary.npcs,
-                    majorEvents: sealResult.summary.majorEvents,
-                    unresolvedThreads: sealResult.summary.unresolvedThreads,
-                    tone: sealResult.summary.tone,
-                    themes: sealResult.summary.themes,
-                    invalidated: false,
-                    ...(sealResult.summary.npcInnerState && { npcInnerState: sealResult.summary.npcInnerState }),
-                });
-            }
+            // Same persistence as the auto-seal: replaces this chapter's old auto facts.
+            const merged = await applySealResult(activeCampaignId, chapter, sealResult, {
+                npcLedger,
+                getRegister: () => useAppStore.getState().divergenceRegister,
+                setRegister: (reg) => useAppStore.getState().setDivergenceRegister(reg),
+                setArchiveIndex: (entries) => useAppStore.getState().setArchiveIndex(entries),
+            });
 
-            if (sealResult.divergences.length > 0) {
-                const liveRegister = useAppStore.getState().divergenceRegister;
-                if (liveRegister) {
-                    const sceneIds = chapter.sceneIds?.length
-                        ? chapter.sceneIds
-                        : [chapter.sceneRange[1]];
-                    const merged = mergeLifecycleEntries(liveRegister, sealResult.divergences, sceneIds[sceneIds.length - 1] ?? '000');
-                    useAppStore.getState().setDivergenceRegister(merged);
-                    toast.info(`${sealResult.divergences.length} divergence facts extracted`);
-                }
+            if (merged > 0) {
+                toast.info(`${merged} divergence facts extracted`);
             } else if (sealResult.divergenceParseError) {
                 toast.warning('Chapter sealed but divergence facts failed to parse — try regenerating later');
             }

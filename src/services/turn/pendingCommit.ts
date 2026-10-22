@@ -220,6 +220,7 @@ function buildCommitCallbacks(activeCampaignId: string): TurnCallbacks {
                     .catch(e => console.warn('[Commit] saveDivergenceRegister failed:', e));
             }
         },
+        getDivergenceRegister: () => storeAccess().getState().divergenceRegister,
         updateMessageDivergence: (messageId, divergenceIds) => storeAccess().getState().updateMessageDivergence(messageId, divergenceIds),
         applyPressurePatch: (id, p) => storeAccess().getState().applyPressurePatch(id, p),
         setOnStageNpcIds: (ids) => storeAccess().getState().setOnStageNpcIds(ids),

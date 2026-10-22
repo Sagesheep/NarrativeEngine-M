@@ -152,20 +152,112 @@ export function applyStateKeys(
     const keyMap = new Map(updates.filter(u => isValidStateKey(u.stateKey)).map(u => [u.id, u.stateKey]));
     const entries = register.entries.map(e => keyMap.has(e.id) ? { ...e, stateKey: keyMap.get(e.id) } : e);
 
-    const newestBySlot = new Map<string, DivergenceEntry>();
-    for (const e of entries) {
-        if (!isValidStateKey(e.stateKey) || !isFactActive(e) || e.pinned) continue;
-        const cur = newestBySlot.get(e.stateKey);
-        if (!cur || compareSceneRef(e.sceneRef, cur.sceneRef) >= 0) newestBySlot.set(e.stateKey, e);
-    }
-    let superseded = 0;
-    for (const [slot, newest] of newestBySlot) superseded += supersedeSlot(entries, slot, newest.id);
+    const superseded = collapseSlots(entries);
 
     return {
         register: { ...register, entries, lastUpdatedAt: Date.now() },
         keyed: keyMap.size,
         superseded,
     };
+}
+
+/** Collapse each slot (all slots, or only `slots`) to its newest active, unpinned fact (mutates the array). */
+function collapseSlots(entries: DivergenceEntry[], slots?: Set<string>): number {
+    const newestBySlot = new Map<string, DivergenceEntry>();
+    for (const e of entries) {
+        if (!isValidStateKey(e.stateKey) || !isFactActive(e) || e.pinned) continue;
+        if (slots && !slots.has(e.stateKey)) continue;
+        const cur = newestBySlot.get(e.stateKey);
+        if (!cur || compareSceneRef(e.sceneRef, cur.sceneRef) >= 0) newestBySlot.set(e.stateKey, e);
+    }
+    let superseded = 0;
+    for (const [slot, newest] of newestBySlot) superseded += supersedeSlot(entries, slot, newest.id);
+    return superseded;
+}
+
+/**
+ * Drop auto-extracted facts matching `shouldRemove`; manual (user-edited) and
+ * pinned facts always stay. Facts a dropped fact had superseded become active
+ * again, then each touched slot collapses back to its newest fact — so removing
+ * a chapter's or a rolled-back scene's writes restores the state before them.
+ */
+export function removeAutoFacts(
+    register: DivergenceRegister,
+    shouldRemove: (entry: DivergenceEntry) => boolean,
+): { register: DivergenceRegister; removed: number } {
+    const removedIds = new Set(register.entries
+        .filter(e => e.source === 'auto' && !e.pinned && shouldRemove(e))
+        .map(e => e.id));
+    if (removedIds.size === 0) return { register, removed: 0 };
+
+    const touchedSlots = new Set<string>();
+    const entries = register.entries
+        .filter(e => !removedIds.has(e.id))
+        .map(e => {
+            if (!e.supersededBy || !removedIds.has(e.supersededBy)) return e;
+            const { supersededBy: _by, ...rest } = e;
+            if (isValidStateKey(e.stateKey)) touchedSlots.add(e.stateKey);
+            return { ...rest, status: 'active' as const };
+        });
+    collapseSlots(entries, touchedSlots);
+
+    return {
+        register: { ...register, entries, lastUpdatedAt: Date.now() },
+        removed: removedIds.size,
+    };
+}
+
+/**
+ * (Re-)seal merge for one chapter: its previous auto facts are replaced by the
+ * fresh extraction instead of piling up next to it. An empty extraction leaves
+ * the register untouched — a failed parse must not wipe a chapter's facts.
+ */
+export function replaceChapterFacts(
+    register: DivergenceRegister,
+    chapterId: string,
+    newEntries: DivergenceEntry[],
+    sceneId: string,
+): DivergenceRegister {
+    if (newEntries.length === 0) return register;
+    const { register: cleared } = removeAutoFacts(register, e => e.chapterId === chapterId);
+    return mergeLifecycleEntries(cleared, newEntries, sceneId);
+}
+
+/**
+ * Chapter merge/split: move every fact of `fromId` to the chapter `assign` picks
+ * for it, carrying the chapter's toggles along. Without this a merged-away or
+ * split chapter's facts point at an id that no longer exists.
+ */
+export function relabelChapterFacts(
+    register: DivergenceRegister,
+    fromId: string,
+    assign: (entry: DivergenceEntry) => string,
+): DivergenceRegister {
+    const targets = new Set<string>();
+    const entries = register.entries.map(e => {
+        if (e.chapterId !== fromId) return e;
+        const to = assign(e);
+        targets.add(to);
+        return to === fromId ? e : { ...e, chapterId: to };
+    });
+    if (targets.size === 0) return register;
+
+    const chapterToggles = { ...register.chapterToggles };
+    const categoryToggles = { ...register.categoryToggles };
+    for (const to of targets) {
+        if (fromId in chapterToggles && !(to in chapterToggles)) chapterToggles[to] = chapterToggles[fromId];
+        if (fromId in categoryToggles && !(to in categoryToggles)) categoryToggles[to] = categoryToggles[fromId];
+    }
+    if (!targets.has(fromId)) {
+        delete chapterToggles[fromId];
+        delete categoryToggles[fromId];
+    }
+    return { ...register, entries, chapterToggles, categoryToggles, lastUpdatedAt: Date.now() };
+}
+
+/** Rollback: drop auto facts that came from deleted scenes (sceneRef >= fromSceneId). */
+export function removeFactsFromScene(register: DivergenceRegister, fromSceneId: string): { register: DivergenceRegister; removed: number } {
+    return removeAutoFacts(register, e => compareSceneRef(e.sceneRef, fromSceneId) >= 0);
 }
 
 /** Undo a supersession: the fact becomes active again (its replacement stays active too). */

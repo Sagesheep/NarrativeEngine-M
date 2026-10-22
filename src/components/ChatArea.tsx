@@ -266,6 +266,7 @@ export function ChatArea() {
             setPipelinePhase: (phase: PipelinePhase) => useAppStore.getState().setPipelinePhase(phase),
             setStreamingStats: (stats: StreamingStats | null) => useAppStore.getState().setStreamingStats(stats),
             setDivergenceRegister: (reg) => { setDivergenceRegister(reg); if (activeCampaignId) import('../store/campaignStore').then(m => m.saveDivergenceRegister(activeCampaignId, reg)); },
+            getDivergenceRegister: () => useAppStore.getState().divergenceRegister,
             updateMessageDivergence: updateMessageDivergence,
             setOnStageNpcIds: (ids) => useAppStore.getState().setOnStageNpcIds(ids),
         }, abortControllerRef.current!);

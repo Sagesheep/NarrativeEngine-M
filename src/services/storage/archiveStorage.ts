@@ -1,4 +1,5 @@
 import { createStore, del as idbDel, type UseStore } from 'idb-keyval';
+import { nextChapterNumber, chapterIdFor } from '../../utils/chapterIds';
 import type { ArchiveChapter, SemanticFact } from '../../types';
 import { buildArchiveIndexEntry, extractNPCFacts } from '../archive';
 import { getList, setList, k, type SceneRecord } from './_helpers';
@@ -71,9 +72,9 @@ export const archiveStorage = {
                     }
                     let openChapter = chapters.find(ch => !ch.sealedAt);
                     if (!openChapter) {
-                        const nextNum = chapters.length + 1;
+                        const nextNum = nextChapterNumber(chapters);
                         openChapter = {
-                            chapterId: `CH${String(nextNum).padStart(2, '0')}`, title: `Chapter ${nextNum}`,
+                            chapterId: chapterIdFor(nextNum), title: `Chapter ${nextNum}`,
                             sceneRange: [sceneId, sceneId], sceneIds: [], sceneCount: 0,
                             summary: '', keywords: [], npcs: [], majorEvents: [], unresolvedThreads: [], tone: '', themes: [],
                         };
@@ -199,9 +200,9 @@ export const archiveStorage = {
 
         const openChapter = chapters.find(ch => !ch.sealedAt);
         if (!openChapter) {
-            const nextNum = chapters.length + 1;
+            const nextNum = nextChapterNumber(chapters);
             chapters.push({
-                chapterId: `CH${String(nextNum).padStart(2, '0')}`,
+                chapterId: chapterIdFor(nextNum),
                 title: `Chapter ${nextNum}`,
                 sceneRange: [fromSceneId.padStart(3, '0'), fromSceneId.padStart(3, '0')],
                 sceneIds: [],

@@ -2,13 +2,13 @@
  * Seal stage — extracted from turnPostProcess.ts (W10).
  */
 
-import type { NPCEntry, ArchiveChapter, ArchiveIndexEntry, DivergenceEntry, LLMProvider, WitnessSource } from '../../../types';
+import type { NPCEntry, ArchiveChapter, ArchiveIndexEntry, DivergenceEntry, DivergenceRegister, LLMProvider, WitnessSource } from '../../../types';
 import type { TurnState, TurnCallbacks } from '../turnTypes';
 import { api } from '../../apiClient';
 import { notify } from '../../ports/notify';
 import { shouldAutoSeal, sealChapter, sealChapterCombined, type CombinedSealResult } from '../../archive';
 import { computeOpenThreads } from '../../payload/payloadWorldContext';
-import { mergeLifecycleEntries } from '../../campaign-state';
+import { replaceChapterFacts } from '../../campaign-state';
 import { tierAllows } from '../aiTier';
 import { tryWithFallback } from './witnessStage';
 
@@ -32,83 +32,117 @@ export async function runCombinedSeal(
     return sealChapterCombined(provider, scenesContent, chapter.chapterId, chapter.title, sceneIds, npcInfo, indexEntries, 2, openThreads, existingSubjectTokens, activeStateFacts);
 }
 
+/** Prompt inputs beyond the scenes: threads left open by EARLIER sealed chapters,
+ *  the register's subject tokens, and the current facts (for slot keys). Shared by
+ *  the auto-seal and the Chapters tab's Regenerate so both send the same prompt. */
+export function buildSealInputs(chapter: ArchiveChapter, chapters: ArchiveChapter[], register: DivergenceRegister | undefined) {
+    const start = parseInt(chapter.sceneRange[0], 10);
+    const earlierSealed = chapters.filter(c => c.sealedAt && c.chapterId !== chapter.chapterId && parseInt(c.sceneRange[0], 10) < start);
+    const entries = register?.entries ?? [];
+    const tokens = Array.from(new Set(entries.map(e => e.subjectToken).filter((t): t is string => typeof t === 'string' && t.length > 0)));
+    return {
+        openThreads: computeOpenThreads(earlierSealed).map(t => t.text),
+        existingTokens: register ? tokens : undefined,
+        currentFacts: entries,
+    };
+}
+
+export type SealApplyDeps = {
+    npcLedger: NPCEntry[];
+    /** Read at merge time — never a snapshot from before the AI call. */
+    getRegister: () => DivergenceRegister | undefined;
+    setRegister?: (register: DivergenceRegister) => void;
+    setArchiveIndex: (entries: ArchiveIndexEntry[]) => void;
+};
+
+/**
+ * Persist a seal result: chapter summary, witness corrections, scene events, and
+ * the chapter's facts (replacing its previous auto facts, so a re-seal or
+ * Regenerate never duplicates them). A missing summary marks the chapter
+ * invalidated so the Chapters tab offers Regenerate. Returns facts merged.
+ */
+export async function applySealResult(activeCampaignId: string, chapter: ArchiveChapter, sealResult: CombinedSealResult, deps: SealApplyDeps): Promise<number> {
+    if (sealResult.summary) {
+        await api.chapters.update(activeCampaignId, chapter.chapterId, {
+            title: sealResult.summary.title, summary: sealResult.summary.summary, keywords: sealResult.summary.keywords,
+            npcs: sealResult.summary.npcs, majorEvents: sealResult.summary.majorEvents,
+            unresolvedThreads: sealResult.summary.unresolvedThreads, tone: sealResult.summary.tone, themes: sealResult.summary.themes,
+            invalidated: false,
+            ...(sealResult.summary.npcInnerState && { npcInnerState: sealResult.summary.npcInnerState }),
+            ...(sealResult.resolvedThreads && sealResult.resolvedThreads.length > 0 && { resolvedThreads: sealResult.resolvedThreads }),
+        });
+    } else {
+        await api.chapters.update(activeCampaignId, chapter.chapterId, { invalidated: true });
+    }
+
+    const corrections = sealResult.witnessCorrections ?? {};
+    const sceneEvents = sealResult.sceneEventMap ?? {};
+    if (Object.keys(corrections).length > 0 || Object.keys(sceneEvents).length > 0) {
+        try {
+            const index = await api.archive.getIndex(activeCampaignId);
+            let changed = false;
+            for (const entry of index) {
+                const validIds = (corrections[entry.sceneId] ?? []).filter((id: string) => deps.npcLedger.some(n => n.id === id));
+                if (validIds.length > 0) { entry.npcsWitnessed = validIds; entry.witnessSource = 'seal_correction' as WitnessSource; changed = true; }
+                const events = sceneEvents[entry.sceneId];
+                if (events && events.length > 0) { entry.events = events; changed = true; }
+            }
+            if (changed) {
+                const { offlineStorage } = await import('../../storage');
+                await offlineStorage.archive.updateIndex(activeCampaignId, index);
+                deps.setArchiveIndex([...index]);
+            }
+        } catch (e) { console.warn('[Seal] Failed to apply witness corrections / scene events:', e); }
+    }
+
+    const liveRegister = deps.getRegister();
+    if (sealResult.divergences.length === 0 || !liveRegister || !deps.setRegister) return 0;
+    const sceneIds = chapter.sceneIds?.length ? chapter.sceneIds : [chapter.sceneRange[1]];
+    deps.setRegister(replaceChapterFacts(liveRegister, chapter.chapterId, sealResult.divergences, sceneIds[sceneIds.length - 1] ?? '000'));
+    return sealResult.divergences.length;
+}
+
 export async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, activeCampaignId: string, loadChapters: (campaignId: string) => Promise<ArchiveChapter[]>): Promise<void> {
     const currentChapters = await loadChapters(activeCampaignId);
     if (currentChapters.length > 0 && shouldAutoSeal(currentChapters).shouldSeal) {
+        const getRegister = () => callbacks.getDivergenceRegister?.() ?? state.divergenceRegister;
+        let sealed: ArchiveChapter | undefined;
         try {
             const result = sealChapter(currentChapters);
             if (!result) return;
-            const sealed = result.sealedChapter;
-            await api.chapters.update(activeCampaignId, sealed.chapterId, sealed);
+            const chapter = result.sealedChapter;
+            await api.chapters.update(activeCampaignId, chapter.chapterId, chapter);
+            sealed = chapter;
             await api.chapters.create(activeCampaignId);
             const summarizerProvider = state.getFreshSummarizerProvider?.();
             const storyProvider = state.getFreshProvider();
             const sealProvider = summarizerProvider ?? storyProvider;
             if (sealProvider && tierAllows(state.settings.aiTier, 'sealChapter')) {
-                const alreadySealedChapters = currentChapters.filter(c => c.sealedAt && c.chapterId !== sealed.chapterId);
-                const openThreadsList = computeOpenThreads(alreadySealedChapters).map(t => t.text);
-                const existingTokens = state.divergenceRegister ? Array.from(new Set(state.divergenceRegister.entries.map(e => e.subjectToken).filter((t): t is string => typeof t === 'string' && t.length > 0))) : undefined;
-                const currentFacts = state.divergenceRegister?.entries ?? [];
+                const { openThreads, existingTokens, currentFacts } = buildSealInputs(chapter, currentChapters, getRegister());
                 const sealResult = await tryWithFallback('SealChapter',
-                    () => runCombinedSeal(activeCampaignId, sealed, summarizerProvider ?? storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreadsList, existingTokens, currentFacts),
-                    () => runCombinedSeal(activeCampaignId, sealed, storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreadsList, existingTokens, currentFacts));
-                if (sealResult.summary) {
-                    await api.chapters.update(activeCampaignId, sealed.chapterId, {
-                        title: sealResult.summary.title, summary: sealResult.summary.summary, keywords: sealResult.summary.keywords,
-                        npcs: sealResult.summary.npcs, majorEvents: sealResult.summary.majorEvents,
-                        unresolvedThreads: sealResult.summary.unresolvedThreads, tone: sealResult.summary.tone, themes: sealResult.summary.themes,
-                        ...(sealResult.summary.npcInnerState && { npcInnerState: sealResult.summary.npcInnerState }),
-                        ...(sealResult.resolvedThreads && sealResult.resolvedThreads.length > 0 && { resolvedThreads: sealResult.resolvedThreads }),
-                    });
-                }
-                if (sealResult.witnessCorrections && Object.keys(sealResult.witnessCorrections).length > 0) {
-                    try {
-                        const index = await api.archive.getIndex(activeCampaignId);
-                        let corrected = false;
-                        for (const entry of index) {
-                            const corrections = sealResult.witnessCorrections[entry.sceneId];
-                            if (corrections) {
-                                const npcLedger = state.npcLedger ?? [];
-                                const validIds = corrections.filter((id: string) => npcLedger.some(n => n.id === id));
-                                if (validIds.length > 0) { entry.npcsWitnessed = validIds; entry.witnessSource = 'seal_correction' as WitnessSource; corrected = true; }
-                            }
-                        }
-                        if (corrected) {
-                            const { offlineStorage } = await import('../../storage');
-                            await offlineStorage.archive.updateIndex(activeCampaignId, index);
-                            callbacks.setArchiveIndex([...index]);
-                        }
-                    } catch (e) { console.warn('[CombinedSeal] Failed to apply witness corrections:', e); }
-                }
-                if (sealResult.sceneEventMap && Object.keys(sealResult.sceneEventMap).length > 0) {
-                    try {
-                        const index = await api.archive.getIndex(activeCampaignId);
-                        let eventCount = 0;
-                        for (const entry of index) {
-                            const events = sealResult.sceneEventMap[entry.sceneId];
-                            if (events && events.length > 0) { entry.events = events; eventCount++; }
-                        }
-                        if (eventCount > 0) {
-                            const { offlineStorage } = await import('../../storage');
-                            await offlineStorage.archive.updateIndex(activeCampaignId, index);
-                            callbacks.setArchiveIndex([...index]);
-                        }
-                    } catch (e) { console.warn('[Seal] Failed to persist scene events:', e); }
-                }
-                const liveRegister = state.divergenceRegister;
-                if (sealResult.divergences.length > 0 && liveRegister && callbacks.setDivergenceRegister) {
-                    const sceneIds = sealed.sceneIds?.length ? sealed.sceneIds : [sealed.sceneRange[1]];
-                    const merged = mergeLifecycleEntries(liveRegister, sealResult.divergences, sceneIds[sceneIds.length - 1] ?? '000');
-                    callbacks.setDivergenceRegister(merged);
-                } else if (sealResult.divergenceParseError) {
-                    notify.warning('Chapter sealed but divergence facts failed to parse');
-                }
+                    () => runCombinedSeal(activeCampaignId, chapter, summarizerProvider ?? storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreads, existingTokens, currentFacts),
+                    () => runCombinedSeal(activeCampaignId, chapter, storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreads, existingTokens, currentFacts));
+                const merged = await applySealResult(activeCampaignId, chapter, sealResult, {
+                    npcLedger: state.npcLedger ?? [],
+                    getRegister,
+                    setRegister: callbacks.setDivergenceRegister,
+                    setArchiveIndex: callbacks.setArchiveIndex,
+                });
+                if (!sealResult.summary) notify.warning('Chapter sealed without a summary — Regenerate it from the Chapters tab');
+                else if (merged === 0 && sealResult.divergenceParseError) notify.warning('Chapter sealed but divergence facts failed to parse');
             }
             const updatedChapters = await loadChapters(activeCampaignId);
             if (callbacks.setChapters) callbacks.setChapters(updatedChapters);
             notify.success('Chapter sealed');
         } catch (err) {
             console.error('[SealChapter] Failed to seal chapter:', err);
+            // Sealed but the AI pass failed: flag it so Regenerate is offered instead
+            // of an empty summary silently standing in for the chapter.
+            if (sealed) {
+                await api.chapters.update(activeCampaignId, sealed.chapterId, { invalidated: true }).catch(() => {});
+                const updatedChapters = await loadChapters(activeCampaignId).catch(() => null);
+                if (updatedChapters && callbacks.setChapters) callbacks.setChapters(updatedChapters);
+            }
             notify.error('Failed to seal chapter');
         }
     }

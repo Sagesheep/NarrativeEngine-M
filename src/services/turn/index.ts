@@ -17,6 +17,8 @@ export {
     parsePresentHeader,
     resolveNPCIds,
     runCombinedSeal,
+    buildSealInputs,
+    applySealResult,
 } from './turnPostProcess';
 
 export {
