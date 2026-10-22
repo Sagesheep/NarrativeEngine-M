@@ -4,7 +4,7 @@
  */
 
 import type { DivergenceCategory, DivergenceEntry, NPCEntry } from '../../types';
-import { parseKnownByToken } from '../../services/campaign-state';
+import { parseKnownByToken, isFactActive, isAlwaysOn } from '../../services/campaign-state';
 
 export const CATEGORY_COLORS: Record<DivergenceCategory, string> = {
     locations: 'text-blue-400', npc_events: 'text-terminal', promises_debts: 'text-amber-400',
@@ -51,7 +51,7 @@ export function subjectLabel(token: string): string {
     return pretty.join(' ');
 }
 
-export type FactFilter = 'all' | 'state' | 'enabled' | 'disabled' | 'replaced' | 'secret';
+export type FactFilter = 'all' | 'state' | 'enabled' | 'disabled' | 'replaced' | 'closed' | 'history' | 'secret';
 
 export const FACT_FILTERS: readonly { id: FactFilter; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -59,6 +59,8 @@ export const FACT_FILTERS: readonly { id: FactFilter; label: string }[] = [
     { id: 'enabled', label: 'On' },
     { id: 'disabled', label: 'Off' },
     { id: 'replaced', label: 'Replaced' },
+    { id: 'closed', label: 'Closed' },
+    { id: 'history', label: 'History' },
     { id: 'secret', label: 'Scoped' },
 ];
 
@@ -68,11 +70,15 @@ export function matchesFactFilter(
     filter: FactFilter,
     query: string,
     npcNames: NpcNameMap,
+    /** Start of the always-on window (recentWindowStart); 'history' = active but outside it. */
+    windowStart?: string,
 ): boolean {
-    if (filter === 'state' && (!e.stateKey || e.status === 'superseded')) return false;
+    if (filter === 'state' && (!e.stateKey || !isFactActive(e))) return false;
     if (filter === 'enabled' && e.enabled === false) return false;
     if (filter === 'disabled' && e.enabled !== false) return false;
     if (filter === 'replaced' && e.status !== 'superseded') return false;
+    if (filter === 'closed' && e.status !== 'resolved') return false;
+    if (filter === 'history' && (!isFactActive(e) || isAlwaysOn(e, windowStart))) return false;
     if (filter === 'secret' && e.knownBy === undefined) return false;
     if (!query) return true;
     const q = query.toLowerCase();

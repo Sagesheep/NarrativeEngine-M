@@ -3,7 +3,7 @@ import { countTokens } from '../infrastructure';
 import { buildDriftAlert } from '../npc';
 import { relationBand, describeHex } from '../npc/agencyBands';
 import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
-import { isFactActive } from '../campaign-state/divergenceRegister';
+import { isFactActive, isAlwaysOn, recentWindowStart } from '../campaign-state/divergenceRegister';
 import { renderSignatureKit } from '../npc/signatureKit';
 import { minifyLoreChunk, minifyNPC } from './contextMinifier';
 import type { NpcDetailLevel } from './contextRecommender';
@@ -661,9 +661,12 @@ export function assembleWorldBlocks(opts: {
     if (divergenceRegister && divergenceRegister.entries.length > 0) {
         const onStage = onStageNpcIds ?? [];
         const ledger = npcLedger ?? [];
+        // Same always-on window as the cached canon block: old loose events stay history.
+        const windowStart = recentWindowStart(chapters);
         const isActive = (e: DivergenceEntry): boolean => {
             if (e.enabled === false) return false;
             if (!isFactActive(e)) return false;
+            if (!isAlwaysOn(e, windowStart)) return false;
             if (e.pinned) return true;
             const chapterOn = divergenceRegister.chapterToggles[e.chapterId] !== false;
             if (!chapterOn) return false;

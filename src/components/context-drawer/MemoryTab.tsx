@@ -1,8 +1,8 @@
 import { useState, useRef, useMemo, useDeferredValue } from 'react';
-import { Pin, ChevronDown, ChevronUp, AlertTriangle, Trash2, Sparkles, X, Link2, Search, Check, Layers } from 'lucide-react';
+import { Pin, ChevronDown, ChevronUp, AlertTriangle, Trash2, Sparkles, X, Link2, Search, Check, Layers, Handshake } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { DivergenceCategory, DivergenceEntry } from '../../types';
-import { EMPTY_REGISTER, CATEGORY_LABELS, DIVERGENCE_CATEGORIES, runFactDedup, assignSubjectTokens, type DedupResult, type DedupCancelled, type ClusteringCancelled, groupDivergencesBySubject, renderRegisterForPayload, assignStateKeys, type StateKeyCancelled } from '../../services/campaign-state';
+import { EMPTY_REGISTER, CATEGORY_LABELS, DIVERGENCE_CATEGORIES, runFactDedup, assignSubjectTokens, type DedupResult, type DedupCancelled, type ClusteringCancelled, groupDivergencesBySubject, renderRegisterForPayload, assignStateKeys, type StateKeyCancelled, reviewPromises, type PromiseReviewCancelled, isFactActive, isAlwaysOn, recentWindowStart, RECENT_EVENT_CHAPTERS } from '../../services/campaign-state';
 import { countTokens } from '../../services/infrastructure';
 import { divergenceCapFor } from '../../services/payload';
 import { DedupReviewModal } from '../DedupReviewModal';
@@ -26,6 +26,7 @@ export function MemoryTab() {
     const toggleDivergenceCategory = useAppStore(s => s.toggleDivergenceCategory);
     const applySubjectTokens = useAppStore(s => s.applySubjectTokens);
     const applyDivergenceStateKeys = useAppStore(s => s.applyDivergenceStateKeys);
+    const applyPromiseReview = useAppStore(s => s.applyPromiseReview);
     const setManyFactsEnabled = useAppStore(s => s.setManyFactsEnabled);
     const npcLedger = useAppStore(s => s.npcLedger);
     const getActiveUtilityEndpoint = useAppStore(s => s.getActiveUtilityEndpoint);
@@ -59,6 +60,10 @@ export function MemoryTab() {
     const [stateRunning, setStateRunning] = useState(false);
     const stateCancelRef = useRef<StateKeyCancelled>({ cancelled: false });
 
+    // "Review promises" cleanup — closes settled promises, merges repeats.
+    const [promiseRunning, setPromiseRunning] = useState(false);
+    const promiseCancelRef = useRef<PromiseReviewCancelled>({ cancelled: false });
+
     const reg = divergenceRegister ?? EMPTY_REGISTER;
     const entries = reg.entries;
     const npcNames = useMemo(() => buildNpcNameMap(npcLedger ?? []), [npcLedger]);
@@ -67,10 +72,12 @@ export function MemoryTab() {
     // the cap that collapses oldest chapters. Tokenizing is the expensive bit — only
     // redo it when the register or chapter titles change.
     const canonTokens = useMemo(
-        () => countTokens(renderRegisterForPayload(reg, chapters, undefined, undefined, true)),
+        () => countTokens(renderRegisterForPayload(reg, chapters, undefined, undefined, true, true)),
         [reg, chapters],
     );
     const canonCap = divergenceCapFor(contextLimit);
+    // Always-on window: older loose facts stay here as history, not sent every turn.
+    const windowStart = useMemo(() => recentWindowStart(chapters), [chapters]);
 
     // Everything below depends only on the register — recomputed when it changes,
     // not on every expand/collapse or keystroke.
@@ -79,15 +86,19 @@ export function MemoryTab() {
         const unpinned: DivergenceEntry[] = [];
         const review: DivergenceEntry[] = [];
         let active = 0;
+        let history = 0;
+        let openPromises = 0;
         for (const e of entries) {
             (e.pinned ? pinned : unpinned).push(e);
             if (e.reviewFlag) review.push(e);
-            if (e.enabled === false || e.status === 'superseded' || e.status === 'retracted') continue;
+            if (e.enabled === false || !isFactActive(e)) continue;
             if (!e.pinned) {
                 if (reg.chapterToggles[e.chapterId] === false) continue;
                 if (reg.categoryToggles[e.chapterId]?.[e.category] === false) continue;
             }
             active++;
+            if (!isAlwaysOn(e, windowStart)) history++;
+            if (e.category === 'promises_debts' && !e.stateKey) openPromises++;
         }
 
         const byChapter = new Map<string, Map<DivergenceCategory, DivergenceEntry[]>>();
@@ -111,9 +122,9 @@ export function MemoryTab() {
         }
         if (ungrouped.length > 0) subjectGroups.push({ token: UNGROUPED, entries: ungrouped });
 
-        return { pinned, review, active, byChapter, byCategory, subjectGroups };
-    }, [entries, reg.chapterToggles, reg.categoryToggles]);
-    const { pinned: pinnedEntries, review: reviewEntries, active: activeCount, byChapter, byCategory, subjectGroups } = derived;
+        return { pinned, review, active, history, openPromises, byChapter, byCategory, subjectGroups };
+    }, [entries, reg.chapterToggles, reg.categoryToggles, windowStart]);
+    const { pinned: pinnedEntries, review: reviewEntries, active: activeCount, history: historyCount, openPromises: openPromiseCount, byChapter, byCategory, subjectGroups } = derived;
 
     const chapterTitleMap = useMemo(
         () => new Map((chapters ?? []).map(ch => [ch.chapterId, ch.title])),
@@ -122,8 +133,8 @@ export function MemoryTab() {
 
     const searching = deferredQuery !== '' || filter !== 'all';
     const searchResults = useMemo(
-        () => searching ? entries.filter(e => matchesFactFilter(e, filter, deferredQuery, npcNames)) : [],
-        [searching, entries, filter, deferredQuery, npcNames],
+        () => searching ? entries.filter(e => matchesFactFilter(e, filter, deferredQuery, npcNames, windowStart)) : [],
+        [searching, entries, filter, deferredQuery, npcNames, windowStart],
     );
 
     const renderRow = (e: DivergenceEntry) => <FactRow key={e.id} entry={e} npcNames={npcNames} />;
@@ -286,9 +297,40 @@ export function MemoryTab() {
         }
     };
 
+    const handleReviewPromises = async () => {
+        const utilityProvider = getActiveUtilityEndpoint();
+        if (!utilityProvider) {
+            setSimError('No utility AI endpoint configured.');
+            return;
+        }
+        if (!await appConfirm({
+            title: 'Review promises',
+            body: `The utility AI checks your ${openPromiseCount} open promises & debts against the chapter summaries written after them. Ones that were kept, broken or no longer apply are closed; repeats of an earlier promise are merged into it. Closed promises stop being sent to the GM — nothing is deleted, and each can be reopened.`,
+            confirmLabel: 'Review',
+        })) return;
+
+        setPromiseRunning(true);
+        setSimSummary(null);
+        setSimError(null);
+        promiseCancelRef.current = { cancelled: false };
+        try {
+            const review = await reviewPromises(reg, chapters ?? [], utilityProvider, promiseCancelRef.current, setSimStatus);
+            const { closed, merged } = applyPromiseReview(review.closures, review.duplicates);
+            setSimSummary(`Closed ${closed} promise${closed === 1 ? '' : 's'} · merged ${merged} repeat${merged === 1 ? '' : 's'}. See the Closed filter.`);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg !== 'Review promises cancelled.') setSimError(msg);
+        } finally {
+            setPromiseRunning(false);
+            setSimStatus(null);
+        }
+    };
+
     const handleStopSimilarity = () => {
         simCancelRef.current.cancelled = true;
         stateCancelRef.current.cancelled = true;
+        promiseCancelRef.current.cancelled = true;
+        setPromiseRunning(false);
         setStateRunning(false);
         setSimRunning(false);
         setSimStatus(null);
@@ -316,7 +358,8 @@ export function MemoryTab() {
 
             <div className="text-[9px] text-text-dim" title="Tokens of the public-facts block sent every turn, against the cap (20% of context) past which the oldest chapters are collapsed">
                 <span className={canonTokens > canonCap ? 'text-amber-400' : ''}>{canonTokens}/{canonCap} tkns</span>
-                {' '}· {activeCount} active{pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}
+                {' '}· {activeCount - historyCount} sent every turn{pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}
+                {historyCount > 0 && <span title={`Events older than the last ${RECENT_EVENT_CHAPTERS} chapters: kept here and reached through chapter recaps and archive recall, not sent every turn. Pin one to keep it always on.`}> · {historyCount} history</span>}
                 {canonTokens > canonCap && <span className="text-amber-400"> · oldest chapters collapsed when sent</span>}
             </div>
 
@@ -348,7 +391,18 @@ export function MemoryTab() {
                         <Layers size={9} />
                         Build Current State
                     </button>
-                    {(simRunning || stateRunning) && (
+                    {openPromiseCount > 0 && (
+                        <button
+                            onClick={handleReviewPromises}
+                            disabled={promiseRunning || stateRunning || simRunning}
+                            className="flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Close promises the story already kept, broke or moved past, and merge repeats. New seals close promises automatically."
+                        >
+                            <Handshake size={9} />
+                            Review Promises ({openPromiseCount})
+                        </button>
+                    )}
+                    {(simRunning || stateRunning || promiseRunning) && (
                         <button
                             onClick={handleStopSimilarity}
                             className="flex items-center gap-0.5 text-[9px] text-red-400 hover:text-red-300 px-1"

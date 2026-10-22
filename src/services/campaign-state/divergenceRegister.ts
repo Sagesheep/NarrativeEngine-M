@@ -1,4 +1,4 @@
-import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, NPCEntry } from '../../types';
+import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, NPCEntry, PromiseOutcome } from '../../types';
 import { countTokens } from '../infrastructure';
 import { notify } from '../ports/notify';
 import { compareSceneRef } from './knowledgeScope';
@@ -61,7 +61,10 @@ export function stripReasoning(raw: string): string {
  * ("Mira's secrets") overwrite each other.
  */
 export const STATE_KEY_KINDS = ['item', 'npc', 'place', 'debt', 'faction', 'quest'] as const;
-export const STATE_KEY_ATTRIBUTES = ['holder', 'location', 'status', 'allegiance', 'controller', 'leader', 'condition', 'role'] as const;
+// `attitude` (npc): how that NPC currently feels about / treats the party.
+// `standing` (faction, place): the party's current standing there. Both turn a
+// lasting "event" ("Mitsuru now trusts Minato") into state the next value replaces.
+export const STATE_KEY_ATTRIBUTES = ['holder', 'location', 'status', 'allegiance', 'controller', 'leader', 'condition', 'role', 'attitude', 'standing'] as const;
 const STATE_KEY_RE = new RegExp(`^(?:${STATE_KEY_KINDS.join('|')}):[a-z0-9][a-z0-9_-]*:(?:${STATE_KEY_ATTRIBUTES.join('|')})$`);
 
 /** Lowercase + trim an LLM-emitted key; undefined unless it is then a valid slot. */
@@ -77,7 +80,7 @@ export function isValidStateKey(value: unknown): value is string {
 
 /** Missing lifecycle data is the backward-compatible active state for old campaigns. */
 export function isFactActive(entry: DivergenceEntry): boolean {
-    return entry.status !== 'superseded' && entry.status !== 'retracted';
+    return entry.status !== 'superseded' && entry.status !== 'retracted' && entry.status !== 'resolved';
 }
 
 /**
@@ -219,8 +222,126 @@ export function replaceChapterFacts(
     sceneId: string,
 ): DivergenceRegister {
     if (newEntries.length === 0) return register;
-    const { register: cleared } = removeAutoFacts(register, e => e.chapterId === chapterId);
-    return mergeLifecycleEntries(cleared, newEntries, sceneId);
+    // Promises this chapter's previous seal closed reopen; the fresh seal re-closes them.
+    const reopened = reopenResolved(register, e => e.resolvedIn === chapterId);
+    const { register: cleared } = removeAutoFacts(reopened, e => e.chapterId === chapterId);
+    return mergeLifecycleEntries(cleared, dropRepeatedFacts(cleared, newEntries), sceneId);
+}
+
+/** Lowercased words only — "Kotone owes custard." and "kotone owes custard" match. */
+function factFingerprint(e: DivergenceEntry): string {
+    return `${e.category}|${e.text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()}`;
+}
+
+/**
+ * New facts that repeat an active fact (same category, same words) or an earlier
+ * fact of the same batch are dropped — the extractor re-emits open promises.
+ * Slot facts always pass: restating a value in its slot is how it stays current.
+ */
+function dropRepeatedFacts(register: DivergenceRegister, newEntries: DivergenceEntry[]): DivergenceEntry[] {
+    const seen = new Set(register.entries.filter(isFactActive).map(factFingerprint));
+    return newEntries.filter(e => {
+        if (isValidStateKey(e.stateKey)) return true;
+        const fp = factFingerprint(e);
+        if (seen.has(fp)) return false;
+        seen.add(fp);
+        return true;
+    });
+}
+
+export type PromiseClosure = { factId: string; outcome: PromiseOutcome; sceneRef?: string };
+
+/**
+ * Close promises/debts: they become 'resolved' (history, no longer sent to the
+ * GM, reopenable). Only active promises_debts facts can close; unknown ids and
+ * other categories are ignored. `chapterId` records which seal closed them.
+ */
+export function resolvePromises(
+    register: DivergenceRegister,
+    closures: PromiseClosure[],
+    chapterId?: string,
+): { register: DivergenceRegister; resolved: number } {
+    const byId = new Map(closures.map(c => [c.factId, c]));
+    let resolved = 0;
+    const entries = register.entries.map(e => {
+        const c = byId.get(e.id);
+        if (!c || e.category !== 'promises_debts' || !isFactActive(e)) return e;
+        resolved++;
+        return {
+            ...e, status: 'resolved' as const, resolution: c.outcome,
+            ...(c.sceneRef ? { resolvedAt: c.sceneRef } : {}),
+            ...(chapterId ? { resolvedIn: chapterId } : {}),
+        };
+    });
+    if (resolved === 0) return { register, resolved };
+    return { register: { ...register, entries, lastUpdatedAt: Date.now() }, resolved };
+}
+
+/**
+ * Mark repeats of a fact as superseded by the original (kept, restorable). Both
+ * must be active; a pair pointing at itself or at a missing fact is ignored.
+ */
+export function supersedeDuplicates(
+    register: DivergenceRegister,
+    pairs: Array<{ id: string; of: string }>,
+): { register: DivergenceRegister; superseded: number } {
+    const active = new Set(register.entries.filter(isFactActive).map(e => e.id));
+    const dupOf = new Map(pairs.filter(p => p.id !== p.of && active.has(p.id) && active.has(p.of)).map(p => [p.id, p.of]));
+    // Never let two facts mark each other: the first pair wins.
+    for (const [id, of] of dupOf) if (dupOf.get(of) === id) dupOf.delete(of);
+    if (dupOf.size === 0) return { register, superseded: 0 };
+    const entries = register.entries.map(e => {
+        const of = dupOf.get(e.id);
+        return of ? { ...e, status: 'superseded' as const, supersededBy: of } : e;
+    });
+    return { register: { ...register, entries, lastUpdatedAt: Date.now() }, superseded: dupOf.size };
+}
+
+/** Reopen resolved promises matching `shouldReopen` (re-seal / rollback of the closing chapter). */
+function reopenResolved(register: DivergenceRegister, shouldReopen: (e: DivergenceEntry) => boolean): DivergenceRegister {
+    let changed = false;
+    const entries = register.entries.map(e => {
+        if (e.status !== 'resolved' || !shouldReopen(e)) return e;
+        changed = true;
+        return clearLifecycle(e);
+    });
+    return changed ? { ...register, entries, lastUpdatedAt: Date.now() } : register;
+}
+
+/** The fact back to plain active: no supersession, no resolution. */
+function clearLifecycle(e: DivergenceEntry): DivergenceEntry {
+    const { supersededBy: _by, resolution: _r, resolvedAt: _at, resolvedIn: _in, ...rest } = e;
+    return { ...rest, status: 'active' };
+}
+
+/**
+ * Always-on block (design #2). Sent every turn: current state (slot facts), open
+ * promises, rules & lore, pinned and hand-written facts. Every other loose fact —
+ * events, party/world/location notes — only while it is recent; older ones stay in
+ * the register as history and reach the GM through chapter recaps and archive recall.
+ */
+export const RECENT_EVENT_CHAPTERS = 2;
+const ALWAYS_ON_CATEGORIES: ReadonlySet<DivergenceCategory> = new Set(['promises_debts', 'rules_lore']);
+
+/**
+ * First scene of the recent window: the start of the `n`-th newest sealed chapter.
+ * Facts at or after it count as recent (the open chapter's arc facts included).
+ * undefined (no sealed chapter yet) = everything is recent.
+ */
+export function recentWindowStart(chapters: ArchiveChapter[] | undefined, n = RECENT_EVENT_CHAPTERS): string | undefined {
+    const sealed = (chapters ?? [])
+        .filter(c => c.sealedAt)
+        .sort((a, b) => compareSceneRef(b.sceneRange[1], a.sceneRange[1]));
+    if (sealed.length < n) return undefined;
+    return sealed[n - 1].sceneRange[0];
+}
+
+/** True when the fact belongs in the always-on block (see RECENT_EVENT_CHAPTERS). */
+export function isAlwaysOn(e: DivergenceEntry, windowStart: string | undefined): boolean {
+    if (windowStart === undefined) return true;
+    if (e.pinned || e.source === 'manual' || isValidStateKey(e.stateKey)) return true;
+    if (ALWAYS_ON_CATEGORIES.has(e.category)) return true;
+    return compareSceneRef(e.sceneRef, windowStart) >= 0;
 }
 
 /**
@@ -257,16 +378,15 @@ export function relabelChapterFacts(
 
 /** Rollback: drop auto facts that came from deleted scenes (sceneRef >= fromSceneId). */
 export function removeFactsFromScene(register: DivergenceRegister, fromSceneId: string): { register: DivergenceRegister; removed: number } {
-    return removeAutoFacts(register, e => compareSceneRef(e.sceneRef, fromSceneId) >= 0);
+    // A promise closed in a deleted scene was never closed.
+    const reopened = reopenResolved(register, e => e.resolvedAt !== undefined && compareSceneRef(e.resolvedAt, fromSceneId) >= 0);
+    const result = removeAutoFacts(reopened, e => compareSceneRef(e.sceneRef, fromSceneId) >= 0);
+    return { register: result.removed > 0 ? result.register : reopened, removed: result.removed };
 }
 
-/** Undo a supersession: the fact becomes active again (its replacement stays active too). */
+/** Undo a supersession or a closed promise: the fact becomes active again (a replacement stays active too). */
 export function restoreFact(register: DivergenceRegister, entryId: string): DivergenceRegister {
-    const entries = register.entries.map(e => {
-        if (e.id !== entryId) return e;
-        const { supersededBy: _by, ...rest } = e;
-        return { ...rest, status: 'active' as const };
-    });
+    const entries = register.entries.map(e => e.id === entryId ? clearLifecycle(e) : e);
     return { ...register, entries, lastUpdatedAt: Date.now() };
 }
 
@@ -295,6 +415,8 @@ export function renderRegisterForPayload(
     onStageNpcIds?: string[],
     npcLedger?: NPCEntry[],
     publicOnly = false,
+    /** Send only the always-on block (isAlwaysOn); older loose facts become history. */
+    alwaysOn = false,
 ): string {
     if (register.entries.length === 0) return '';
 
@@ -305,6 +427,8 @@ export function renderRegisterForPayload(
         }
     }
 
+    const windowStart = alwaysOn ? recentWindowStart(chapters) : undefined;
+    let historyCount = 0;
     const activeEntries = register.entries.filter(e => {
         // Cached-canon path renders ONLY public facts. Scoped facts (knownBy defined,
         // incl. pinned ones) are withheld from the cache and surfaced in the per-turn
@@ -318,6 +442,7 @@ export function renderRegisterForPayload(
         if (!chapterOn) return false;
         const catToggles = register.categoryToggles[e.chapterId];
         if (catToggles && catToggles[e.category] === false) return false;
+        if (!isAlwaysOn(e, windowStart)) { historyCount++; return false; }
         return true;
     });
 
@@ -360,20 +485,23 @@ export function renderRegisterForPayload(
     };
 
     // Slot facts render first as one CURRENT STATE list (sorted by slot so a
-    // subject's slots sit together); everything else stays grouped by chapter.
+    // subject's slots sit together), then OPEN PROMISES (still owed, oldest first);
+    // everything else stays grouped by chapter.
+    const bullet = (e: DivergenceEntry) => `• ${e.text}${e.pinned ? ' ★' : ''}${e.source === 'manual' ? ' ⚡' : ''}`;
     const renderBody = (entries: DivergenceEntry[]): string => {
         const keyed = entries.filter(e => isValidStateKey(e.stateKey))
             .sort((a, b) => (a.stateKey! < b.stateKey! ? -1 : a.stateKey! > b.stateKey! ? 1 : 0));
+        const promises = entries.filter(e => !isValidStateKey(e.stateKey) && e.category === 'promises_debts')
+            .sort((a, b) => compareSceneRef(a.sceneRef, b.sceneRef));
         const loose = new Map<string, DivergenceEntry[]>();
         for (const e of entries) {
-            if (isValidStateKey(e.stateKey)) continue;
+            if (isValidStateKey(e.stateKey) || e.category === 'promises_debts') continue;
             if (!loose.has(e.chapterId)) loose.set(e.chapterId, []);
             loose.get(e.chapterId)!.push(e);
         }
         const sections: string[] = [];
-        if (keyed.length > 0) {
-            sections.push(`CURRENT STATE:\n${keyed.map(e => `• ${e.text}${e.pinned ? ' ★' : ''}${e.source === 'manual' ? ' ⚡' : ''}`).join('\n')}`);
-        }
+        if (keyed.length > 0) sections.push(`CURRENT STATE:\n${keyed.map(bullet).join('\n')}`);
+        if (promises.length > 0) sections.push(`OPEN PROMISES & DEBTS (still owed):\n${promises.map(bullet).join('\n')}`);
         for (const [chapterId, chapterEntries] of loose) {
             const title = chapterTitleMap.get(chapterId) ?? `Chapter ${chapterId}`;
             sections.push(`${title}:\n${renderEntries(chapterEntries)}`);
@@ -381,10 +509,13 @@ export function renderRegisterForPayload(
         return sections.join('\n\n');
     };
 
+    // Older events held back from the always-on block are not lost — say where they are.
+    const historyNote = historyCount > 0 ? ` · ${historyCount} older events in chapter recaps/archive` : '';
+
     // If no on-stage partition or no off-stage NPCs, render as before (single block)
     if (onStageSet.size === 0 || offStageSet.size === 0) {
         const pinnedCount = register.entries.filter(e => e.pinned).length;
-        const banner = `${activeEntries.length} active facts across ${byChapter.size} chapters${pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}`;
+        const banner = `${activeEntries.length} active facts across ${byChapter.size} chapters${pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}${historyNote}`;
         return `[ESTABLISHED FACTS]\n[${banner}]\nThese facts are TRUE in this campaign.\n\n${renderBody(activeEntries)}\n[END ESTABLISHED FACTS]`;
     }
 
@@ -398,7 +529,7 @@ export function renderRegisterForPayload(
     });
 
     const pinnedCount = register.entries.filter(e => e.pinned).length;
-    const banner = `${activeEntries.length} active facts across ${byChapter.size} chapters${pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}`;
+    const banner = `${activeEntries.length} active facts across ${byChapter.size} chapters${pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}${historyNote}`;
 
     // If off-stage is the same as full list, no partitioning needed
     if (offStageEntries.length === activeEntries.length) {

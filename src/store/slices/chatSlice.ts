@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
-import type { ChatMessage, CondenserState, GameContext, LoreCheckSelection, LoreCheckResult, DivergenceRegister, DivergenceEntry, DivergenceCategory, TopicClusters, PinnedExcerpt } from '../../types';
-import { EMPTY_REGISTER, toggleChapter, toggleCategory, pinFact, editFact, deleteFact, deleteChapter, toggleFact, dismissReviewFlag, editKnownBy, applySubjectTokens, applyStateKeys, restoreFact, migrateV1ToV2 } from '../../services/campaign-state';
+import type { ChatMessage, CondenserState, GameContext, LoreCheckSelection, LoreCheckResult, DivergenceRegister, DivergenceEntry, DivergenceCategory, TopicClusters, PinnedExcerpt, PromiseOutcome } from '../../types';
+import { EMPTY_REGISTER, toggleChapter, toggleCategory, pinFact, editFact, deleteFact, deleteChapter, toggleFact, dismissReviewFlag, editKnownBy, applySubjectTokens, applyStateKeys, restoreFact, resolvePromises, supersedeDuplicates, migrateV1ToV2, type PromiseClosure } from '../../services/campaign-state';
 import { debouncedSaveCampaignState } from './campaignSlice';
 import { countTokens } from '../../services/infrastructure';
 import { uid } from '../../utils/uid';
@@ -149,6 +149,10 @@ export type ChatSlice = {
     /** Migration: key facts into state slots and collapse each slot to its newest fact. */
     applyDivergenceStateKeys: (updates: Array<{ id: string; stateKey: string }>) => { keyed: number; superseded: number };
     restoreDivergenceFact: (entryId: string) => void;
+    /** Close one promise by hand (Knowledge tab). */
+    resolveDivergencePromise: (entryId: string, outcome: PromiseOutcome) => void;
+    /** "Review promises": close settled promises and supersede repeats. */
+    applyPromiseReview: (closures: PromiseClosure[], duplicates: Array<{ id: string; of: string }>) => { closed: number; merged: number };
     setTopicClusters: (clusters: TopicClusters) => void;
     migrateDivergenceIfNeeded: () => void;
 
@@ -345,6 +349,23 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set, 
             saveDivergence(s.activeCampaignId, reg);
             return { divergenceRegister: reg };
         }),
+    resolveDivergencePromise: (entryId, outcome) =>
+        set((s) => {
+            const { register: reg } = resolvePromises(s.divergenceRegister, [{ factId: entryId, outcome }]);
+            debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+            saveDivergence(s.activeCampaignId, reg);
+            return { divergenceRegister: reg };
+        }),
+    applyPromiseReview: (closures, duplicates) => {
+        const s = get();
+        // Repeats first, so a repeat that the review also "closed" stays a repeat.
+        const { register: deduped, superseded } = supersedeDuplicates(s.divergenceRegister, duplicates);
+        const { register: reg, resolved } = resolvePromises(deduped, closures);
+        debouncedSaveCampaignState(s.activeCampaignId, { context: s.context, messages: s.messages, condenser: s.condenser, pinnedExcerpts: s.pinnedExcerpts });
+        saveDivergence(s.activeCampaignId, reg);
+        set({ divergenceRegister: reg });
+        return { closed: resolved, merged: superseded };
+    },
     setTopicClusters: (clusters) =>
         set((s) => {
             const reg = { ...s.divergenceRegister, topicClusters: clusters };

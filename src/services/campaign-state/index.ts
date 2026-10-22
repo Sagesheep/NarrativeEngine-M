@@ -18,6 +18,11 @@ export {
     replaceChapterFacts,
     removeFactsFromScene,
     relabelChapterFacts,
+    resolvePromises,
+    supersedeDuplicates,
+    recentWindowStart,
+    isAlwaysOn,
+    RECENT_EVENT_CHAPTERS,
     renderRegisterForPayload,
     countRegisterTokens,
     getDivergenceSceneIds,
@@ -35,9 +40,12 @@ export {
     getEntriesForNpc,
     migrateV1ToV2
 } from './divergenceRegister';
+export type { PromiseClosure } from './divergenceRegister';
 export { runFactClustering, assignSubjectTokens, deriveSubjectTokenUpdates } from './factClusterer';
 export type { ClusteringCancelled, AssignSubjectTokensResult, SubjectTokenUpdate } from './factClusterer';
 export { assignStateKeys } from './stateKeyAssigner';
+export { reviewPromises } from './promiseReviewer';
+export type { PromiseReviewCancelled, PromiseReviewResult } from './promiseReviewer';
 export type { StateKeyCancelled, StateKeyUpdate } from './stateKeyAssigner';
 export { runFactDedup } from './factDeduper';
 export type { DedupGroup, DedupCancelled, DedupResult } from './factDeduper';

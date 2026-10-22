@@ -511,6 +511,8 @@ export type CharacterProfileState = {
 /** Number of PC traits always injected regardless of scene tags. */
 export const CORE_FLOOR_TRAITS = 5;
 
+export type PromiseOutcome = 'fulfilled' | 'broken' | 'void';
+
 export type DivergenceEntry = {
     id: string;
     chapterId: string;
@@ -530,8 +532,15 @@ export type DivergenceEntry = {
     reviewFlag?: boolean;
     unrecognizedNpcNames?: string[];
     /** Old campaigns omit this field and therefore remain active. */
-    status?: 'active' | 'superseded' | 'retracted';
+    /** 'resolved' = a closed promise/debt (kept as history, no longer sent to the GM). */
+    status?: 'active' | 'superseded' | 'retracted' | 'resolved';
     supersededBy?: string;
+    /** How a resolved promise ended. */
+    resolution?: PromiseOutcome;
+    /** Scene the promise closed in (rollback reopens it if that scene is deleted). */
+    resolvedAt?: string;
+    /** Chapter whose seal closed it (re-sealing that chapter reopens it first). */
+    resolvedIn?: string;
     /** Narrow deterministic state slot, e.g. `item:moon-key:holder`. */
     stateKey?: string;
     /** Extraction-only instruction; mergeLifecycleEntries consumes and does not persist it. */

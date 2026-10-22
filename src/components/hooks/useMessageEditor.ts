@@ -79,7 +79,7 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             // GM's canon (and duplicate on re-seal). Manual/pinned facts stay.
             const store = useAppStore.getState();
             const { register: rolledBack, removed } = removeFactsFromScene(store.divergenceRegister, target.sceneId);
-            if (removed > 0) {
+            if (rolledBack !== store.divergenceRegister) {
                 store.setDivergenceRegister(rolledBack);
                 console.log(`[Archive] Removed ${removed} fact(s) from rolled-back scenes`);
             }

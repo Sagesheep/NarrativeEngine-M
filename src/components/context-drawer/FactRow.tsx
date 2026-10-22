@@ -1,5 +1,5 @@
 import { memo, useState, type ReactNode } from 'react';
-import { Edit2, Check, Pin, PinOff, Trash2, Users, X, Undo2 } from 'lucide-react';
+import { Edit2, Check, CheckCircle2, XCircle, Pin, PinOff, Trash2, Users, X, Undo2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { DivergenceEntry } from '../../types';
 import { CATEGORY_LABELS, normalizeFaction } from '../../services/campaign-state';
@@ -13,6 +13,21 @@ function ReplacedTag({ entry }: { entry: DivergenceEntry }) {
         <span className="ml-1 inline-flex items-center gap-0.5 text-[8px] uppercase font-bold text-text-dim bg-white/5 px-1 rounded" title="A later fact replaced this one; it is no longer sent to the GM">
             replaced
             <button onClick={() => restoreDivergenceFact(entry.id)} className="hover:text-emerald-400 normal-case" title="Restore: send this fact to the GM again">
+                <Undo2 size={8} />
+            </button>
+        </span>
+    );
+}
+
+/** A closed promise: how it ended, with a Reopen button. No longer sent to the GM. */
+function ResolvedTag({ entry }: { entry: DivergenceEntry }) {
+    const restoreDivergenceFact = useAppStore(s => s.restoreDivergenceFact);
+    if (entry.status !== 'resolved') return null;
+    const color = entry.resolution === 'broken' ? 'text-red-400 bg-red-500/10' : entry.resolution === 'void' ? 'text-text-dim bg-white/5' : 'text-emerald-400 bg-emerald-500/10';
+    return (
+        <span className={`ml-1 inline-flex items-center gap-0.5 text-[8px] uppercase font-bold px-1 rounded ${color}`} title={`Closed${entry.resolvedAt ? ` at #${entry.resolvedAt}` : ''}; no longer sent to the GM`}>
+            {entry.resolution ?? 'closed'}
+            <button onClick={() => restoreDivergenceFact(entry.id)} className="hover:text-amber-400 normal-case" title="Reopen: the promise is still owed">
                 <Undo2 size={8} />
             </button>
         </span>
@@ -159,6 +174,7 @@ export const FactRow = memo(function FactRow({ entry: e, npcNames, showCategory,
     const editDivergenceFact = useAppStore(s => s.editDivergenceFact);
     const editDivergenceKnownBy = useAppStore(s => s.editDivergenceKnownBy);
     const deleteDivergenceFact = useAppStore(s => s.deleteDivergenceFact);
+    const resolveDivergencePromise = useAppStore(s => s.resolveDivergencePromise);
 
     const [mode, setMode] = useState<'view' | 'edit' | 'knownBy'>('view');
     const [editText, setEditText] = useState('');
@@ -210,6 +226,7 @@ export const FactRow = memo(function FactRow({ entry: e, npcNames, showCategory,
                 {showCategory && <span className={`${CATEGORY_COLORS[e.category]} text-[9px] uppercase`}>{CATEGORY_LABELS[e.category]} </span>}
                 {e.text}
                 <ReplacedTag entry={e} />
+                <ResolvedTag entry={e} />
                 <SlotTag stateKey={e.stateKey} />
                 {isLatest && (
                     <span className="ml-1 text-[8px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded">latest</span>
@@ -218,6 +235,12 @@ export const FactRow = memo(function FactRow({ entry: e, npcNames, showCategory,
                 <span className={`text-[9px] ml-1 ${knownByChipClass(e.knownBy)}`}>(known to: {knownBySummary(e.knownBy, npcNames)})</span>
             </span>
             <span className="flex items-center gap-0.5 shrink-0">
+                {e.category === 'promises_debts' && (!e.status || e.status === 'active') && (
+                    <>
+                        <button onClick={() => resolveDivergencePromise(e.id, 'fulfilled')} className="text-text-muted hover:text-emerald-400 p-0.5" title="Kept: close this promise"><CheckCircle2 size={9} /></button>
+                        <button onClick={() => resolveDivergencePromise(e.id, 'broken')} className="text-text-muted hover:text-red-400 p-0.5" title="Broken: close this promise"><XCircle size={9} /></button>
+                    </>
+                )}
                 <button onClick={() => setMode('knownBy')} className="text-text-muted hover:text-amber-400 p-0.5" title="Edit who knows"><Users size={9} /></button>
                 <button onClick={() => pinDivergenceFact(e.id)} className={`${e.pinned ? 'text-amber-400' : 'text-text-muted hover:text-amber-400'} p-0.5`} title={e.pinned ? 'Unpin' : 'Pin'}>
                     {e.pinned ? <PinOff size={9} /> : <Pin size={9} />}

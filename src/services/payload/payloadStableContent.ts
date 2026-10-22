@@ -165,7 +165,7 @@ export function buildDivergenceBlock(opts: {
     if (divergenceRegister && divergenceRegister.entries.length > 0) {
         // publicOnly=true: the cached canon block carries ONLY broadcast facts. Scoped
         // facts (knownBy defined) ride in the per-turn world block instead (the cage).
-        divergenceContent = renderRegisterForPayload(divergenceRegister, chapters, undefined, undefined, true);
+        divergenceContent = renderRegisterForPayload(divergenceRegister, chapters, undefined, undefined, true, true);
         if (cap && cap > 0 && countTokens(divergenceContent) > cap) {
             divergenceContent = capDivergenceRender(divergenceRegister, chapters, cap);
         }
@@ -209,7 +209,7 @@ function capDivergenceRender(
         const dropped = new Set(chapterIds.slice(0, k));
         return { ...register, entries: register.entries.filter(e => e.pinned || !dropped.has(e.chapterId)) };
     };
-    const render = (r: DivergenceRegister) => renderRegisterForPayload(r, chapters, undefined, undefined, true);
+    const render = (r: DivergenceRegister) => renderRegisterForPayload(r, chapters, undefined, undefined, true, true);
 
     // Smallest k whose render fits; k = chapterIds.length (pinned only) is the floor.
     let lo = 0;

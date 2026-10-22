@@ -159,15 +159,15 @@ export function ChapterTab() {
             const sealResult = await runCombinedSeal(activeCampaignId, chapter, provider, npcLedger, live.archiveIndex, openThreads, existingTokens, currentFacts);
 
             // Same persistence as the auto-seal: replaces this chapter's old auto facts.
-            const merged = await applySealResult(activeCampaignId, chapter, sealResult, {
+            const { merged, closed } = await applySealResult(activeCampaignId, chapter, sealResult, {
                 npcLedger,
                 getRegister: () => useAppStore.getState().divergenceRegister,
                 setRegister: (reg) => useAppStore.getState().setDivergenceRegister(reg),
                 setArchiveIndex: (entries) => useAppStore.getState().setArchiveIndex(entries),
             });
 
-            if (merged > 0) {
-                toast.info(`${merged} divergence facts extracted`);
+            if (merged > 0 || closed > 0) {
+                toast.info(`${merged} facts extracted${closed > 0 ? ` · ${closed} promise${closed === 1 ? '' : 's'} closed` : ''}`);
             } else if (sealResult.divergenceParseError) {
                 toast.warning('Chapter sealed but divergence facts failed to parse — try regenerating later');
             }

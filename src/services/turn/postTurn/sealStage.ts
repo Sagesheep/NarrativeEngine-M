@@ -8,7 +8,7 @@ import { api } from '../../apiClient';
 import { notify } from '../../ports/notify';
 import { shouldAutoSeal, sealChapter, sealChapterCombined, type CombinedSealResult } from '../../archive';
 import { computeOpenThreads } from '../../payload/payloadWorldContext';
-import { replaceChapterFacts } from '../../campaign-state';
+import { replaceChapterFacts, resolvePromises } from '../../campaign-state';
 import { tierAllows } from '../aiTier';
 import { tryWithFallback } from './witnessStage';
 
@@ -59,9 +59,10 @@ export type SealApplyDeps = {
  * Persist a seal result: chapter summary, witness corrections, scene events, and
  * the chapter's facts (replacing its previous auto facts, so a re-seal or
  * Regenerate never duplicates them). A missing summary marks the chapter
- * invalidated so the Chapters tab offers Regenerate. Returns facts merged.
+ * invalidated so the Chapters tab offers Regenerate. Earlier promises the
+ * chapter settled are closed. Returns facts merged and promises closed.
  */
-export async function applySealResult(activeCampaignId: string, chapter: ArchiveChapter, sealResult: CombinedSealResult, deps: SealApplyDeps): Promise<number> {
+export async function applySealResult(activeCampaignId: string, chapter: ArchiveChapter, sealResult: CombinedSealResult, deps: SealApplyDeps): Promise<{ merged: number; closed: number }> {
     if (sealResult.summary) {
         await api.chapters.update(activeCampaignId, chapter.chapterId, {
             title: sealResult.summary.title, summary: sealResult.summary.summary, keywords: sealResult.summary.keywords,
@@ -96,10 +97,13 @@ export async function applySealResult(activeCampaignId: string, chapter: Archive
     }
 
     const liveRegister = deps.getRegister();
-    if (sealResult.divergences.length === 0 || !liveRegister || !deps.setRegister) return 0;
+    const closures = sealResult.closedPromises ?? [];
+    if (!liveRegister || !deps.setRegister || (sealResult.divergences.length === 0 && closures.length === 0)) return { merged: 0, closed: 0 };
     const sceneIds = chapter.sceneIds?.length ? chapter.sceneIds : [chapter.sceneRange[1]];
-    deps.setRegister(replaceChapterFacts(liveRegister, chapter.chapterId, sealResult.divergences, sceneIds[sceneIds.length - 1] ?? '000'));
-    return sealResult.divergences.length;
+    const replaced = replaceChapterFacts(liveRegister, chapter.chapterId, sealResult.divergences, sceneIds[sceneIds.length - 1] ?? '000');
+    const { register, resolved } = resolvePromises(replaced, closures, chapter.chapterId);
+    if (register !== liveRegister) deps.setRegister(register);
+    return { merged: sealResult.divergences.length, closed: resolved };
 }
 
 export async function handleSealChapter(state: TurnState, callbacks: TurnCallbacks, activeCampaignId: string, loadChapters: (campaignId: string) => Promise<ArchiveChapter[]>): Promise<void> {
@@ -122,7 +126,7 @@ export async function handleSealChapter(state: TurnState, callbacks: TurnCallbac
                 const sealResult = await tryWithFallback('SealChapter',
                     () => runCombinedSeal(activeCampaignId, chapter, summarizerProvider ?? storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreads, existingTokens, currentFacts),
                     () => runCombinedSeal(activeCampaignId, chapter, storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreads, existingTokens, currentFacts));
-                const merged = await applySealResult(activeCampaignId, chapter, sealResult, {
+                const { merged } = await applySealResult(activeCampaignId, chapter, sealResult, {
                     npcLedger: state.npcLedger ?? [],
                     getRegister,
                     setRegister: callbacks.setDivergenceRegister,

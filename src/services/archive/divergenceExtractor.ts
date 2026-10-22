@@ -1,4 +1,4 @@
-import type { LLMProvider, ThinkingEffort, SceneEvent, SceneEventType, DivergenceEntry } from '../../types';
+import type { LLMProvider, ThinkingEffort, SceneEvent, SceneEventType, DivergenceEntry, PromiseOutcome } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import {
     countTokens,
@@ -12,13 +12,29 @@ import {
     joinPromptSections,
     buildSubjectTokenRules,
 } from '../infrastructure';
-import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory, stripReasoning, normalizeSubjectToken, normalizeFaction, parseKnownByToken, isFactActive, isValidStateKey, normalizeStateKey, compareSceneRef, STATE_KEY_KINDS, STATE_KEY_ATTRIBUTES } from '../campaign-state';
+import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory, stripReasoning, normalizeSubjectToken, normalizeFaction, parseKnownByToken, isFactActive, isValidStateKey, normalizeStateKey, compareSceneRef, STATE_KEY_KINDS, STATE_KEY_ATTRIBUTES, type PromiseClosure } from '../campaign-state';
 import { uid } from '../../utils/uid';
 import { truncateScenesToBudget } from './saveFileEngine';
 import { parseChapterSummaryOutput, type ChapterSummaryOutput } from './chapterSummaryWriter';
 
 const COMBINED_SEAL_TOKEN_BUDGET = 12000;
 const SEAL_MAX_TOKENS = 32000;
+const MAX_OPEN_PROMISES_IN_PROMPT = 60;
+const PROMISE_OUTCOMES: ReadonlySet<string> = new Set<PromiseOutcome>(['fulfilled', 'broken', 'void']);
+
+/**
+ * Promises still open from BEFORE this chapter, labelled P1…Pn for the seal
+ * prompt (short labels, not fact ids). The prompt builder and the parser call
+ * this with the same input, so P-labels map back to the same facts.
+ */
+export function openPromisesForSeal(facts: DivergenceEntry[], firstSceneId: string | undefined): { label: string; fact: DivergenceEntry }[] {
+    return facts
+        .filter(f => f.category === 'promises_debts' && isFactActive(f) && !isValidStateKey(f.stateKey)
+            && (firstSceneId === undefined || compareSceneRef(f.sceneRef, firstSceneId) < 0))
+        .sort((a, b) => compareSceneRef(a.sceneRef, b.sceneRef))
+        .slice(-MAX_OPEN_PROMISES_IN_PROMPT)
+        .map((fact, i) => ({ label: `P${i + 1}`, fact }));
+}
 
 function buildCombinedSealPrompt(
     scenes: { sceneId: string; content: string }[],
@@ -38,6 +54,9 @@ function buildCombinedSealPrompt(
         .sort((a, b) => compareSceneRef(b.sceneRef, a.sceneRef))
         .slice(0, 80)
         .map(f => `[STATE: ${f.stateKey}] ${f.text}`)
+        .join('\n');
+    const openPromisesText = openPromisesForSeal(activeStateFacts, sceneIds[0])
+        .map(p => `${p.label} [#${p.fact.sceneRef}] ${p.fact.text}`)
         .join('\n');
     const sceneContent = truncated.map(s => `--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n\n');
 
@@ -114,6 +133,12 @@ ${knownByExample},
     "015": []
 }`;
 
+    const closedPromisesShape = `The "closedPromises" value must be an array of the OPEN PROMISES (by label) that this chapter's scenes settled, or [] if none. outcome: "fulfilled" (kept / paid / happened), "broken" (refused, betrayed, failed), "void" (no longer applies). sceneRef = the scene where it was settled. Example:
+[{ "id": "P2", "outcome": "fulfilled", "sceneRef": "014" }]
+- Close a promise ONLY when the scenes show it settled. Not mentioned = still open — leave it out.
+- Do NOT re-extract an OPEN PROMISE into "promises_debts" — it is already tracked.
+- Extract a new promise/debt only if it is still owed at the END of this chapter (one made and kept within the chapter is not a fact to track). One fact per promise.`;
+
     const resolvedThreadsShape = `The "resolvedThreads" value must be an array of the EXACT strings from the OPEN THREADS list below that this chapter's events settled, or [] if none. Example:
 ["The missing heir to House Brightblade", "The cursed amulet in the swamp"]`;
 
@@ -137,6 +162,9 @@ Output: JSON array for this slot, or [] if empty.`;
   attribute: ${STATE_KEY_ATTRIBUTES.join(' | ')}
   e.g. "npc:npc_5:location" (where Mira is now), "item:moon-key:holder", "faction:red-hand:leader",
   "place:eastern-gate:status", "quest:missing-heir:status", "debt:guild-loan:status".
+  Lasting relationships are state too: "npc:<id>:attitude" = how that NPC now feels about /
+  treats the party ("Mira trusts the party again"); "faction:<slug>:standing" or
+  "place:<slug>:standing" = the party's standing there ("Banned from the Gilded Rose").
 - A new fact with the same stateKey REPLACES the current one. To update a CURRENT STATE entry
   listed in the INPUT, reuse its exact key. Different things get different slugs (two swords = two keys).
 - Events, history, discoveries, oaths and anything that ADDS to what is known rather than
@@ -186,13 +214,14 @@ Corrected — rewrite as the NPC's current inner world:
 TASK 1 — Generate a structured chapter summary.
 TASK 2 — Extract established facts that would BREAK A FUTURE SCENE if the AI contradicted them.`,
 
-        'OUTPUT FORMAT — a single JSON object with the keys "summary", "divergences", and optionally "sceneEvents" and "resolvedThreads".',
+        'OUTPUT FORMAT — a single JSON object with the keys "summary", "divergences", and optionally "sceneEvents", "resolvedThreads" and "closedPromises".',
 
         summaryShape,
         NPC_INNER_STATE_RULES,
         divergencesShape,
         sceneEventsShape,
         resolvedThreadsShape,
+        openPromisesText ? closedPromisesShape : '',
         SCENE_EVENT_RULES,
         categoryDefinitions,
         KNOWNBY_RULES,
@@ -210,6 +239,7 @@ TASK 2 — Extract established facts that would BREAK A FUTURE SCENE if the AI c
         `SCENE IDs IN THIS CHAPTER: ${sceneIds.join(', ')}`,
         `NPC LEDGER (resolve names to IDs):\n${npcList || '(no NPCs in ledger)'}`,
         activeStateFactsText ? `CURRENT STATE (reuse a key to replace its value):\n${activeStateFactsText}` : '',
+        openPromisesText ? `OPEN PROMISES & DEBTS FROM EARLIER CHAPTERS (label [#scene] text):\n${openPromisesText}` : '',
         witnessAuditSection ? witnessAuditSection.trim() : '',
         ...(openThreads && openThreads.length > 0
             ? [`OPEN THREADS FROM EARLIER CHAPTERS (verbatim — do not rephrase):\n${openThreads.map(t => '- ' + t).join('\n')}`]
@@ -226,6 +256,8 @@ export type CombinedSealResult = {
     sceneEventMap?: Record<string, SceneEvent[]>;
     sceneEventsParseError?: boolean;
     resolvedThreads?: string[];
+    /** Earlier promises this chapter settled (mapped from P-labels to fact ids). */
+    closedPromises?: PromiseClosure[];
 };
 
 function buildDivergenceEntries(
@@ -432,7 +464,9 @@ export function parseCombinedSealOutput(
     sceneIds: string[],
     npcLedger: { id: string; name: string; aliases: string }[],
     openThreads?: string[],
-    indexEntries?: { sceneId: string; npcsWitnessed?: string[] }[]
+    indexEntries?: { sceneId: string; npcsWitnessed?: string[] }[],
+    /** The facts the prompt listed promises from (resolves P-labels). */
+    activeStateFacts: DivergenceEntry[] = [],
 ): CombinedSealResult {
     const cleaned = stripReasoning(raw);
     const jsonStr = extractJson(cleaned);
@@ -552,7 +586,28 @@ export function parseCombinedSealOutput(
         // never fail the seal over malformed resolvedThreads
     }
 
-    return { summary, divergences: entries, divergenceParseError: divergenceParseError || undefined, witnessCorrections, sceneEventMap, sceneEventsParseError, resolvedThreads };
+    const closedPromises = parseClosedPromises((parsed as Record<string, unknown>).closedPromises, activeStateFacts, sceneIds);
+
+    return { summary, divergences: entries, divergenceParseError: divergenceParseError || undefined, witnessCorrections, sceneEventMap, sceneEventsParseError, resolvedThreads, closedPromises };
+}
+
+/** Map `closedPromises` P-labels back to fact ids; drops unknown labels and outcomes. */
+function parseClosedPromises(raw: unknown, activeStateFacts: DivergenceEntry[], sceneIds: string[]): PromiseClosure[] | undefined {
+    if (!Array.isArray(raw)) return undefined;
+    const byLabel = new Map(openPromisesForSeal(activeStateFacts, sceneIds[0]).map(p => [p.label, p.fact.id]));
+    const validScenes = new Set(sceneIds);
+    const closures: PromiseClosure[] = [];
+    for (const item of raw) {
+        if (!item || typeof item !== 'object') continue;
+        const r = item as Record<string, unknown>;
+        const factId = typeof r.id === 'string' ? byLabel.get(r.id.trim().toUpperCase()) : undefined;
+        const outcome = typeof r.outcome === 'string' ? r.outcome.trim().toLowerCase() : '';
+        if (!factId || !PROMISE_OUTCOMES.has(outcome)) continue;
+        byLabel.delete((r.id as string).trim().toUpperCase()); // one closure per promise
+        const sceneRef = typeof r.sceneRef === 'string' && validScenes.has(r.sceneRef) ? r.sceneRef : undefined;
+        closures.push({ factId, outcome: outcome as PromiseOutcome, ...(sceneRef ? { sceneRef } : {}) });
+    }
+    return closures;
 }
 
 export async function sealChapterCombined(
@@ -596,7 +651,7 @@ export async function sealChapterCombined(
         const tail = output.length > 200 ? output.slice(-200) : '';
         console.warn(`[CombinedSeal] Output length=${output.length}, head=${JSON.stringify(head)}, tail=${JSON.stringify(tail)}`);
 
-        const result = parseCombinedSealOutput(output, chapterId, sceneIds, npcLedger, openThreads, indexEntries);
+        const result = parseCombinedSealOutput(output, chapterId, sceneIds, npcLedger, openThreads, indexEntries, activeStateFacts);
 
         if (result.summary && !result.divergenceParseError) {
             return result;

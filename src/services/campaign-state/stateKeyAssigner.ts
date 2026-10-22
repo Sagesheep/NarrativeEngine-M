@@ -60,7 +60,9 @@ export async function assignStateKeys(
             `RULES:
 - Give a stateKey ONLY to facts that state the current value of a single-value slot
   (where someone is, who holds something, who leads or controls something, whether
-  something is alive/destroyed/settled, whose side someone is on).
+  something is alive/destroyed/settled, whose side someone is on, how an NPC now feels
+  about the party = npc:<id>:attitude, the party's standing with a faction or place =
+  faction|place:<slug>:standing).
 - kind: ${STATE_KEY_KINDS.join(' | ')}   (npc slug = the NPC ledger id; others = a short-name slug)
 - attribute: ${STATE_KEY_ATTRIBUTES.join(' | ')}
 - Facts about the SAME slot MUST get the SAME key — reuse keys from EXISTING SLOTS exactly.

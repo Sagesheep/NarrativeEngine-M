@@ -32,7 +32,7 @@ describe('applySealResult', () => {
             npcLedger: [], getRegister: () => live, setRegister, setArchiveIndex: vi.fn(),
         });
 
-        expect(merged).toBe(1);
+        expect(merged).toEqual({ merged: 1, closed: 0 });
         expect(live.entries.map(e => e.id)).toEqual(['arc', 'mine', 'sealed']);
     });
 
