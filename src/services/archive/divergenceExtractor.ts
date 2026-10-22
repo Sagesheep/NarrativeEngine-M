@@ -17,7 +17,22 @@ import { uid } from '../../utils/uid';
 import { truncateScenesToBudget } from './saveFileEngine';
 import { parseChapterSummaryOutput, type ChapterSummaryOutput } from './chapterSummaryWriter';
 
+/** Scene budget when settings give nothing to go on (tests, old callers). */
 const COMBINED_SEAL_TOKEN_BUDGET = 12000;
+const SEAL_BUDGET_CONTEXT_SHARE = 0.4;
+const SEAL_BUDGET_MIN = 4000;
+const SEAL_BUDGET_MAX = 60000;
+
+/**
+ * Tokens of scene text the seal reads. An explicit Divergence Scan Budget wins;
+ * auto = 40% of the context limit (the rest is instructions, the facts lists and
+ * the reply), capped so a huge context doesn't make every seal a 100k call.
+ */
+export function sealSceneBudget(settings: { contextLimit?: number; divergenceScanBudget?: number } | undefined): number {
+    if (settings?.divergenceScanBudget && settings.divergenceScanBudget > 0) return settings.divergenceScanBudget;
+    if (!settings?.contextLimit) return COMBINED_SEAL_TOKEN_BUDGET;
+    return Math.min(SEAL_BUDGET_MAX, Math.max(SEAL_BUDGET_MIN, Math.floor(settings.contextLimit * SEAL_BUDGET_CONTEXT_SHARE)));
+}
 const SEAL_MAX_TOKENS = 32000;
 const MAX_OPEN_PROMISES_IN_PROMPT = 60;
 const PROMISE_OUTCOMES: ReadonlySet<string> = new Set<PromiseOutcome>(['fulfilled', 'broken', 'void']);
@@ -45,8 +60,9 @@ function buildCombinedSealPrompt(
     openThreads?: string[],
     existingSubjectTokens?: string[],
     activeStateFacts: DivergenceEntry[] = [],
+    sceneBudget = COMBINED_SEAL_TOKEN_BUDGET,
 ): string {
-    const truncated = truncateScenesToBudget(scenes, COMBINED_SEAL_TOKEN_BUDGET);
+    const truncated = truncateScenesToBudget(scenes, sceneBudget);
     // The register's current slot values. Reusing a listed key replaces that value,
     // so the extractor must see what each key currently holds. Most recent first.
     const activeStateFactsText = activeStateFacts
@@ -622,6 +638,7 @@ export async function sealChapterCombined(
     openThreads?: string[],
     existingSubjectTokens?: string[],
     activeStateFacts: DivergenceEntry[] = [],
+    sceneBudget = COMBINED_SEAL_TOKEN_BUDGET,
 ): Promise<CombinedSealResult> {
     const sealEffort: ThinkingEffort = 'off';
     const maxTokens = SEAL_MAX_TOKENS;
@@ -629,7 +646,7 @@ export async function sealChapterCombined(
     console.log(`[CombinedSeal] Config: maxTokens=${maxTokens}, thinkingEffort=${sealEffort}, provider.effort=${provider.thinkingEffort ?? 'none'}, apiFormat=${provider.apiFormat ?? 'openai'}`);
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const prompt = buildCombinedSealPrompt(scenes, chapterTitle, sceneIds, npcLedger, indexEntries, openThreads, existingSubjectTokens, activeStateFacts);
+        const prompt = buildCombinedSealPrompt(scenes, chapterTitle, sceneIds, npcLedger, indexEntries, openThreads, existingSubjectTokens, activeStateFacts, sceneBudget);
         const label = attempt === 0 ? '' : ' (retry)';
 
         console.log(`[CombinedSeal] Generating summary + divergences${label}...`, {

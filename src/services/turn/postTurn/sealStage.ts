@@ -6,7 +6,7 @@ import type { NPCEntry, ArchiveChapter, ArchiveIndexEntry, DivergenceEntry, Dive
 import type { TurnState, TurnCallbacks } from '../turnTypes';
 import { api } from '../../apiClient';
 import { notify } from '../../ports/notify';
-import { shouldAutoSeal, sealChapter, sealChapterCombined, type CombinedSealResult } from '../../archive';
+import { shouldAutoSeal, sealChapter, sealChapterCombined, sealSceneBudget, type CombinedSealResult } from '../../archive';
 import { computeOpenThreads } from '../../payload/payloadWorldContext';
 import { replaceChapterFacts, resolvePromises } from '../../campaign-state';
 import { tierAllows } from '../aiTier';
@@ -16,6 +16,7 @@ export async function runCombinedSeal(
     activeCampaignId: string, chapter: ArchiveChapter, provider: LLMProvider,
     npcLedger: NPCEntry[], archiveIndex?: ArchiveIndexEntry[], openThreads?: string[], existingSubjectTokens?: string[],
     activeStateFacts: DivergenceEntry[] = [],
+    sceneBudget?: number,
 ): Promise<CombinedSealResult> {
     const allScenes = await api.archive.getIndex(activeCampaignId);
     const startNum = parseInt(chapter.sceneRange[0], 10);
@@ -29,7 +30,7 @@ export async function runCombinedSeal(
     const sceneIds = chapter.sceneIds?.length ? chapter.sceneIds : Array.from({ length: endNum - startNum + 1 }, (_, i) => String(startNum + i).padStart(3, '0'));
     const npcInfo = npcLedger.map(n => ({ id: n.id, name: n.name, aliases: n.aliases ?? '' }));
     const indexEntries = archiveIndex ? archiveIndex.filter(e => { const sn = parseInt(e.sceneId); return sn >= startNum && sn <= endNum; }).map(e => ({ sceneId: e.sceneId, npcsWitnessed: e.npcsWitnessed })) : undefined;
-    return sealChapterCombined(provider, scenesContent, chapter.chapterId, chapter.title, sceneIds, npcInfo, indexEntries, 2, openThreads, existingSubjectTokens, activeStateFacts);
+    return sealChapterCombined(provider, scenesContent, chapter.chapterId, chapter.title, sceneIds, npcInfo, indexEntries, 2, openThreads, existingSubjectTokens, activeStateFacts, sceneBudget);
 }
 
 /** Prompt inputs beyond the scenes: threads left open by EARLIER sealed chapters,
@@ -123,9 +124,10 @@ export async function handleSealChapter(state: TurnState, callbacks: TurnCallbac
             const sealProvider = summarizerProvider ?? storyProvider;
             if (sealProvider && tierAllows(state.settings.aiTier, 'sealChapter')) {
                 const { openThreads, existingTokens, currentFacts } = buildSealInputs(chapter, currentChapters, getRegister());
+                const sceneBudget = sealSceneBudget(state.settings);
                 const sealResult = await tryWithFallback('SealChapter',
-                    () => runCombinedSeal(activeCampaignId, chapter, summarizerProvider ?? storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreads, existingTokens, currentFacts),
-                    () => runCombinedSeal(activeCampaignId, chapter, storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreads, existingTokens, currentFacts));
+                    () => runCombinedSeal(activeCampaignId, chapter, summarizerProvider ?? storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreads, existingTokens, currentFacts, sceneBudget),
+                    () => runCombinedSeal(activeCampaignId, chapter, storyProvider!, state.npcLedger ?? [], state.archiveIndex, openThreads, existingTokens, currentFacts, sceneBudget));
                 const { merged } = await applySealResult(activeCampaignId, chapter, sealResult, {
                     npcLedger: state.npcLedger ?? [],
                     getRegister,

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { countTokens } from '../infrastructure';
 import { parseCombinedSealOutput, parseChapterSummaryOutput, truncateScenesToBudget } from '../archive';
 
 const NPC_LEDGER = [
@@ -163,43 +164,58 @@ describe('parseCombinedSealOutput', () => {
 });
 
 describe('truncateScenesToBudget', () => {
-    const makeScene = (sceneId: string, tokenWeight: number) => ({
-        sceneId,
-        content: 'x'.repeat(tokenWeight * 4),
+    const words = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i}`).join(' ');
+    // Same shape archiveStorage.getScenes produces. Unique markers at the start and
+    // end of the GM reply stand in for the setup and the outcome.
+    const scene = (id: string, gmWords: number, userWords = 20) => ({
+        sceneId: id,
+        content: `## SCENE ${id}
+*time*
+
+**[USER]**
+ACTION${id} ${words('u', userWords)}
+
+**[GM]**
+SETUP${id} ${words('g', gmWords)} OUTCOME${id}
+
+---`,
+    });
+    const tokens = (xs: { content: string }[]) => xs.reduce((n, x) => n + countTokens(x.content), 0);
+
+    it('returns the scenes untouched when within budget', () => {
+        const scenes = [scene('001', 50), scene('002', 50)];
+        expect(truncateScenesToBudget(scenes, 99999)).toBe(scenes);
     });
 
-    it('returns all scenes when within budget', () => {
-        const scenes = [makeScene('001', 10), makeScene('002', 10), makeScene('003', 10)];
-        const result = truncateScenesToBudget(scenes, 9999);
-        expect(result).toHaveLength(3);
-    });
-
-    it('drops middle scenes on a 5-scene array exceeding budget', () => {
-        const scenes = [
-            makeScene('001', 500),
-            makeScene('002', 500),
-            makeScene('003', 500),
-            makeScene('004', 500),
-            makeScene('005', 500),
-        ];
-        const result = truncateScenesToBudget(scenes, 1);
-        expect(result.length).toBeLessThanOrEqual(scenes.length);
-    });
-
-    // Real-tokenizer work over 11 scenes; give headroom so full-suite CPU contention
-    // doesn't trip the default 5s timeout (passes in ~1.4s in isolation).
-    it('preserves first and last scenes when truncating a larger array', () => {
-        const scenes = Array.from({ length: 11 }, (_, i) => makeScene(String(i).padStart(3, '0'), 500));
-        const result = truncateScenesToBudget(scenes, 1);
-        const ids = result.map(s => s.sceneId);
-        expect(ids).toContain('000');
-        expect(ids).toContain('010');
-        expect(result.length).toBeLessThanOrEqual(scenes.length);
+    it('keeps every scene, stays within budget, and keeps each scene action, setup and outcome', () => {
+        // Roughly a real 25-scene chapter: mostly ~1k-token scenes, a few long ones.
+        const scenes = Array.from({ length: 25 }, (_, i) => scene(String(i + 1).padStart(3, '0'), i % 6 === 0 ? 1800 : 500));
+        expect(tokens(scenes)).toBeGreaterThan(12000);
+        const out = truncateScenesToBudget(scenes, 12000);
+        expect(out.map(s => s.sceneId)).toEqual(scenes.map(s => s.sceneId));
+        expect(tokens(out)).toBeLessThanOrEqual(12000);
+        for (const s of out) {
+            expect(s.content).toContain(`## SCENE ${s.sceneId}`);
+            expect(s.content).toContain(`ACTION${s.sceneId}`);
+            expect(s.content).toContain(`SETUP${s.sceneId}`);
+            expect(s.content).toContain(`OUTCOME${s.sceneId}`);
+            expect(s.content).toContain('**[GM]**');
+        }
     }, 20000);
 
-    it('handles small arrays gracefully even if over budget', () => {
-        const scenes = [makeScene('001', 10), makeScene('002', 10)];
-        const result = truncateScenesToBudget(scenes, 1);
-        expect(result.length).toBeLessThanOrEqual(scenes.length);
-    });
+    it('short scenes keep everything and hand their unused share to long ones', () => {
+        const short = scene('001', 20);
+        const long = scene('002', 3000);
+        const out = truncateScenesToBudget([short, long], 1200);
+        expect(out[0]).toBe(short);
+        expect(countTokens(out[1].content)).toBeGreaterThan(1200 - countTokens(short.content) - 60);
+        expect(tokens(out)).toBeLessThanOrEqual(1200);
+    }, 20000);
+
+    it('trims an over-long player turn too, without losing the GM outcome', () => {
+        const out = truncateScenesToBudget([scene('001', 400, 2000)], 300);
+        expect(countTokens(out[0].content)).toBeLessThanOrEqual(300);
+        expect(out[0].content).toContain('ACTION001');
+        expect(out[0].content).toContain('OUTCOME001');
+    }, 20000);
 });

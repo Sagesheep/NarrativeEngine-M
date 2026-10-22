@@ -7,6 +7,7 @@ import { ChapterCard } from './ChapterCard';
 import { toast } from '../Toast';
 import { countTokens } from '../../services/infrastructure';
 import { runCombinedSeal, buildSealInputs, applySealResult } from '../../services/turn';
+import { sealSceneBudget } from '../../services/archive';
 import { relabelChapterFacts } from '../../services/campaign-state';
 import type { ArchiveChapter } from '../../types';
 import { applyActiveSlotThinking } from '../../store/slices/slotThinking';
@@ -156,7 +157,7 @@ export function ChapterTab() {
 
             const npcLedger = live.npcLedger ?? [];
             const { openThreads, existingTokens, currentFacts } = buildSealInputs(chapter, live.chapters, live.divergenceRegister);
-            const sealResult = await runCombinedSeal(activeCampaignId, chapter, provider, npcLedger, live.archiveIndex, openThreads, existingTokens, currentFacts);
+            const sealResult = await runCombinedSeal(activeCampaignId, chapter, provider, npcLedger, live.archiveIndex, openThreads, existingTokens, currentFacts, sealSceneBudget(live.settings));
 
             // Same persistence as the auto-seal: replaces this chapter's old auto facts.
             const { merged, closed } = await applySealResult(activeCampaignId, chapter, sealResult, {

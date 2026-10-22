@@ -1,5 +1,6 @@
 import { useAppStore } from '../../store/useAppStore';
 import type { CondenseAggressiveness, AiTier } from '../../types';
+import { sealSceneBudget } from '../../services/archive';
 import { DEFAULT_STORY_TIMEOUT_SECONDS, DEFAULT_UTILITY_TIMEOUT_SECONDS, MIN_AI_TIMEOUT_SECONDS, MAX_AI_TIMEOUT_SECONDS, normalizeTimeoutSeconds } from '../../services/llm/timeouts';
 import {
     READING_DEFAULTS, READING_FONTS, READING_LEADINGS, READING_SIZE_MIN, READING_SIZE_MAX,
@@ -404,7 +405,7 @@ export function GlobalSettingsPanel() {
                                 <label className="block text-[10px] text-text-dim uppercase tracking-widest">Divergence Scan Budget (tokens)</label>
                                 <span className="text-amber-400 font-bold font-mono bg-amber-500/10 px-2 py-0.5 rounded text-xs">
                                     {(!settings.divergenceScanBudget || settings.divergenceScanBudget <= 0)
-                                        ? `auto (${Math.floor(settings.contextLimit * 0.75).toLocaleString()})`
+                                        ? `auto (${sealSceneBudget(settings).toLocaleString()})`
                                         : settings.divergenceScanBudget.toLocaleString()}
                                 </span>
                             </div>
@@ -417,7 +418,7 @@ export function GlobalSettingsPanel() {
                                 onChange={(e) => updateSettings({ divergenceScanBudget: Math.max(0, parseInt(e.target.value) || 0) })}
                                 className="w-full bg-void border border-border px-3 py-2 text-[16px] md:text-sm font-mono focus:border-amber-500 focus:outline-none"
                             />
-                            <p className="text-[9px] text-text-dim mt-1 italic">Max tokens per scene batch scanned for divergence extraction. Set to 0 for auto (75% of context limit). Higher = more thorough but slower.</p>
+                            <p className="text-[9px] text-text-dim mt-1 italic">Tokens of scene text a chapter seal reads (summary + facts). Longer chapters are trimmed evenly per scene, keeping each scene's setup and outcome. 0 = auto (40% of context limit, max 60k). Higher = more thorough but slower.</p>
                         </div>
                     </div>
 

@@ -3,4 +3,5 @@ export { extractIndexKeywords, extractNPCNames, extractKeywordStrengths, extract
 export { shouldAutoSeal, sealChapter, scoreChapter, rankChapters, iterativeChapterFilter, recallWithChapterFunnel } from './archiveChapterEngine';
 export { deepArchiveScanV2, tierCandidates, trimTieredToBudget, partitionScenes, type TieredCandidate, type DeepScanOptions } from './deepArchiveSearch';
 export { generateChapterSummary, parseChapterSummaryOutput, sealChapterCombined, parseCombinedSealOutput, truncateScenesToBudget, type CombinedSealResult } from './saveFileEngine';
+export { sealSceneBudget } from './divergenceExtractor';
 export { rateImportance, heuristicImportance } from './importanceRater';
