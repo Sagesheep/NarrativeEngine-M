@@ -368,6 +368,16 @@ export function Header() {
                 <TokenGauge />
             </div>
 
+            {/* Lite skips chapter summaries, facts and NPC tracking; easy to forget it's on. */}
+            {settings.aiTier === 'lite' && (
+                <span
+                    className="shrink-0 px-1.5 py-0.5 rounded border border-ember/50 bg-ember/10 text-ember text-[10px] font-bold font-mono uppercase tracking-widest"
+                    title="Lite tier: no chapter summaries, story facts or NPC tracking. Switch tier in the ⋯ menu; Chapters → Catch Up fills in what was skipped."
+                >
+                    Lite
+                </span>
+            )}
+
             <div className="flex items-center gap-1">
                 {shortcuts.map(def => {
                     const state = states.get(def.id)!;

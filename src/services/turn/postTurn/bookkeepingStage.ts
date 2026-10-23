@@ -71,7 +71,7 @@ export function runBookkeepingScans(
  * Write the validated PC fact patch. Compare-and-set per field: if the player
  * edited a field while the scan ran, their edit wins and that field is skipped.
  */
-export function applyPcFactPatch(scannedPc: NPCEntry, patch: PcFactPatch, callbacks: TurnCallbacks): void {
+export function applyPcFactPatch(scannedPc: NPCEntry, patch: PcFactPatch, callbacks: Pick<TurnCallbacks, 'getNpc' | 'updateNPC'>): void {
     const live = callbacks.getNpc?.(scannedPc.id) ?? scannedPc;
     if (!isFactMaintenanceEligible(live)) return;
     const safe: PcFactPatch = {};

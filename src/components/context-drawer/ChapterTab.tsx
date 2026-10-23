@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { BookOpen, Plus, Loader2, Library } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { BookOpen, Plus, Loader2, Library, Wrench, X } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { api } from '../../services/apiClient';
@@ -15,6 +15,7 @@ import { bookOf, unbookedSealed } from '../../services/archive/bookEngine';
 import { closeBookThrough, proposeBooksForExisting, buildBooks, regenerateBook, updateBook, removeLastBook } from '../../services/archive/bookService';
 import { BookCard } from './BookCard';
 import { appConfirm } from '../ConfirmSheet';
+import { planCatchUp, runCatchUp, needsCatchUp, type CatchUpCancel, type CatchUpProgress } from '../../services/turn/campaignCatchUp';
 
 export function ChapterTab() {
     const {
@@ -67,6 +68,9 @@ export function ChapterTab() {
     const books = useAppStore(s => s.books);
     const setBooks = useAppStore(s => s.setBooks);
     const [bookBusy, setBookBusy] = useState<string | null>(null);
+    const [catchUp, setCatchUp] = useState<CatchUpProgress | 'starting' | null>(null);
+    const catchUpCancelRef = useRef<CatchUpCancel>({ cancelled: false });
+    const missingSummaries = useMemo(() => chapters.filter(needsCatchUp).length, [chapters]);
 
     const refreshChapters = useCallback(async () => {
         if (!activeCampaignId) return;
@@ -170,6 +174,72 @@ export function ChapterTab() {
             setBookBusy(null);
         }
     }, [activeCampaignId, bookProvider, setBooks]);
+
+    // Catch-up for history played on the Lite tier (or chapters whose seal failed).
+    // Utility slot only: the run can be dozens of calls, too costly on the story model.
+    const handleCatchUp = useCallback(async () => {
+        if (!activeCampaignId) return;
+        const live = useAppStore.getState();
+        const provider = live.getActiveUtilityEndpoint();
+        if (!provider?.endpoint || !provider?.modelName) {
+            toast.error('Set a Utility AI in your preset first — catch-up never uses the story model');
+            return;
+        }
+        const plan = await planCatchUp(activeCampaignId);
+        const npcCalls = plan.sceneCount > 0 ? 'up to 5' : '0';
+        if (!await appConfirm({
+            title: 'Catch up campaign',
+            body: `Fills in what the Lite tier skipped, using your Utility AI (${provider.modelName}):\n\n• ${plan.chapters.length} chapter summar${plan.chapters.length === 1 ? 'y' : 'ies'} + story facts (1 call each)\n• NPC names from ${plan.sceneCount} scenes → suggestions (${npcCalls} calls)\n• Character profile, PC facts, inventory (up to 2 calls)\n• ${plan.books.length} book summar${plan.books.length === 1 ? 'y' : 'ies'} (1 call each)\n\nA backup is made first. You can cancel any time; running it again continues where it stopped.`,
+            confirmLabel: 'Catch up',
+        })) return;
+        setCatchUp('starting');
+        catchUpCancelRef.current = { cancelled: false };
+        try {
+            await api.backup.create(activeCampaignId, { label: 'Before catch-up', trigger: 'pre-catch-up', isAuto: true });
+        } catch (err) {
+            console.error(err);
+            setCatchUp(null);
+            toast.error('Backup failed — catch-up not started');
+            return;
+        }
+        try {
+            const store = () => useAppStore.getState();
+            const report = await runCatchUp({
+                campaignId: activeCampaignId,
+                provider,
+                sceneBudgetSettings: store().settings,
+                getNpcLedger: () => store().npcLedger ?? [],
+                getNpc: (id) => store().npcLedger.find(n => n.id === id),
+                updateNPC: (id, patch) => store().updateNPC(id, patch),
+                getRegister: () => store().divergenceRegister,
+                setRegister: (reg) => store().setDivergenceRegister(reg),
+                getArchiveIndex: () => store().archiveIndex,
+                setArchiveIndex: (entries) => store().setArchiveIndex(entries),
+                setChapters,
+                setBooks,
+                addNpcSuggestions: (names, ctx) => store().addNpcSuggestions(names, ctx),
+                getMessages: () => store().messages,
+                getContext: () => store().context,
+                updateContext: (patch) => store().updateContext(patch),
+            }, catchUpCancelRef.current, setCatchUp);
+            await refreshChapters();
+            const parts = [
+                `${report.chaptersDone} chapter${report.chaptersDone === 1 ? '' : 's'}`,
+                `${report.npcsSuggested} NPC suggestion${report.npcsSuggested === 1 ? '' : 's'}`,
+                ...(report.pcScanned ? ['PC updated'] : []),
+                ...(report.booksDone > 0 ? [`${report.booksDone} book${report.booksDone === 1 ? '' : 's'}`] : []),
+            ].join(' · ');
+            const failed = report.chaptersFailed + report.booksFailed;
+            if (report.cancelled) toast.info(`Catch-up stopped: ${parts}`);
+            else if (failed > 0) toast.warning(`Catch-up done: ${parts} · ${failed} failed (run again to retry)`);
+            else toast.success(`Catch-up done: ${parts}`);
+        } catch (err) {
+            console.error(err);
+            toast.error('Catch-up failed — run it again to continue');
+        } finally {
+            setCatchUp(null);
+        }
+    }, [activeCampaignId, refreshChapters, setChapters, setBooks]);
 
     const handleSetEra = useCallback(async (bookId: string, era: string) => {
         if (!activeCampaignId) return;
@@ -384,6 +454,30 @@ export function ChapterTab() {
                     </div>
                 ) : (
                     <>
+                        {catchUp ? (
+                            <div className="w-full flex items-center gap-2 px-2 py-1.5 rounded border border-ice/40 bg-ice/5 text-ice text-[10px] font-mono">
+                                <Loader2 size={12} className="animate-spin shrink-0" />
+                                <span className="flex-1 min-w-0 truncate">
+                                    {catchUp === 'starting' ? 'Backing up…' : `${catchUp.label}${catchUp.total > 1 ? ` (${catchUp.done + 1}/${catchUp.total})` : ''}`}
+                                </span>
+                                <button
+                                    onClick={() => { catchUpCancelRef.current.cancelled = true; }}
+                                    className="touch-btn flex items-center gap-1 px-1.5 py-0.5 rounded border border-border text-text-secondary hover:text-danger hover:border-danger uppercase font-bold shrink-0"
+                                >
+                                    <X size={10} /><span>Cancel</span>
+                                </button>
+                            </div>
+                        ) : missingSummaries > 0 && (
+                            <button
+                                onClick={handleCatchUp}
+                                disabled={bookBusy !== null || isRegenerating !== null}
+                                className="touch-btn w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed border-ice/40 text-ice hover:bg-ice/10 text-[10px] font-bold uppercase disabled:opacity-50"
+                                title="Write the summaries, facts, NPC suggestions and book summaries the Lite tier skipped, with the Utility AI"
+                            >
+                                <Wrench size={12} />
+                                <span>Catch Up Campaign ({missingSummaries} chapter{missingSummaries === 1 ? '' : 's'} without summary)</span>
+                            </button>
+                        )}
                         {endBookIds.size > 0 && (
                             <button
                                 onClick={handleBuildBooks}
