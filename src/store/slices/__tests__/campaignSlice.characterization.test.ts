@@ -59,6 +59,7 @@ vi.mock('../../../services/storage', () => ({
     offlineStorage: {
         embeddings: { store: vi.fn(async () => {}) },
         backup: { create: vi.fn(async () => {}) },
+        archive: { getIndex: vi.fn(async (id: string) => structuredClone(idbStore.get(`${id}_archive_index`) ?? [])) },
         facts: { get: vi.fn(async () => []), save: vi.fn(async () => {}) },
         chapters: { list: vi.fn(async () => []) },
         timeline: { get: vi.fn(async () => []) },
@@ -198,7 +199,7 @@ describe('setActiveCampaign — hydration', () => {
         });
         idbStore.set(`lore_${id}`, [{ id: 'L1', header: 'Ironwall', content: 'a fortress', tokens: 3 }]);
         idbStore.set(`npcs_${id}`, [makeNPC('Gandalf')]);
-        idbStore.set(`archive_index_${id}`, [{ sceneId: '001', timestamp: 1, keywords: [], npcsMentioned: [], userSnippet: 'x' }]);
+        idbStore.set(`${id}_archive_index`, [{ sceneId: '001', timestamp: 1, keywords: [], npcsMentioned: [], userSnippet: 'x' }]);
         idbStore.set(`divergence_${id}`, makeRegister([makeEntry('d1')]));
 
         // api-backed loaders (real apiClient -> mocked offlineStorage leaves)

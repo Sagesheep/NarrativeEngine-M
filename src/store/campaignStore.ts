@@ -242,9 +242,12 @@ export async function getPressure(campaignId: string): Promise<Record<string, NP
 
 // ─── Archive Index (Tier 4) ───
 
+// The archive writes `${id}_archive_index`; the old `archive_index_${id}` key is
+// never updated, so reading it left the store's index empty until the first turn
+// of a session (and a rewind before that skipped the archive rollback).
 export async function loadArchiveIndex(campaignId: string): Promise<ArchiveIndexEntry[]> {
-    const archive = await get(`archive_index_${campaignId}`);
-    return archive || [];
+    const { api } = await import('../services/apiClient');
+    return api.archive.getIndex(campaignId);
 }
 
 // ─── Semantic Facts ───

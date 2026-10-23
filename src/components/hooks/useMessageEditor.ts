@@ -39,6 +39,28 @@ export function findSceneIdForMessage(messages: ChatMessage[], messageId: string
     return null;
 }
 
+/** First scene a rewind to `messageId` must delete: the first archived scene after
+ *  the last scene-marker the kept chat still shows. Scene numbers, not timestamps:
+ *  scenes left behind by an earlier failed rollback are older than the new turn's
+ *  message, so a timestamp search would never reach them. Chats with no marker
+ *  before the message fall back to the first scene archived at or after it. */
+export function firstSceneToRollBack(
+    messages: ChatMessage[], messageId: string, fromTimestamp: number,
+    index: { sceneId: string; timestamp: number }[],
+): string | null {
+    const sorted = [...index].sort((a, b) => parseInt(a.sceneId, 10) - parseInt(b.sceneId, 10));
+    const idx = messages.findIndex(m => m.id === messageId);
+    for (let i = idx - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.role !== 'system' || m.name !== 'scene-marker' || typeof m.content !== 'string') continue;
+        const match = m.content.match(/Scene\s+(\d+)/i);
+        if (!match) continue;
+        const kept = parseInt(match[1], 10);
+        return sorted.find(e => parseInt(e.sceneId, 10) > kept)?.sceneId ?? null;
+    }
+    return sorted.find(e => e.timestamp >= fromTimestamp)?.sceneId ?? null;
+}
+
 export function useMessageEditor(deps: UseMessageEditorDeps) {
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
@@ -58,15 +80,22 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         setEditingMessageId(null);
     }, []);
 
-    const rollbackArchiveFrom = useCallback(async (fromTimestamp: number) => {
+    const rollbackArchiveFrom = useCallback(async (msg: ChatMessage) => {
         const deps = depsRef.current;
         if (!deps.activeCampaignId) return;
-        const sorted = [...deps.archiveIndex].sort((a, b) => parseInt(a.sceneId) - parseInt(b.sceneId));
-        const target = sorted.find((e: any) => e.timestamp >= fromTimestamp);
-        if (!target) return;
+        const fromTimestamp = msg.timestamp;
+        // Read before any await: the caller deletes these messages right after.
+        const messages = deps.messages;
         try {
+            // From disk, not the store: the store's index can lag the archive.
+            const index = await api.archive.getIndex(deps.activeCampaignId);
+            const fromSceneId = firstSceneToRollBack(messages, msg.id, fromTimestamp, index);
+            if (!fromSceneId) {
+                console.log('[Archive] Rewind: no archived scenes after this point');
+                return;
+            }
             await api.backup.create(deps.activeCampaignId, { trigger: 'pre-rollback', isAuto: true }).catch(() => {});
-            await api.archive.deleteFrom(deps.activeCampaignId, target.sceneId);
+            await api.archive.deleteFrom(deps.activeCampaignId, fromSceneId);
             const [freshIndex, freshTimeline, updatedChapters] = await Promise.all([
                 api.archive.getIndex(deps.activeCampaignId),
                 api.timeline.get(deps.activeCampaignId),
@@ -82,7 +111,7 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             // Facts extracted from the deleted scenes would otherwise stay in the
             // GM's canon (and duplicate on re-seal). Manual/pinned facts stay.
             const store = useAppStore.getState();
-            const { register: rolledBack, removed } = removeFactsFromScene(store.divergenceRegister, target.sceneId);
+            const { register: rolledBack, removed } = removeFactsFromScene(store.divergenceRegister, fromSceneId);
             if (rolledBack !== store.divergenceRegister) {
                 store.setDivergenceRegister(rolledBack);
                 console.log(`[Archive] Removed ${removed} fact(s) from rolled-back scenes`);
@@ -101,8 +130,9 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
                 console.log('[Archive] Condenser preserved — rollback was after condensed portion');
             }
 
-            console.log(`[Archive] Rolled back from scene #${target.sceneId}`);
-        } catch {
+            console.log(`[Archive] Rolled back from scene #${fromSceneId}`);
+        } catch (e) {
+            console.warn('[Archive] Rollback failed:', e);
             toast.warning('Archive rollback failed');
         }
     }, []);
@@ -255,12 +285,13 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
                 return;
             }
             // Hard-rewind path: state restore + archive rollback + delete + resend.
-            // The resend waits for the restore so the new turn starts from it.
+            // The resend waits for both, so the new turn starts from the restored
+            // state and its commit can't land in scenes the rollback is deleting.
             const restored = rewindStateTo(msg);
-            rollbackArchiveFrom(msg.timestamp);
+            const rolledBack = rollbackArchiveFrom(msg);
             deps.deleteMessagesFrom(msg.id);
             setEditingMessageId(null);
-            restored.finally(() => setTimeout(() => {
+            Promise.allSettled([restored, rolledBack]).finally(() => setTimeout(() => {
                 deps.onAfterEdit(newContent.trim());
             }, 50));
         } else {
@@ -327,9 +358,9 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
 
         if (lastUser) {
             const restored = rewindStateTo(lastUser);
-            rollbackArchiveFrom(lastUser.timestamp);
+            const rolledBack = rollbackArchiveFrom(lastUser);
             deps.deleteMessagesFrom(lastUser.id);
-            restored.finally(() => setTimeout(() => {
+            Promise.allSettled([restored, rolledBack]).finally(() => setTimeout(() => {
                 deps.onAfterRegenerate(lastUser.displayContent || lastUser.content);
             }, 50));
         }

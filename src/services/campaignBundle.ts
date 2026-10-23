@@ -192,8 +192,6 @@ export async function importBundle(bundle: CampaignBundle): Promise<string> {
         stateToSave ? set(`state_${newId}`, stateToSave) : Promise.resolve(),
         bundle.lore?.length ? set(`lore_${newId}`, bundle.lore) : Promise.resolve(),
         bundle.npcs?.length ? set(`npcs_${newId}`, bundle.npcs) : Promise.resolve(),
-        // Legacy key — kept so loadArchiveIndex() in campaignStore.ts can read it
-        bundle.archiveIndex?.length ? set(`archive_index_${newId}`, bundle.archiveIndex) : Promise.resolve(),
         bundle.scenes?.length ? setList(k(newId, 'scenes'), bundle.scenes) : Promise.resolve(),
         bundle.archiveIndex?.length ? setList(k(newId, 'archive_index'), bundle.archiveIndex) : Promise.resolve(),
         bundle.chapters?.length ? setList(k(newId, 'chapters'), bundle.chapters) : Promise.resolve(),

@@ -29,7 +29,8 @@ vi.mock('../embedding', () => ({
 
 import { archiveStorage } from '../storage/archiveStorage';
 import { offlineStorage } from '../storage';
-import { findSceneIdForMessage } from '../../components/hooks/useMessageEditor';
+import { findSceneIdForMessage, firstSceneToRollBack } from '../../components/hooks/useMessageEditor';
+import { loadArchiveIndex } from '../../store/campaignStore';
 import { getList, setList, k, type SceneRecord } from '../storage/_helpers';
 import type { ChatMessage } from '../../types';
 
@@ -238,5 +239,48 @@ describe('archiveSurgicalDelete — WO-4: findSceneIdForMessage (pure)', () => {
         ];
         expect(findSceneIdForMessage(messages, 'u1')).toBeNull();
         expect(findSceneIdForMessage(messages, 'a1')).toBeNull();
+    });
+});
+
+describe('archiveSurgicalDelete — firstSceneToRollBack (pure)', () => {
+    const marker = (n: number): ChatMessage => ({ id: `m${n}`, role: 'system', name: 'scene-marker', content: `Scene ${n}` } as ChatMessage);
+    const user = (id: string, timestamp: number): ChatMessage => ({ id, role: 'user', content: id, timestamp } as ChatMessage);
+    const index = [777, 778, 779, 900].map(n => ({ sceneId: String(n).padStart(3, '0'), timestamp: n * 1000 }));
+
+    it('deletes from the scene after the last marker the kept chat shows', () => {
+        const messages = [user('u777', 776_500), marker(777), user('u778', 777_500), marker(778)];
+        expect(firstSceneToRollBack(messages, 'u778', 777_500, index)).toBe('778');
+    });
+
+    it('reaches scenes a failed rollback left behind, though they are older than the message', () => {
+        // Chat was cut back to scene 777, the archive still holds 778–900, and the
+        // resent message is newer than every leftover scene.
+        const messages = [user('u777', 776_500), marker(777), user('resent', 5_000_000)];
+        expect(firstSceneToRollBack(messages, 'resent', 5_000_000, index)).toBe('778');
+    });
+
+    it('skips gaps left by single-scene deletes', () => {
+        const messages = [marker(779), user('u', 0)];
+        expect(firstSceneToRollBack(messages, 'u', 0, index)).toBe('900');
+    });
+
+    it('returns null when nothing was archived after the kept chat', () => {
+        const messages = [marker(900), user('u', 0)];
+        expect(firstSceneToRollBack(messages, 'u', 0, index)).toBeNull();
+    });
+
+    it('falls back to timestamps when the chat has no marker before the message', () => {
+        expect(firstSceneToRollBack([user('u', 778_500)], 'u', 778_500, index)).toBe('779');
+    });
+});
+
+describe('archiveSurgicalDelete — loadArchiveIndex', () => {
+    beforeEach(async () => { await clear(); });
+
+    it('reads the index the archive writes, not the stale legacy key', async () => {
+        await offlineStorage.archive.append('cid', 'u1', 'a1');
+        await setList('archive_index_cid', []);
+        const loaded = await loadArchiveIndex('cid');
+        expect(loaded.map(e => e.sceneId)).toEqual(['001']);
     });
 });
