@@ -24,6 +24,7 @@
 //   - reuse troublemaker's JSON-extract + fallback parse skeleton.
 
 import type {
+    ArcPace,
     ArcRecord,
     ArcStage,
     ArcSurface,
@@ -43,9 +44,12 @@ import {
 import {
     LADDER_MIN,
     LADDER_MAX,
+    IMMEDIATE_LADDER_MIN,
+    IMMEDIATE_LADDER_MAX,
     ARC_TICK_DC,
     TYPE_COOLDOWN_SEAMS,
 } from './arcConstants';
+import { ARC_TYPE_OPTIONS, arcTypeOption } from './arcCatalog';
 
 export type SpawnArcAnchor =
     | { kind: 'agent'; name: string; want: string }
@@ -55,14 +59,19 @@ export interface SpawnArcInput {
     provider: LLMProvider;
     anchor: SpawnArcAnchor;
     worldContext: string;        // brief: recent scene summary / relevant lore snippet
-    suppressedTypes: ArcType[];  // types on cooldown — exclude
+    suppressedTypes: ArcType[];  // types on cooldown — exclude (ignored when `type` is set)
     bornScene: string;
+    // Arc Creator picks. All optional: an unset pick is left to the LLM.
+    pace?: ArcPace;              // default 'slow'
+    type?: ArcType;              // player-chosen type; overrides the LLM's
+    tone?: string;
+    guide?: string;              // free-text steer from the player
+    currentScene?: string;       // latest GM narration — where an immediate arc opens
 }
 
-const VALID_ARC_TYPES: ReadonlySet<ArcType> = new Set<ArcType>([
-    'economic', 'political', 'factional', 'social',
-    'supernatural', 'criminal', 'environmental',
-]);
+const VALID_ARC_TYPES: ReadonlySet<ArcType> = new Set<ArcType>(ARC_TYPE_OPTIONS.map(o => o.id));
+
+const GUIDE_MAX_CHARS = 300;
 
 const VALID_ARC_SURFACES: ReadonlySet<ArcSurface> = new Set<ArcSurface>([
     'ambient', 'rumor', 'direct',
@@ -118,9 +127,16 @@ function extractSpawnJson(raw: string): SpawnJson | null {
     }
 }
 
-function validateLadder(rawLadder: unknown): ArcStage[] | null {
+function ladderBounds(pace: ArcPace): { min: number; max: number } {
+    return pace === 'immediate'
+        ? { min: IMMEDIATE_LADDER_MIN, max: IMMEDIATE_LADDER_MAX }
+        : { min: LADDER_MIN, max: LADDER_MAX };
+}
+
+function validateLadder(rawLadder: unknown, pace: ArcPace): ArcStage[] | null {
     if (!Array.isArray(rawLadder)) return null;
-    if (rawLadder.length < LADDER_MIN || rawLadder.length > LADDER_MAX) return null;
+    const { min, max } = ladderBounds(pace);
+    if (rawLadder.length < min || rawLadder.length > max) return null;
 
     const stages: ArcStage[] = [];
     for (const item of rawLadder as ParsedLadderItem[]) {
@@ -154,6 +170,15 @@ The seed must grow out of THIS unresolved thread — what it implies, what it pr
         ? input.suppressedTypes.join(', ')
         : '(none)';
 
+    const picksBlock = buildPicksBlock(input);
+    const typeRule = input.type
+        ? `- TYPE IS FIXED. Use "type": "${input.type}" — the player picked it.`
+        : `- AVOID SUPPRESSED TYPES. The type you pick MUST NOT be one of: ${suppressedLine}. Pick a different flavor.`;
+
+    if (input.pace === 'immediate') {
+        return buildImmediatePrompt(input, anchorBlock, picksBlock, typeRule);
+    }
+
     return joinPromptSections(
         TTRPG_PERSONA_GM_ASSISTANT,
 
@@ -178,13 +203,66 @@ Output schema — ONE JSON object, no prose, no markdown fences:
 - GROUNDED IN THE ANCHOR ONLY. The seed grows from the single anchor (one NPC's want OR one open thread) below. Do NOT pull in the whole world. The anchor is the root; the ladder is what its consequences become.
 - EARLY RUNGS ARE QUIET. The first 1–2 rungs should be 'ambient' (a price shift, a background detail, a distant report). Middle rungs 'rumor' (a merchant mentions it, a traveler brings word). Only the last 1–2 rungs are 'direct' (it arrives in the player's scene — a riot, a lockdown, a death they witness). The crisis is EARNED by the quiet rungs beneath it.
 - TROUBLE, NOT A GIFT. The arc is a threat, pressure, complication, ticking-clock, or escalation. Never a free opportunity or a reward.
-- AVOID SUPPRESSED TYPES. The type you pick MUST NOT be one of: ${suppressedLine}. Pick a different flavor.
+${typeRule}
 - 5–12 RUNGS, NO MORE, NO LESS.
 - NO PROSE AROUND THE JSON. No markdown fences. No explanation. Just the object.`,
 
         ANCHOR_BEFORE_INPUT,
         INPUT_DELIMITER,
 
+        picksBlock,
+        anchorBlock,
+        `[WORLD CONTEXT — brief, for grounding only]\n${input.worldContext || '(none)'}`,
+    );
+}
+
+/** The player's Arc Creator picks, or '' when none were made (joinPromptSections drops empties). */
+function buildPicksBlock(input: SpawnArcInput): string {
+    const lines: string[] = [];
+    const option = input.type ? arcTypeOption(input.type) : undefined;
+    if (option) lines.push(`Type: ${option.label} — ${option.guidance}`);
+    if (input.tone) lines.push(`Tone: ${input.tone} — every rung carries this tone.`);
+    const guide = input.guide?.trim().slice(0, GUIDE_MAX_CHARS);
+    if (guide) lines.push(`Player direction: "${guide}" — honor it. Where it conflicts with the anchor, the player direction wins.`);
+    if (lines.length === 0) return '';
+    return `[ARC CREATOR PICKS — binding]\n${lines.join('\n')}`;
+}
+
+function buildImmediatePrompt(input: SpawnArcInput, anchorBlock: string, picksBlock: string, typeRule: string): string {
+    const typeIds = ARC_TYPE_OPTIONS.map(o => `"${o.id}"`).join(' | ');
+    return joinPromptSections(
+        TTRPG_PERSONA_GM_ASSISTANT,
+
+        `TASK: Author ONE story ARC that OPENS IN THE PLAYER'S CURRENT SCENE and keeps developing afterwards. Rung 0 is the hook — something that happens right now, where the player is. The rungs after it are what the same thread becomes over the following scenes, whether the player chases it or turns away.
+
+Output schema — ONE JSON object, no prose, no markdown fences:
+{
+  "title": "short debug title (not shown to the player as-is)",
+  "type":  ${typeIds},
+  "seed":  "the ONE sentence the arc grows from, including any hidden truth or catch",
+  "ladder": [
+    { "label": "rung 0 — the hook, happening in the current scene", "surface": "direct" },
+    { "label": "rung 1", "surface": "rumor" | "direct" },
+    ... 3 to 8 rungs total ...
+    { "label": "the thread's climax", "surface": "direct" }
+  ]
+}`,
+
+        `RULES — binding:
+- RUNG 0 IS THE HOOK, HERE AND NOW. It grows out of the [CURRENT SCENE] below — an interruption, a discovery, a summons, or a detail already present sharpening. It never requires the player to travel first. Write it as a GM note of one or two sentences: what happens and who is involved, not finished prose.
+- THE HOOK INVITES. Rung 0 ends at the hook; the player may pursue, delay, or refuse it.
+- LATER RUNGS ARE THE SAME THREAD TIGHTENING. Each rung is what the hook becomes one step further on — it spreads ('rumor': word of it reaches the player) or comes back to them ('direct'). Never a list of unrelated events.
+- GROUNDED. Use names, places, and factions already in the story. Prefer established NPCs over inventing strangers.
+- SURPRISING, NOT RANDOM. Avoid the most predictable version of this event. The seed should hold something the player does not yet know.
+${typeRule}
+- 3–8 RUNGS. Rung 0 surface MUST be "direct".
+- NO PROSE AROUND THE JSON. No markdown fences. No explanation. Just the object.`,
+
+        ANCHOR_BEFORE_INPUT,
+        INPUT_DELIMITER,
+
+        picksBlock,
+        `[CURRENT SCENE — WHERE THE PLAYER IS RIGHT NOW]\n${input.currentScene?.trim() || '(unknown — infer from the anchor and world context)'}`,
         anchorBlock,
         `[WORLD CONTEXT — brief, for grounding only]\n${input.worldContext || '(none)'}`,
     );
@@ -213,8 +291,9 @@ export async function spawnArc(input: SpawnArcInput): Promise<ArcRecord | null> 
         return null;
     }
 
-    const suppressed = new Set(input.suppressedTypes);
-    const type = coerceType(parsed.type, suppressed);
+    const pace: ArcPace = input.pace ?? 'slow';
+    // A player-picked type is authoritative; otherwise trust the LLM's within the cooldown.
+    const type = input.type ?? coerceType(parsed.type, new Set(input.suppressedTypes));
     if (!type) {
         console.warn('[ArcSpawn] rejected: type missing, invalid, or suppressed');
         return null;
@@ -227,11 +306,15 @@ export async function spawnArc(input: SpawnArcInput): Promise<ArcRecord | null> 
         return null;
     }
 
-    const ladder = validateLadder(parsed.ladder);
+    const ladder = validateLadder(parsed.ladder, pace);
     if (!ladder) {
-        console.warn(`[ArcSpawn] rejected: ladder length outside ${LADDER_MIN}..${LADDER_MAX} or malformed`);
+        const { min, max } = ladderBounds(pace);
+        console.warn(`[ArcSpawn] rejected: ladder length outside ${min}..${max} or malformed`);
         return null;
     }
+    // An immediate arc opens in the scene, whatever surface the LLM wrote on rung 0.
+    if (pace === 'immediate') ladder[0] = { ...ladder[0], surface: 'direct' };
+    const tone = input.tone?.trim();
 
     return {
         id: uid(),
@@ -245,11 +328,13 @@ export async function spawnArc(input: SpawnArcInput): Promise<ArcRecord | null> 
         status: 'active',
         bornScene: input.bornScene,
         lastTickScene: input.bornScene,
+        ...(input.pace ? { pace } : {}),
+        ...(tone ? { tone } : {}),
     };
 }
 
 /**
- * Pick the spawn inputs for a MANUAL arc injection (the Arc Injector button).
+ * Pick the spawn inputs for a MANUAL arc injection (the Arc Creator sheet).
  *
  * Unlike the removed seam gate, this does NOT gate on arcWorldState or an active-arc
  * cap — the player pressing the button IS the signal that they want a new arc

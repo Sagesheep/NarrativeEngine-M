@@ -170,8 +170,8 @@ export function ChatArea() {
         // Absolute Command: consumed by this send only, like the dice and loot above.
         const useAbsoluteCommand = useAppStore.getState().armedAbsoluteCommand;
         useAppStore.getState().setArmedAbsoluteCommand(null);
-        const useArmedOneShot = useAppStore.getState().armedOneShot;
-        useAppStore.getState().setArmedOneShot(null);
+        const useArmedArcHook = useAppStore.getState().armedArcHook;
+        useAppStore.getState().setArmedArcHook(null);
 
         if (!overrideText) {
             setInput('');
@@ -242,7 +242,7 @@ export function ChatArea() {
             armedRoll: useArmedRoll,
             armedLoot: useArmedLoot,
             absoluteCommand: useAbsoluteCommand,
-            armedOneShot: useArmedOneShot,
+            armedArcHook: useArmedArcHook,
             divergenceRegister: useAppStore.getState().divergenceRegister,
             onStageNpcIds: useAppStore.getState().onStageNpcIds,
             pinnedExcerpts: useAppStore.getState().pinnedExcerpts,

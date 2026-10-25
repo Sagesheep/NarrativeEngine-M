@@ -372,7 +372,7 @@ export function useSwipeVariants(messageId: string | null) {
         // represents an aborted/failed story AI run, not a committed one). The
         // retry generation path reuses this hook — guard so we don't abort it.
         if (msg && !msg.pendingCommit && !msg.retryable) {
-            // The turn was committed (by handleSend, Arc Injector, etc.).
+            // The turn was committed (by handleSend, Arc Creator, etc.).
             // Invalidate so any in-flight swipe result lands nowhere.
             activeSetIdRef.current = `set_committed_${Date.now()}`;
             abortRef.current?.abort();

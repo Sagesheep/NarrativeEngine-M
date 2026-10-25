@@ -25,6 +25,7 @@ vi.mock('../../utils/llmCall', () => ({
 
 import { llmCall } from '../../utils/llmCall';
 import { spawnArc } from './arcSpawn';
+import { ARC_TYPE_OPTIONS, pickSurpriseArc, buildArcHookDirective } from './arcCatalog';
 
 const mockLlmCall = vi.mocked(llmCall);
 
@@ -481,5 +482,81 @@ describe('spawnArc', () => {
         mockLlmCall.mockRejectedValueOnce(new Error('Network Error'));
         const result = await spawnArc(input);
         expect(result).toBeNull();
+    });
+});
+
+describe('Arc Creator spawn', () => {
+    const provider = { endpoint: 'http://mock-llm', modelName: 'mock-model' } as LLMProvider;
+    const base = {
+        provider,
+        anchor: { kind: 'thread' as const, text: 'The ferryman owes the wrong people' },
+        worldContext: '',
+        suppressedTypes: ['mystery'] as ArcType[],
+        bornScene: '012',
+    };
+    const shortLadder = (surface0: string) => JSON.stringify({
+        title: 'Courier', type: 'economic', seed: 'The letter is forged.',
+        ladder: [
+            { label: 'A courier collapses at the door', surface: surface0 },
+            { label: 'Word spreads at the docks', surface: 'rumor' },
+            { label: 'The sender comes looking', surface: 'direct' },
+        ],
+    });
+
+    beforeEach(() => {
+        vi.resetAllMocks();
+    });
+
+    it('immediate pace accepts a 3-rung ladder and forces rung 0 to direct', async () => {
+        mockLlmCall.mockResolvedValueOnce(shortLadder('ambient'));
+        const arc = await spawnArc({ ...base, pace: 'immediate', currentScene: 'The tavern is quiet.' });
+        expect(arc?.ladder).toHaveLength(3);
+        expect(arc?.ladder[0].surface).toBe('direct');
+        expect(arc?.pace).toBe('immediate');
+        expect(mockLlmCall.mock.calls[0][1]).toContain('The tavern is quiet.');
+    });
+
+    it('slow pace still rejects a ladder shorter than LADDER_MIN', async () => {
+        mockLlmCall.mockResolvedValueOnce(shortLadder('ambient'));
+        expect(await spawnArc({ ...base, pace: 'slow' })).toBeNull();
+    });
+
+    it('a player-picked type overrides the LLM type and the cooldown, and tone/guide reach the prompt', async () => {
+        mockLlmCall.mockResolvedValueOnce(shortLadder('direct'));
+        const arc = await spawnArc({ ...base, pace: 'immediate', type: 'mystery', tone: 'Eerie', guide: 'the ferryman knows' });
+        expect(arc?.type).toBe('mystery');
+        expect(arc?.tone).toBe('Eerie');
+        const prompt = mockLlmCall.mock.calls[0][1] as string;
+        expect(prompt).toContain('[ARC CREATOR PICKS');
+        expect(prompt).toContain('Tone: Eerie');
+        expect(prompt).toContain('"the ferryman knows"');
+    });
+
+    it('without picks the prompt carries no picks block', async () => {
+        mockLlmCall.mockResolvedValueOnce('{}');
+        await spawnArc(base);
+        expect(mockLlmCall.mock.calls[0][1]).not.toContain('ARC CREATOR PICKS');
+    });
+});
+
+describe('Arc Creator catalog', () => {
+    it('pickSurpriseArc skips avoided types while others remain', () => {
+        const avoid = ARC_TYPE_OPTIONS.map(o => o.id).filter(id => id !== 'weird');
+        for (let i = 0; i < 20; i++) {
+            expect(pickSurpriseArc(avoid).type).toBe('weird');
+        }
+    });
+
+    it('pickSurpriseArc falls back to every type when all are avoided', () => {
+        const all = ARC_TYPE_OPTIONS.map(o => o.id);
+        expect(all).toContain(pickSurpriseArc(all, () => 0).type);
+    });
+
+    it('buildArcHookDirective flattens brackets and is empty for an empty hook', () => {
+        const directive = buildArcHookDirective('A [sealed] letter arrives');
+        expect(directive.startsWith('\n[INJECTED EVENT —')).toBe(true);
+        expect(directive).toContain('A sealed letter arrives');
+        expect(directive.slice(2, -1)).not.toMatch(/[[\]]/);
+        expect(buildArcHookDirective('  ')).toBe('');
     });
 });

@@ -15,6 +15,10 @@ export const ARC_TICK_DC = { initial: 35, reduction: 5, floor: 5 } as const;
 export const LADDER_MIN = 5;
 export const LADDER_MAX = 12;
 
+// Immediate arcs (Arc Creator) open in the current scene, so they need fewer quiet rungs.
+export const IMMEDIATE_LADDER_MIN = 3;
+export const IMMEDIATE_LADDER_MAX = 8;
+
 // How many arcs may simmer at once. New spawns blocked at/above this.
 export const MAX_ACTIVE_ARCS = 3;
 

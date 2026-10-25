@@ -15,7 +15,7 @@ import { turnSnapshotStorage, pickTurnContext } from '../storage/turnSnapshotSto
 import { storeAccess } from '../ports/store';
 import { buildWatchdogDossier } from './directorWatchdog';
 import { runDirectorBrief, lastAssistantContent } from './directorBrief';
-import { buildOneShotDirective } from '../oneshot/oneShotEvents';
+import { buildArcHookDirective } from '../arc/arcCatalog';
 import { applySceneNote, restoreThinkingPrefill } from '../payload/sceneNote';
 import { getApiFormat } from '../../utils/llmApiHelper';
 import type { GatheredContext } from './turnContext';
@@ -129,15 +129,15 @@ export async function runTurn(
         }
     }
 
-    // One-Shot Event Injector: player-armed event directive for this turn only.
-    // Mirrors the dice/loot blocks above; older history messages have the tag
-    // stripped (payloadHistoryFitting), so it never steers a later turn.
-    const armedOneShot = state.armedOneShot;
-    if (armedOneShot) {
-        const directive = buildOneShotDirective(armedOneShot);
+    // Arc Creator: an immediate arc's opening rung lands in this turn only. Mirrors
+    // the dice/loot blocks above; older history messages have the tag stripped
+    // (payloadHistoryFitting). The arc itself keeps developing via runArcTick.
+    const armedArcHook = state.armedArcHook;
+    if (armedArcHook) {
+        const directive = buildArcHookDirective(armedArcHook.hook);
         if (directive) {
             finalInput += directive;
-            displayInputFinal += `\n\n⚡ Event injected (${armedOneShot})`;
+            displayInputFinal += `\n\n⚡ Event: ${armedArcHook.label}`;
         }
     }
 
@@ -458,7 +458,7 @@ export async function runTurn(
                 // the cached payload (for swipes 2–5), and stamp the assistant
                 // message with pendingCommit=true + a 1-variant swipeSet. The
                 // visible variant becomes canonical on commit (commitPendingTurn),
-                // fired by: user sends next message, timeskip, Arc Injector,
+                // fired by: user sends next message, timeskip, Arc Creator,
                 // campaign switch. Backgrounding the app does NOT commit.
                 if (lastAssistant?.role === 'assistant' && activeCampaignId) {
                     const variant: SwipeVariant = {

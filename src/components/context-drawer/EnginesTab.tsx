@@ -14,6 +14,7 @@ export function EnginesTab() {
     const context = useAppStore((s) => s.context);
     const updateContext = useAppStore((s) => s.updateContext);
     const [populatingField, setPopulatingField] = useState<string | null>(null);
+    const [randomOpen, setRandomOpen] = useState(false);
 
     const renderPopulateButton = (fieldKey: string, onPopulate: () => Promise<void>) => (
         <button
@@ -70,6 +71,28 @@ export function EnginesTab() {
                         </button>
                     </div>
                 </section>
+                {/* Random event engines (Surprise / Encounter / World) — collapsed by default */}
+                <section className="bg-void border border-border">
+                    <button
+                        type="button"
+                        onClick={() => setRandomOpen(v => !v)}
+                        aria-expanded={randomOpen}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 min-h-[44px] text-left"
+                    >
+                        <span className="flex items-center gap-1.5 text-[11px] text-terminal uppercase tracking-wider font-bold">
+                            {randomOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                            Random Events
+                        </span>
+                        <span className="text-[10px] text-text-dim uppercase tracking-wider">
+                            {[
+                                context.surpriseEngineActive !== false && 'Surprise',
+                                context.encounterEngineActive !== false && 'Encounter',
+                                context.worldEngineActive !== false && 'World',
+                            ].filter(Boolean).join(' · ') || 'All off'}
+                        </span>
+                    </button>
+                    {randomOpen && (
+                <div className="px-3 pb-3 space-y-4">
                 {/* Surprise Engine */}
                 <div className="space-y-2">
                     <div className="text-[10px] text-terminal uppercase tracking-wider font-bold border-b border-terminal/20 pb-1 flex items-center justify-between">
@@ -330,6 +353,9 @@ export function EnginesTab() {
                         })}
                     </div>
                 </div>
+                </div>
+                    )}
+                </section>
 
                 {/* NPC Appearance Engine */}
                 <NpcAppearanceSection context={context} updateContext={updateContext} />

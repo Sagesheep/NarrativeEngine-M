@@ -721,7 +721,9 @@ export function assembleWorldBlocks(opts: {
     // tagged by surface tier ([WORLD/ambient|rumor|direct]); no raw rung index / tickDC
     // ever reaches the payload (see arcSurfaceLine; WO-06 no-raw-number audit).
     if (context.arcDigest) {
-        const arcContent = `[WORLD PRESSURES — developing situations]\n${context.arcDigest}\n[END WORLD PRESSURES]`;
+        const arcContent = `[WORLD PRESSURES — developing situations]\n` +
+            `(ambient = background colour only; rumor = reaches the player secondhand; direct = already part of the player's world — continue it from where the story left it, never re-introduce it as new)\n` +
+            `${context.arcDigest}\n[END WORLD PRESSURES]`;
         worldBlocks.push({ source: 'Arc Digest', content: arcContent, tokens: countTokens(arcContent), reason: 'Indirect world-arc surfacing (current rung)' });
     }
 

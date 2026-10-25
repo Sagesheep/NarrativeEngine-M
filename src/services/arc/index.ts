@@ -21,9 +21,20 @@ export {
     ARC_SURFACE_TIER,
 } from './arcConstants';
 
-// WO-03 — spawn (+1 LLM). Seam gate removed; now fired manually via the Arc Injector.
+// WO-03 — spawn (+1 LLM). Seam gate removed; now fired manually via the Arc Creator.
 export { spawnArc, pickArcSpawnInput } from './arcSpawn';
 export type { SpawnArcInput, SpawnArcAnchor } from './arcSpawn';
+
+// Arc Creator — pickable types/tones and the immediate-arc hook directive (+0)
+export {
+    ARC_TYPE_OPTIONS,
+    ARC_TONES,
+    ARC_PACE_LABEL,
+    arcTypeOption,
+    pickSurpriseArc,
+    buildArcHookDirective,
+} from './arcCatalog';
+export type { ArcTypeOption, ArmedArcHook } from './arcCatalog';
 
 // WO-04 — stance scan (+0, deterministic)
 export { scanArcStance } from './arcStance';

@@ -40,6 +40,17 @@ export function debouncedSaveCampaignState(campaignId: string | null, _state: { 
     }, 1000);
 }
 
+/** Saved contexts that never stored the random-engine flags ran with them on; keep it that way. */
+function keepLegacyEngineFlags(saved: Partial<GameContext> | undefined): Partial<GameContext> {
+    if (!saved) return {};
+    return {
+        ...saved,
+        surpriseEngineActive: saved.surpriseEngineActive ?? true,
+        encounterEngineActive: saved.encounterEngineActive ?? true,
+        worldEngineActive: saved.worldEngineActive ?? true,
+    };
+}
+
 // ── Default context ────────────────────────────────────────────────────
 
 export const defaultContext: GameContext = {
@@ -57,9 +68,10 @@ export const defaultContext: GameContext = {
     inventoryActive: false,
     characterProfileActive: false,
     characterProfileUserDisabled: false,
-    surpriseEngineActive: true,
-    encounterEngineActive: true,
-    worldEngineActive: true,
+    // Random event engines start off for new campaigns (the Arc Creator replaces them).
+    surpriseEngineActive: false,
+    encounterEngineActive: false,
+    worldEngineActive: false,
     diceFairnessActive: true,
     diceToolEnabled: true,
     loreToolEnabled: true,
@@ -222,7 +234,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
 
         set({
             activeCampaignId: id,
-            context: migrateDiceSystem({ ...defaultContext, ...(campaignState?.context ?? {}) }),
+            context: migrateDiceSystem({ ...defaultContext, ...keepLegacyEngineFlags(campaignState?.context) }),
             messages: campaignState?.messages ?? [],
             condenser: campaignState?.condenser ?? { condensedUpToIndex: -1 },
             pinnedExcerpts: campaignState?.pinnedExcerpts ?? [],

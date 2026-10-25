@@ -414,7 +414,12 @@ export type ResolveLootOpts = {
 // the existing GM call. See Upgrade/OpusPlans/Oracle_Function/02_ARCHITECT_contract.md.
 export type ArcType =
     | 'economic' | 'political' | 'factional' | 'social'
-    | 'supernatural' | 'criminal' | 'environmental';
+    | 'supernatural' | 'criminal' | 'environmental'
+    // Scene-scale types (the old One-Shot events), offered by the Arc Creator.
+    | 'combat' | 'location' | 'romance' | 'mystery' | 'weird' | 'windfall';
+
+/** slow = quiet ambient → rumor → direct climb; immediate = the first rung lands in the current scene. */
+export type ArcPace = 'slow' | 'immediate';
 
 export type ArcStance = 'opposed' | 'aided' | 'ignored' | 'fled' | 'unaware';
 
@@ -430,7 +435,9 @@ export type ArcRecord = {
     type: ArcType;
     title: string;          // short, for logs/debug — NOT shown to the player as-is
     seed: string;           // the one grounding sentence the ladder grew from
-    ladder: ArcStage[];     // 5–12 rungs, quiet → crisis (LADDER_MIN..LADDER_MAX)
+    ladder: ArcStage[];     // slow: 5–12 rungs, quiet → crisis; immediate: 3–8, rung 0 direct
+    pace?: ArcPace;         // absent on arcs saved before the Arc Creator = 'slow'
+    tone?: string;          // Arc Creator tone pick, if any
     currentRung: number;    // engine-owned index into ladder; starts 0
     tickDC: number;         // escalating-DC tempo timer; starts ARC_TICK_DC.initial
     stance: ArcStance;      // last value from scanArcStance; defaults 'unaware'
