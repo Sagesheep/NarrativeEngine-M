@@ -1,5 +1,5 @@
 import type { ArchiveBook, ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, SemanticFact, LLMProvider } from '../../types';
-import { bookOf, rankBooks, type BookSignals } from './bookEngine';
+import { bookOf, rankBooks, rankRangesByHits, isBookPickConfident, type BookSignals } from './bookEngine';
 import { nextChapterNumber, chapterIdFor } from '../../utils/chapterIds';
 import type { SearchHit } from '../embedding/vectorSearch';
 import { extractContextActivations, expandActivationsWithFacts, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
@@ -7,8 +7,13 @@ import { llmCall } from '../../utils/llmCall';
 
 const AUTO_SEAL_SCENE_THRESHOLD = 25;
 
-const MAX_LLM_ITERATIONS = 5;
 const MAX_CONFIRMED_CHAPTERS = 3;
+/** Chapters shown to the one batched check — the top of the ranking. */
+const CHAPTER_CHECK_CANDIDATES = 6;
+/** The check must answer inside the funnel's 5s race (archiveRecallStage), with time left to fetch scenes. */
+const CHAPTER_CHECK_TIMEOUT_MS = 3500;
+/** RRF constant, as in the scene-level fusion (archiveMemory fuseRecall). */
+const CHAPTER_RRF_K = 60;
 
 export type AutoSealResult = {
     shouldSeal: boolean;
@@ -153,105 +158,112 @@ export function rankChapters(
         .map(s => s.chapter);
 }
 
-// ─── 3B. Iterative LLM Validation ───
+// ─── 3B. Batched LLM Check ───
 
-/**
- * Ask LLM if a chapter is relevant to current context.
- * Uses tiny prompt (~200 tokens), expects YES/NO response (~5 tokens).
- * Fail-open: returns true on any error (never lose data).
- */
-async function validateChapterRelevance(
-    chapter: ArchiveChapter,
-    userMessage: string,
-    recentContext: string,
-    provider: LLMProvider,
-    signal?: AbortSignal
-): Promise<boolean> {
-    const prompt = [
-        'You are a TTRPG story continuity checker. Given the current situation and a chapter summary, is this chapter relevant?',
-        '',
-        'Respond with ONLY: YES or NO',
-        '',
-        'CURRENT SITUATION:',
-        userMessage.slice(0, 200), // Truncate to keep prompt small
-        '',
-        'RECENT CONTEXT:',
-        recentContext.slice(-500), // keep it small
-        '',
-        'CHAPTER SUMMARY:',
-        `Title: ${chapter.title}`,
-        `Scenes: ${chapter.sceneRange[0]}-${chapter.sceneRange[1]}`,
-        chapter.summary.slice(0, 300), // truncate to keep prompt small
-        `NPCs: ${chapter.npcs.join(', ')}`,
-        `Key events: ${chapter.majorEvents.slice(0, 3).join('; ')}`,
-    ].join('\n');
-
-    // 3s timeout per validation call. Also abort if the caller's signal fires
-    // (the funnel lost gatherContext's race and is being cancelled — AUDIT F1).
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-    const onExternalAbort = () => controller.abort();
-    if (signal) {
-        if (signal.aborted) controller.abort();
-        else signal.addEventListener('abort', onExternalAbort, { once: true });
-    }
-
-    try {
-        const answer = await llmCall(provider, prompt, {
-            signal: controller.signal,
-            maxTokens: 10,
-            thinkingEffort: 'off',
-        });
-        clearTimeout(timeoutId);
-        signal?.removeEventListener('abort', onExternalAbort);
-        const verdict = answer.trim().toUpperCase();
-        // An empty answer is a failed call, not a NO (fail-open, like an error).
-        return verdict === '' || verdict.startsWith('YES');
-    } catch {
-        clearTimeout(timeoutId);
-        signal?.removeEventListener('abort', onExternalAbort);
-        return true; // on timeout/error, assume relevant (fail-open)
-    }
+/** One chapter as the check sees it: id, scenes, title, summary, key events, cast. */
+function chapterCard(chapter: ArchiveChapter): string {
+    const events = chapter.majorEvents.slice(0, 3).join('; ');
+    const npcs = chapter.npcs.slice(0, 6).join(', ');
+    return [
+        `${chapter.chapterId} [scenes ${chapter.sceneRange[0]}-${chapter.sceneRange[1]}] "${chapter.title}"`,
+        chapter.summary.slice(0, 400),
+        events ? `Events: ${events}` : '',
+        npcs ? `NPCs: ${npcs}` : '',
+    ].filter(Boolean).join('\n');
 }
 
 /**
- * Iteratively validate chapters with LLM until we have MAX_CONFIRMED_CHAPTERS
- * or reach MAX_LLM_ITERATIONS.
- * If no utilityProvider, gracefully degrades to top 3 by 3D score.
+ * Read the check's answer: the candidate ids it named, in its order. Null when
+ * the answer names none and is not a clear "none" — a failed call, not a NO.
  */
-export async function iterativeChapterFilter(
+export function parseChapterPicks(answer: string, candidateIds: string[]): string[] | null {
+    const known = new Set(candidateIds);
+    const named = Array.from(new Set((answer.match(/\bCH\d+[A-Z]?\b/gi) ?? []).map(id => id.toUpperCase())))
+        .filter(id => known.has(id));
+    if (named.length > 0) return named.slice(0, MAX_CONFIRMED_CHAPTERS);
+    return /\[\s*\]|\bnone\b/i.test(answer) ? [] : null;
+}
+
+/**
+ * Which of the top-ranked chapters does this turn need? One utility call over
+ * the top CHAPTER_CHECK_CANDIDATES chapter cards returns up to
+ * MAX_CONFIRMED_CHAPTERS ids — it used to be up to five YES/NO calls one after
+ * another, which often lost the funnel's 5s race.
+ * - No utility AI: the top MAX_CONFIRMED_CHAPTERS by rank.
+ * - Error, timeout or an unreadable answer: the same (fail-open, never lose data).
+ * - Already aborted (the funnel lost its race): nothing, and no call.
+ */
+export async function batchChapterFilter(
     rankedChapters: ArchiveChapter[],
     userMessage: string,
     recentMessages: ChatMessage[],
     utilityProvider?: LLMProvider,
     signal?: AbortSignal
 ): Promise<ArchiveChapter[]> {
-    // If no utility AI configured, accept top 3 by 3D score (graceful degradation)
-    if (!utilityProvider) {
-        return rankedChapters.slice(0, MAX_CONFIRMED_CHAPTERS);
-    }
+    const candidates = rankedChapters.slice(0, CHAPTER_CHECK_CANDIDATES);
+    const fallback = candidates.slice(0, MAX_CONFIRMED_CHAPTERS);
+    if (!utilityProvider) return fallback;
+    if (signal?.aborted || candidates.length === 0) return [];
 
     const recentContext = recentMessages.slice(-5).map(m => m.content || '').join('\n');
-    const confirmed: ArchiveChapter[] = [];
-    let iterations = 0;
+    const prompt = [
+        'You are a TTRPG story continuity checker. Pick the past chapters the GM needs to answer the current moment.',
+        '',
+        `Reply with ONLY a JSON array of up to ${MAX_CONFIRMED_CHAPTERS} chapter ids, most needed first, e.g. ["CH04","CH11"].`,
+        'Reply [] if none of them matter right now.',
+        '',
+        'CURRENT SITUATION:',
+        userMessage.slice(0, 300),
+        '',
+        'RECENT CONTEXT:',
+        recentContext.slice(-600),
+        '',
+        'CHAPTERS:',
+        candidates.map(chapterCard).join('\n\n'),
+    ].join('\n');
 
-    for (const chapter of rankedChapters) {
-        if (signal?.aborted) break; // race lost — stop spending (AUDIT F1)
-        if (confirmed.length >= MAX_CONFIRMED_CHAPTERS) break;
-        if (iterations >= MAX_LLM_ITERATIONS) break;
+    // Abort on our own timeout or when the caller's signal fires (the funnel
+    // lost gatherContext's race and is being cancelled — AUDIT F1).
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CHAPTER_CHECK_TIMEOUT_MS);
+    const onExternalAbort = () => controller.abort();
+    signal?.addEventListener('abort', onExternalAbort, { once: true });
 
-        const isRelevant = await validateChapterRelevance(
-            chapter, userMessage, recentContext, utilityProvider, signal
-        );
-        iterations++;
-
-        if (isRelevant) {
-            confirmed.push(chapter);
-        }
-        // If NO → continue to next ranked chapter
+    try {
+        const answer = await llmCall(utilityProvider, prompt, {
+            signal: controller.signal,
+            maxTokens: 40,
+            thinkingEffort: 'off',
+            trackingLabel: 'chapter-check',
+        });
+        const picks = parseChapterPicks(answer, candidates.map(c => c.chapterId));
+        if (picks === null) return fallback;
+        return picks.map(id => candidates.find(c => c.chapterId === id)!);
+    } catch {
+        return signal?.aborted ? [] : fallback;
+    } finally {
+        clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onExternalAbort);
     }
+}
 
-    return confirmed;
+/**
+ * Fold this turn's scene vector hits into the chapter ranking (reciprocal-rank
+ * fusion of the 3D-score order and the per-chapter hit roll-up). The 3D score
+ * leans on importance, so without this a chapter the player's words point at by
+ * meaning but not by keyword sat far down the list.
+ */
+export function fuseChapterHits(ranked: ArchiveChapter[], hits: BookSignals['sceneHits']): ArchiveChapter[] {
+    const byHits = rankRangesByHits(ranked.map(c => ({ id: c.chapterId, sceneRange: c.sceneRange })), hits);
+    if (byHits.length === 0) return ranked;
+    const score = new Map<string, number>();
+    ranked.forEach((c, i) => score.set(c.chapterId, 1 / (CHAPTER_RRF_K + i + 1)));
+    byHits.forEach((id, i) => score.set(id, (score.get(id) ?? 0) + 1 / (CHAPTER_RRF_K + i + 1)));
+    // Stable: ties keep the 3D-score order.
+    return ranked
+        .map((c, i) => ({ c, i, s: score.get(c.chapterId)! }))
+        .sort((a, b) => b.s - a.s || a.i - b.i)
+        .map(x => x.c);
 }
 
 /**
@@ -278,8 +290,9 @@ export function boostBookChapters(ranked: ArchiveChapter[], books: ArchiveBook[]
  * Phase 0: Book shortlist — with books, chapters in the best-matching books (pinned,
  *          planner-picked, vector and keyword matches) plus chapters not yet in a
  *          book move to the front of the chapter ranking; the rest stay behind them
- * Phase 1: Chapter-level 3D scoring
- * Phase 2: Iterative LLM validation
+ * Phase 1: Chapter-level 3D scoring, fused with the scene vector hits per chapter
+ * Phase 2: One batched LLM check over the top chapters — skipped when the book
+ *          pick is clear (a pinned book, or planner and vectors agree)
  * Phase 3: Build scene ranges from confirmed chapters + open chapter
  * Phase 4: Scene-level 3D scoring within ranges
  * Phase 5: Fetch scenes within token budget
@@ -303,15 +316,21 @@ export async function recallWithChapterFunnel(
     bookSignals?: Pick<BookSignals, 'pinnedBookIds' | 'plannerBookIds'>,
 ): Promise<{ scenes: string; usedTokens: number }> {
     // ─── Phase 1: Chapter-level 3D scoring ───
-    let ranked = rankChapters(chapters, userMessage, recentMessages, npcLedger, semanticFacts);
+    let ranked = fuseChapterHits(
+        rankChapters(chapters, userMessage, recentMessages, npcLedger, semanticFacts),
+        semanticCandidateIds,
+    );
 
     // ─── Phase 0 (applied to the ranking): zoom into the matching books ───
+    const signals: BookSignals = { ...bookSignals, sceneHits: semanticCandidateIds };
+    let confident = false;
     if (books && books.length > 0 && ranked.length > 0) {
         const activations = expandActivationsWithFacts(extractContextActivations(userMessage, recentMessages, npcLedger), semanticFacts);
-        const picked = rankBooks(books, activations, { ...bookSignals, sceneHits: semanticCandidateIds });
+        const picked = rankBooks(books, activations, signals);
         if (picked.length > 0) {
             ranked = boostBookChapters(ranked, books, picked);
-            console.log(`[Funnel] books ${picked.join(', ')} first`);
+            confident = isBookPickConfident(books, signals);
+            console.log(`[Funnel] books ${picked.join(', ')} first${confident ? ' (confident — no chapter check)' : ''}`);
         }
     }
 
@@ -326,10 +345,10 @@ export async function recallWithChapterFunnel(
         return { scenes: sceneText, usedTokens };
     }
 
-    // ─── Phase 2: Iterative LLM validation ───
-    const confirmed = await iterativeChapterFilter(
-        ranked, userMessage, recentMessages, utilityProvider, signal
-    );
+    // ─── Phase 2: One batched LLM check — skipped when the book pick is clear ───
+    const confirmed = confident
+        ? ranked.slice(0, MAX_CONFIRMED_CHAPTERS)
+        : await batchChapterFilter(ranked, userMessage, recentMessages, utilityProvider, signal);
 
     // ─── Phase 3: Build scene ranges ───
     const sceneRanges: [string, string][] = confirmed.map(ch => ch.sceneRange);
@@ -363,4 +382,4 @@ export async function recallWithChapterFunnel(
 }
 
 // Re-export constants for testing
-export { MAX_LLM_ITERATIONS, MAX_CONFIRMED_CHAPTERS };
+export { MAX_CONFIRMED_CHAPTERS, CHAPTER_CHECK_CANDIDATES };

@@ -230,26 +230,45 @@ export function bookOfScene(sceneId: string, books: ArchiveBook[]): ArchiveBook 
 }
 
 /**
- * Book ids ranked by this turn's scene vector hits: each book scores the sum of
- * its best HITS_PER_BOOK hits. A plain id list (no scores) counts by order.
+ * Ids of scene ranges (books or chapters) ranked by this turn's scene vector
+ * hits: each range scores the sum of its best HITS_PER_BOOK hits. A plain id
+ * list (no scores) counts by order. Ranges with no hit are left out.
  */
-export function rankBooksByHits(books: ArchiveBook[], hits: BookSignals['sceneHits']): string[] {
-    if (!hits || hits.length === 0 || books.length === 0) return [];
+export function rankRangesByHits(ranges: { id: string; sceneRange: [string, string] }[], hits: BookSignals['sceneHits']): string[] {
+    if (!hits || hits.length === 0 || ranges.length === 0) return [];
     const scored = typeof hits[0] === 'string'
         ? (hits as string[]).map((id, i) => ({ id, score: 1 / (i + 1) }))
         : [...(hits as { id: string; score: number }[])].sort((a, b) => b.score - a.score);
-    const perBook = new Map<string, number[]>();
+    const perRange = new Map<string, number[]>();
     for (const hit of scored) {
-        const book = bookOfScene(hit.id, books);
-        if (!book) continue;
-        const list = perBook.get(book.bookId) ?? [];
+        const n = sceneNum(hit.id);
+        const range = Number.isFinite(n) ? ranges.find(r => n >= sceneNum(r.sceneRange[0]) && n <= sceneNum(r.sceneRange[1])) : undefined;
+        if (!range) continue;
+        const list = perRange.get(range.id) ?? [];
         if (list.length < HITS_PER_BOOK) list.push(hit.score);
-        perBook.set(book.bookId, list);
+        perRange.set(range.id, list);
     }
-    return [...perBook.entries()]
+    return [...perRange.entries()]
         .map(([id, scores]) => ({ id, score: scores.reduce((s, x) => s + x, 0) }))
         .sort((a, b) => b.score - a.score)
         .map(s => s.id);
+}
+
+/** Book ids ranked by this turn's scene vector hits (see rankRangesByHits). */
+export function rankBooksByHits(books: ArchiveBook[], hits: BookSignals['sceneHits']): string[] {
+    return rankRangesByHits(books.map(b => ({ id: b.bookId, sceneRange: b.sceneRange })), hits);
+}
+
+/**
+ * True when the book pick is clear enough to skip the AI chapter check: a book
+ * is pinned, or the planner's first pick is also the book with the strongest
+ * vector hits — two independent signals agreeing.
+ */
+export function isBookPickConfident(books: ArchiveBook[], signals: BookSignals): boolean {
+    const known = new Set(books.map(b => b.bookId));
+    if ((signals.pinnedBookIds ?? []).some(id => known.has(id.toUpperCase()))) return true;
+    const planned = signals.plannerBookIds?.[0]?.toUpperCase();
+    return !!planned && known.has(planned) && rankBooksByHits(books, signals.sceneHits)[0] === planned;
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../../utils/llmCall', () => ({ llmCall: vi.fn() }));
 
-import { reconcileBooks, unbookedSealed, enforceBreaks, rankBooks, rankBooksByHits, bookOfScene, makeBook, nextBookId, bookOf, BOOK_AUTO_CLOSE_CHAPTERS } from '../bookEngine';
+import { reconcileBooks, unbookedSealed, enforceBreaks, rankBooks, rankBooksByHits, bookOfScene, isBookPickConfident, makeBook, nextBookId, bookOf, BOOK_AUTO_CLOSE_CHAPTERS } from '../bookEngine';
 import { boostBookChapters } from '../archiveChapterEngine';
 import { renderLodChapters } from '../../payload/lodRenderer';
 import type { ArchiveBook, ArchiveChapter, ChatMessage } from '../../../types';
@@ -132,6 +132,26 @@ describe('rankBooks (find, then zoom)', () => {
     it('pinned books come first and are kept even past the limit', () => {
         expect(rankBooks(books, { kyoto: 1 }, { pinnedBookIds: ['BK01'] }, 2)).toEqual(['BK01', 'BK03']);
         expect(rankBooks(books, { kyoto: 1 }, { pinnedBookIds: ['BK01', 'BK02'] }, 1)).toEqual(['BK01', 'BK02']);
+    });
+});
+
+describe('isBookPickConfident (when the chapter check can be skipped)', () => {
+    const books = [book('BK01', 1, 10), book('BK02', 11, 20)];
+    const hitsOnBK02 = [{ id: '014', score: 0.7 }, { id: '003', score: 0.4 }];
+
+    it('a pinned book is confident', () => {
+        expect(isBookPickConfident(books, { pinnedBookIds: ['BK01'] })).toBe(true);
+    });
+
+    it('planner and vectors agreeing is confident; disagreeing or one alone is not', () => {
+        expect(isBookPickConfident(books, { plannerBookIds: ['BK02'], sceneHits: hitsOnBK02 })).toBe(true);
+        expect(isBookPickConfident(books, { plannerBookIds: ['BK01'], sceneHits: hitsOnBK02 })).toBe(false);
+        expect(isBookPickConfident(books, { plannerBookIds: ['BK02'] })).toBe(false);
+        expect(isBookPickConfident(books, { sceneHits: hitsOnBK02 })).toBe(false);
+    });
+
+    it('a pin on a book that is gone is not', () => {
+        expect(isBookPickConfident(books, { pinnedBookIds: ['BK07'] })).toBe(false);
     });
 });
 
