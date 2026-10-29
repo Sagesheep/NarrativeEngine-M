@@ -165,6 +165,7 @@ export default function App() {
         archiveIndex,
         chapters,
         books,
+        pinnedBookIds: [],
         semanticFacts: facts,
         divergenceRegister: divReg ?? { entries: [], chapterToggles: {}, categoryToggles: {}, lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 2 as const },
       });

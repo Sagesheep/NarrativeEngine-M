@@ -37,6 +37,8 @@ export interface BuildPayloadOptions {
     chapters?: ArchiveChapter[];
     /** Books replace their chapters in the recap. */
     books?: ArchiveBook[];
+    /** Books the player pinned: their full summary stays in the recap. */
+    pinnedBookIds?: string[];
     archiveIndex?: ArchiveIndexEntry[];
     semanticallyRecalledNpcIds?: string[];
     pinnedExcerpts?: PinnedExcerpt[];
@@ -70,6 +72,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
         divergenceRegister,
         chapters,
         books,
+        pinnedBookIds,
         archiveIndex,
         semanticallyRecalledNpcIds,
         pinnedExcerpts,
@@ -240,6 +243,7 @@ export function buildPayload(opts: BuildPayloadOptions): { messages: OpenAIMessa
     const recap = buildChapterRecapBlock({
         chapters,
         books,
+        pinnedBookIds,
         archiveIndex,
         messages: history,
         condensedUpToIndex,

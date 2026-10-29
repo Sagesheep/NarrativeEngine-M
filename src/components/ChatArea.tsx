@@ -237,6 +237,7 @@ export function ChatArea() {
             timeline: useAppStore.getState().timeline,
             pinnedChapterIds: useAppStore.getState().pinnedChapterIds,
             clearPinnedChapters: () => useAppStore.getState().clearPinnedChapters(),
+            pinnedBookIds: useAppStore.getState().pinnedBookIds,
             deepContextSearch: useDeepScan,
             deepSearchQuery: useDeepQuery || undefined,
             armedRoll: useArmedRoll,

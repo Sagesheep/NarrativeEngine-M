@@ -1,5 +1,5 @@
 import type { ArchiveBook, ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, SemanticFact, LLMProvider } from '../../types';
-import { bookOf, shortlistBooks } from './bookEngine';
+import { bookOf, rankBooks, type BookSignals } from './bookEngine';
 import { nextChapterNumber, chapterIdFor } from '../../utils/chapterIds';
 import type { SearchHit } from '../embedding/vectorSearch';
 import { extractContextActivations, expandActivationsWithFacts, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
@@ -254,13 +254,30 @@ export async function iterativeChapterFilter(
     return confirmed;
 }
 
+/**
+ * Move chapters in `bookIds` — and chapters not yet in any book — ahead of the
+ * rest, keeping chapter-score order inside each group. A boost, not a filter: a
+ * wrong book pick only pushes the right chapter back, it never removes it.
+ */
+export function boostBookChapters(ranked: ArchiveChapter[], books: ArchiveBook[], bookIds: string[]): ArchiveChapter[] {
+    const wanted = new Set(bookIds);
+    const front: ArchiveChapter[] = [];
+    const back: ArchiveChapter[] = [];
+    for (const ch of ranked) {
+        const b = bookOf(ch, books);
+        (!b || wanted.has(b.bookId) ? front : back).push(ch);
+    }
+    return [...front, ...back];
+}
+
 // ─── 3D. Main Funnel Orchestrator ───
 
 /**
  * Main chapter-aware retrieval funnel.
  *
- * Phase 0: Book shortlist — with books, only chapters in the best-matching books
- *          (plus chapters not yet in a book) go on to chapter ranking
+ * Phase 0: Book shortlist — with books, chapters in the best-matching books (pinned,
+ *          planner-picked, vector and keyword matches) plus chapters not yet in a
+ *          book move to the front of the chapter ranking; the rest stay behind them
  * Phase 1: Chapter-level 3D scoring
  * Phase 2: Iterative LLM validation
  * Phase 3: Build scene ranges from confirmed chapters + open chapter
@@ -283,6 +300,7 @@ export async function recallWithChapterFunnel(
     divergenceSceneIds?: Set<string>,
     filters?: { characters?: string[]; locations?: string[]; items?: string[]; concepts?: string[]; eventTypes?: string[] },
     books?: ArchiveBook[],
+    bookSignals?: Pick<BookSignals, 'pinnedBookIds' | 'plannerBookIds'>,
 ): Promise<{ scenes: string; usedTokens: number }> {
     // ─── Phase 1: Chapter-level 3D scoring ───
     let ranked = rankChapters(chapters, userMessage, recentMessages, npcLedger, semanticFacts);
@@ -290,11 +308,10 @@ export async function recallWithChapterFunnel(
     // ─── Phase 0 (applied to the ranking): zoom into the matching books ───
     if (books && books.length > 0 && ranked.length > 0) {
         const activations = expandActivationsWithFacts(extractContextActivations(userMessage, recentMessages, npcLedger), semanticFacts);
-        const shortlist = shortlistBooks(books, activations);
-        if (shortlist) {
-            const zoomed = ranked.filter(ch => { const b = bookOf(ch, books); return !b || shortlist.has(b.bookId); });
-            if (zoomed.length > 0) ranked = zoomed;
-            console.log(`[Funnel] books ${[...shortlist].join(', ')} → ${zoomed.length} candidate chapter(s)`);
+        const picked = rankBooks(books, activations, { ...bookSignals, sceneHits: semanticCandidateIds });
+        if (picked.length > 0) {
+            ranked = boostBookChapters(ranked, books, picked);
+            console.log(`[Funnel] books ${picked.join(', ')} first`);
         }
     }
 

@@ -30,6 +30,10 @@ export type ArchiveSlice = {
     pinnedChapterIds: string[];
     pinChapter: (chapterId: string) => void;
     clearPinnedChapters: () => void;
+
+    // Pinned Books — unlike chapter pins they stay until unpinned (or the campaign changes)
+    pinnedBookIds: string[];
+    pinBook: (bookId: string) => void;
 };
 
 // ── Slice creator ──────────────────────────────────────────────────────
@@ -42,7 +46,12 @@ export const createArchiveSlice: StateCreator<ArchiveSlice, [], [], ArchiveSlice
     semanticFacts: [],
     setChapters: (chapters) => set({ chapters }),
     books: [],
-    setBooks: (books) => set({ books }),
+    // A pin on a book that is gone (unbound, rolled back) is dropped, so the next
+    // book bound under the same id does not inherit it.
+    setBooks: (books) => set((s) => ({
+        books,
+        pinnedBookIds: s.pinnedBookIds.filter((id) => books.some((b) => b.bookId === id)),
+    })),
     setSemanticFacts: (facts) => set({ semanticFacts: facts }),
 
     timeline: [],
@@ -61,4 +70,11 @@ export const createArchiveSlice: StateCreator<ArchiveSlice, [], [], ArchiveSlice
         return { pinnedChapterIds: pinned };
     }),
     clearPinnedChapters: () => set({ pinnedChapterIds: [] }),
+
+    pinnedBookIds: [],
+    pinBook: (bookId) => set((s) => ({
+        pinnedBookIds: s.pinnedBookIds.includes(bookId)
+            ? s.pinnedBookIds.filter((id) => id !== bookId)
+            : [...s.pinnedBookIds, bookId],
+    })),
 });

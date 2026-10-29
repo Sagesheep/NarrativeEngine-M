@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronUp, Library, RefreshCcw, Unlink, Check, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Library, RefreshCcw, Unlink, Check, Loader2, Pin, PinOff } from 'lucide-react';
 import type { ArchiveBook } from '../../types';
 
 /**
@@ -7,13 +7,16 @@ import type { ArchiveBook } from '../../types';
  * title, era and range; expanded it shows the summary, era editing and its
  * chapters (passed as children).
  */
-export function BookCard({ book, chapterCount, children, isLast, busy, onSetEra, onRegenerate, onUnbind }: {
+export function BookCard({ book, chapterCount, children, isLast, busy, isPinned, onTogglePin, onSetEra, onRegenerate, onUnbind }: {
     book: ArchiveBook;
     chapterCount: number;
     children: ReactNode;
     /** Only the newest book can be unbound — books stay contiguous. */
     isLast: boolean;
     busy: boolean;
+    /** Pinned books stay in recall (and in full in the recap) until unpinned. */
+    isPinned: boolean;
+    onTogglePin: () => void;
     onSetEra: (era: string) => void;
     onRegenerate: () => void;
     onUnbind: () => void;
@@ -23,19 +26,28 @@ export function BookCard({ book, chapterCount, children, isLast, busy, onSetEra,
     const [era, setEra] = useState(book.era ?? '');
 
     return (
-        <div className="border border-amber-500/30 rounded bg-amber-500/5">
-            <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 px-2 py-1.5 text-left">
-                <Library size={14} className="text-amber-400 shrink-0" />
-                <span className="flex-1 min-w-0">
-                    <span className="text-xs font-bold text-text-primary">{book.title}</span>
-                    {book.era && <span className="ml-1.5 text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1 rounded">{book.era}</span>}
-                    {book.summaryPending && <span className="ml-1.5 text-[9px] uppercase font-bold text-ice">summary pending</span>}
-                    <span className="block text-[9px] font-mono text-text-dim">
-                        {book.bookId} · {chapterCount} chapter{chapterCount === 1 ? '' : 's'} · scenes {book.sceneRange[0]}–{book.sceneRange[1]}
+        <div className={`border rounded bg-amber-500/5 ${isPinned ? 'border-amber-400' : 'border-amber-500/30'}`}>
+            <div className="flex items-center">
+                <button onClick={() => setOpen(!open)} className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 text-left">
+                    <Library size={14} className="text-amber-400 shrink-0" />
+                    <span className="flex-1 min-w-0">
+                        <span className="text-xs font-bold text-text-primary">{book.title}</span>
+                        {book.era && <span className="ml-1.5 text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1 rounded">{book.era}</span>}
+                        {book.summaryPending && <span className="ml-1.5 text-[9px] uppercase font-bold text-ice">summary pending</span>}
+                        <span className="block text-[9px] font-mono text-text-dim">
+                            {book.bookId} · {chapterCount} chapter{chapterCount === 1 ? '' : 's'} · scenes {book.sceneRange[0]}–{book.sceneRange[1]}
+                        </span>
                     </span>
-                </span>
-                {open ? <ChevronUp size={14} className="text-text-dim" /> : <ChevronDown size={14} className="text-text-dim" />}
-            </button>
+                    {open ? <ChevronUp size={14} className="text-text-dim" /> : <ChevronDown size={14} className="text-text-dim" />}
+                </button>
+                <button
+                    onClick={onTogglePin}
+                    title={isPinned ? 'Unpin book' : 'Pin book: recall searches it first and the GM keeps its full summary, until you unpin'}
+                    className={`touch-btn p-2 shrink-0 transition-colors ${isPinned ? 'text-amber-400 hover:text-amber-300' : 'text-text-muted hover:text-text-secondary'}`}
+                >
+                    {isPinned ? <PinOff size={13} /> : <Pin size={13} />}
+                </button>
+            </div>
 
             {open && (
                 <div className="px-2 pb-2 space-y-2">

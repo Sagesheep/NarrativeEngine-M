@@ -406,6 +406,7 @@ function rebuildStateFromLiveStore(store: StoreState): TurnState {
         timeline: store.timeline,
         pinnedChapterIds: storeAccess().getState().pinnedChapterIds,
         clearPinnedChapters: () => storeAccess().getState().clearPinnedChapters(),
+        pinnedBookIds: storeAccess().getState().pinnedBookIds,
         divergenceRegister: store.divergenceRegister,
         onStageNpcIds: store.onStageNpcIds,
         npcPressure: store.npcPressure,

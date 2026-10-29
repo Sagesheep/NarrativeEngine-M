@@ -202,19 +202,62 @@ export function enforceBreaks(sorted: ArchiveChapter[], proposed: string[]): str
     return out;
 }
 
-/** Books recall keeps for the chapter step (the open, unbooked chapters always stay). */
+/** Books recall puts first in the chapter step (chapters not yet in a book go first too). */
 export const RECALL_BOOKS = 2;
 
+/** Signals that point a turn at one or more books. Each is optional. */
+export type BookSignals = {
+    /** Books the player pinned in the Chapters tab — always shortlisted, first. */
+    pinnedBookIds?: string[];
+    /** Books the planner picked from the book list (same call that writes the search filters). */
+    plannerBookIds?: string[];
+    /** This turn's scene vector hits; each scene belongs to a book, so the hits roll up for free. */
+    sceneHits?: { id: string; score: number }[] | string[];
+};
+
+/** RRF constant, as in the scene-level fusion (archiveMemory fuseRecall). */
+const BOOK_RRF_K = 60;
+/** A planner pick is a judgement over the whole book list, so it counts double. */
+const PLANNER_WEIGHT = 2;
+/** Scene hits counted per book: rewards a book that holds several strong hits without letting a long book win on volume. */
+const HITS_PER_BOOK = 3;
+
+/** The book holding scene `sceneId`, if any. */
+export function bookOfScene(sceneId: string, books: ArchiveBook[]): ArchiveBook | undefined {
+    const n = sceneNum(sceneId);
+    if (!Number.isFinite(n)) return undefined;
+    return books.find(b => n >= sceneNum(b.sceneRange[0]) && n <= sceneNum(b.sceneRange[1]));
+}
+
 /**
- * Find-then-zoom, step 1: which books is this turn about? Scores each book's
- * keywords and NPCs against the turn's activations, weighting each term by how
- * rare it is across books — by the P5 era a main character appears in every
- * book, so their name alone must not pick one. Deterministic (no AI call): the
- * recall funnel already runs against a short deadline. Null when nothing
- * matches, so the caller falls back to ranking every chapter.
+ * Book ids ranked by this turn's scene vector hits: each book scores the sum of
+ * its best HITS_PER_BOOK hits. A plain id list (no scores) counts by order.
  */
-export function shortlistBooks(books: ArchiveBook[], activations: Record<string, number>, max = RECALL_BOOKS): Set<string> | null {
-    if (books.length === 0) return null;
+export function rankBooksByHits(books: ArchiveBook[], hits: BookSignals['sceneHits']): string[] {
+    if (!hits || hits.length === 0 || books.length === 0) return [];
+    const scored = typeof hits[0] === 'string'
+        ? (hits as string[]).map((id, i) => ({ id, score: 1 / (i + 1) }))
+        : [...(hits as { id: string; score: number }[])].sort((a, b) => b.score - a.score);
+    const perBook = new Map<string, number[]>();
+    for (const hit of scored) {
+        const book = bookOfScene(hit.id, books);
+        if (!book) continue;
+        const list = perBook.get(book.bookId) ?? [];
+        if (list.length < HITS_PER_BOOK) list.push(hit.score);
+        perBook.set(book.bookId, list);
+    }
+    return [...perBook.entries()]
+        .map(([id, scores]) => ({ id, score: scores.reduce((s, x) => s + x, 0) }))
+        .sort((a, b) => b.score - a.score)
+        .map(s => s.id);
+}
+
+/**
+ * Book ids ranked by keyword/NPC overlap with the turn's activations, each term
+ * weighted by how rare it is across books — by the P5 era a main character
+ * appears in every book, so their name alone must not pick one.
+ */
+function rankBooksByKeywords(books: ArchiveBook[], activations: Record<string, number>): string[] {
     const terms = (b: ArchiveBook) => ({
         keywords: uniq(b.keywords.map(t => t.toLowerCase())),
         npcs: uniq(b.npcs.map(t => t.toLowerCase())),
@@ -225,12 +268,40 @@ export function shortlistBooks(books: ArchiveBook[], activations: Record<string,
         for (const term of new Set([...t.keywords, ...t.npcs])) df.set(term, (df.get(term) ?? 0) + 1);
     }
     const idf = (term: string) => Math.log(1 + books.length / (df.get(term) ?? 1));
-    const scored = books.map(b => {
+    return books.map(b => {
         const t = terms(b);
         let score = 0;
         for (const kw of t.keywords) if (activations[kw]) score += activations[kw] * idf(kw);
         for (const npc of t.npcs) if (activations[npc]) score += activations[npc] * 2 * idf(npc);
         return { id: b.bookId, score };
-    }).filter(s => s.score > 0).sort((a, b) => b.score - a.score);
-    return scored.length > 0 ? new Set(scored.slice(0, max).map(s => s.id)) : null;
+    }).filter(s => s.score > 0).sort((a, b) => b.score - a.score).map(s => s.id);
+}
+
+/**
+ * Find-then-zoom, step 1: which books is this turn about? Fuses keyword/NPC
+ * overlap, the scene vector hits rolled up per book, and the planner's picks
+ * (reciprocal-rank fusion), then puts pinned books in front. No AI call of its
+ * own: the recall funnel runs against a short deadline. Returns at most `max`
+ * ids (more only when more books are pinned), best first; empty when no signal
+ * points anywhere, so the caller ranks every chapter as before.
+ */
+export function rankBooks(books: ArchiveBook[], activations: Record<string, number>, signals: BookSignals = {}, max = RECALL_BOOKS): string[] {
+    if (books.length === 0) return [];
+    const known = new Set(books.map(b => b.bookId));
+    const valid = (ids: string[] | undefined) => uniq((ids ?? []).map(id => id.toUpperCase())).filter(id => known.has(id));
+
+    const fused = new Map<string, number>();
+    const add = (ranking: string[], weight: number) => ranking.forEach((id, i) => {
+        fused.set(id, (fused.get(id) ?? 0) + weight / (BOOK_RRF_K + i + 1));
+    });
+    add(rankBooksByKeywords(books, activations), 1);
+    add(rankBooksByHits(books, signals.sceneHits), 1);
+    add(valid(signals.plannerBookIds), PLANNER_WEIGHT);
+
+    const pinned = valid(signals.pinnedBookIds);
+    const ranked = [...fused.entries()]
+        .filter(([id]) => !pinned.includes(id))
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([id]) => id);
+    return [...pinned, ...ranked.slice(0, Math.max(0, max - pinned.length))];
 }

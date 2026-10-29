@@ -36,6 +36,8 @@ export interface LodRenderInput {
     chapters: ArchiveChapter[];
     /** Books replace their chapters in the recap. */
     books?: ArchiveBook[];
+    /** Books the player pinned render as their full summary whatever their age. */
+    pinnedBookIds?: string[];
     archiveIndex: ArchiveIndexEntry[];
     /** Index into `messages` of the last condensed message; -1 means "nothing condensed yet". */
     condensedUpToIndex: number;
@@ -184,7 +186,10 @@ export function renderLodChapters(input: LodRenderInput): LodRenderResult {
     });
     const summarySet = new Set(byEffectiveAge.slice(0, config.summaryChapters).map(c => c.chapterId));
     const summaryBooks = config.summaryBooks ?? DEFAULT_LOD_CONFIG.summaryBooks ?? 2;
-    const bookSummarySet = new Set(eligibleBooks.slice(-summaryBooks).map(b => b.bookId));
+    const bookSummarySet = new Set([
+        ...eligibleBooks.slice(-summaryBooks).map(b => b.bookId),
+        ...eligibleBooks.filter(b => input.pinnedBookIds?.includes(b.bookId)).map(b => b.bookId),
+    ]);
 
     // Books precede their later chapters, so "oldest first" below covers both.
     const items: RecapItem[] = [
@@ -240,12 +245,13 @@ const LOD_ENVELOPE_SUFFIX = '\n[END LOD HISTORY]';
 export function buildChapterRecapBlock(params: {
     chapters: ArchiveChapter[] | undefined;
     books?: ArchiveBook[];
+    pinnedBookIds?: string[];
     archiveIndex: ArchiveIndexEntry[] | undefined;
     messages: ChatMessage[];
     condensedUpToIndex: number | undefined;
     historyBudget: number;
 }): { content: string; tokens: number; tierByChapterId: Record<string, LodTier> } {
-    const { chapters, books, archiveIndex, messages, condensedUpToIndex, historyBudget } = params;
+    const { chapters, books, pinnedBookIds, archiveIndex, messages, condensedUpToIndex, historyBudget } = params;
     const empty = { content: '', tokens: 0, tierByChapterId: {} };
     if (!chapters || chapters.length === 0 || condensedUpToIndex === undefined || condensedUpToIndex < 0) return empty;
 
@@ -256,6 +262,7 @@ export function buildChapterRecapBlock(params: {
     const result = renderLodChapters({
         chapters,
         books,
+        pinnedBookIds,
         archiveIndex: archiveIndex ?? [],
         condensedUpToIndex,
         messages,

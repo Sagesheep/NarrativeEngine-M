@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../../utils/llmCall', () => ({ llmCall: vi.fn() }));
 
-import { reconcileBooks, unbookedSealed, enforceBreaks, shortlistBooks, makeBook, nextBookId, bookOf, BOOK_AUTO_CLOSE_CHAPTERS } from '../bookEngine';
+import { reconcileBooks, unbookedSealed, enforceBreaks, rankBooks, rankBooksByHits, bookOfScene, makeBook, nextBookId, bookOf, BOOK_AUTO_CLOSE_CHAPTERS } from '../bookEngine';
+import { boostBookChapters } from '../archiveChapterEngine';
 import { renderLodChapters } from '../../payload/lodRenderer';
 import type { ArchiveBook, ArchiveChapter, ChatMessage } from '../../../types';
 
@@ -85,7 +86,7 @@ describe('enforceBreaks', () => {
     });
 });
 
-describe('shortlistBooks (find, then zoom)', () => {
+describe('rankBooks (find, then zoom)', () => {
     const books = [
         book('BK01', 1, 10, { npcs: ['Mitsuru', 'Junpei'], keywords: ['tartarus'] }),
         book('BK02', 11, 20, { npcs: ['Mitsuru', 'Chihiro'], keywords: ['student council'] }),
@@ -93,14 +94,55 @@ describe('shortlistBooks (find, then zoom)', () => {
     ];
 
     it('a name in every book does not pick one; a rarer term does', () => {
-        expect(shortlistBooks(books, { mitsuru: 1 }, 1)?.size).toBe(1);
-        expect([...shortlistBooks(books, { mitsuru: 1, kyoto: 1 }, 1)!]).toEqual(['BK03']);
-        expect([...shortlistBooks(books, { mitsuru: 1, chihiro: 1 }, 1)!]).toEqual(['BK02']);
+        expect(rankBooks(books, { mitsuru: 1 }, {}, 1)).toHaveLength(1);
+        expect(rankBooks(books, { mitsuru: 1, kyoto: 1 }, {}, 1)).toEqual(['BK03']);
+        expect(rankBooks(books, { mitsuru: 1, chihiro: 1 }, {}, 1)).toEqual(['BK02']);
     });
 
-    it('null when nothing matches, so recall ranks every chapter', () => {
-        expect(shortlistBooks(books, { akihiko: 1 })).toBeNull();
-        expect(shortlistBooks([], { mitsuru: 1 })).toBeNull();
+    it('empty when nothing points anywhere, so recall ranks every chapter', () => {
+        expect(rankBooks(books, { akihiko: 1 })).toEqual([]);
+        expect(rankBooks([], { mitsuru: 1 }, { pinnedBookIds: ['BK01'] })).toEqual([]);
+    });
+
+    it('scene vector hits roll up to their book with no keyword match', () => {
+        const hits = [{ id: '014', score: 0.71 }, { id: '017', score: 0.64 }, { id: '025', score: 0.69 }];
+        expect(rankBooksByHits(books, hits)).toEqual(['BK02', 'BK03']);
+        expect(rankBooks(books, { akihiko: 1 }, { sceneHits: hits }, 1)).toEqual(['BK02']);
+    });
+
+    it('a book with several strong hits beats one with a single slightly better hit', () => {
+        const hits = [{ id: '025', score: 0.8 }, { id: '003', score: 0.75 }, { id: '005', score: 0.7 }];
+        expect(rankBooksByHits(books, hits)[0]).toBe('BK01');
+    });
+
+    it('scene ids outside every book (loose chapters) are ignored', () => {
+        expect(rankBooksByHits(books, [{ id: '040', score: 0.9 }])).toEqual([]);
+        expect(bookOfScene('040', books)).toBeUndefined();
+        expect(bookOfScene('011', books)?.bookId).toBe('BK02');
+    });
+
+    it('a planner pick outweighs a keyword match on another book', () => {
+        expect(rankBooks(books, { kyoto: 1 }, { plannerBookIds: ['bk01'] }, 1)).toEqual(['BK01']);
+    });
+
+    it('planner ids that are not books are ignored', () => {
+        expect(rankBooks(books, {}, { plannerBookIds: ['BK09', 'CH03'] })).toEqual([]);
+    });
+
+    it('pinned books come first and are kept even past the limit', () => {
+        expect(rankBooks(books, { kyoto: 1 }, { pinnedBookIds: ['BK01'] }, 2)).toEqual(['BK01', 'BK03']);
+        expect(rankBooks(books, { kyoto: 1 }, { pinnedBookIds: ['BK01', 'BK02'] }, 1)).toEqual(['BK01', 'BK02']);
+    });
+});
+
+describe('boostBookChapters (a boost, not a filter)', () => {
+    const books = [book('BK01', 1, 10), book('BK02', 11, 20)];
+    const chapters = run(5); // CH01 1-5, CH02 6-10 (BK01), CH03 11-15, CH04 16-20 (BK02), CH05 open
+
+    it('puts picked-book and loose chapters first, keeps every chapter', () => {
+        const ranked = [chapters[0], chapters[2], chapters[4], chapters[1], chapters[3]];
+        const out = boostBookChapters(ranked, books, ['BK02']).map(c => c.chapterId);
+        expect(out).toEqual(['CH03', 'CH05', 'CH04', 'CH01', 'CH02']);
     });
 });
 
@@ -127,6 +169,13 @@ describe('recap with books', () => {
         expect(r.text).toContain('Middle of BK03');
         expect(r.text).not.toContain('Chapter CH01');
         expect(r.text.indexOf('BK03')).toBeLessThan(r.text.indexOf('CH07'));
+    });
+
+    it('a pinned old book renders its full summary', () => {
+        const books = [book('BK01', 1, 10), book('BK02', 11, 20), book('BK03', 21, 30)];
+        const r = renderLodChapters({ chapters, books, pinnedBookIds: ['BK01'], archiveIndex: [], messages, condensedUpToIndex: condensed, budgetTokens: 100000, config: { summaryChapters: 7, importanceBonus: 0, summaryBooks: 2 } });
+        expect(r.tierByChapterId).toMatchObject({ BK01: 'summary', BK02: 'summary', BK03: 'summary' });
+        expect(r.text).toContain('Middle of BK01');
     });
 
     it('is identical without books to the old chapter-only recap', () => {

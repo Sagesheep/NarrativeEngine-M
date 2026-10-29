@@ -27,10 +27,13 @@ export async function archiveRecallStage(params: {
     semanticArchiveHits: SearchHit[];
     semanticArchiveIds: string[] | undefined;
     plannerFilters: PlannerResult['filters'] | undefined;
+    /** Books the planner picked — one of the book-shortlist signals. */
+    plannerBookIds?: string[];
     utilityLLM: UtilityLLM;
 }): Promise<{ scenes: ArchiveScene[] }> {
-    const { state, finalInput, messages, semanticArchiveHits, semanticArchiveIds, plannerFilters, utilityLLM } = params;
+    const { state, finalInput, messages, semanticArchiveHits, semanticArchiveIds, plannerFilters, plannerBookIds, utilityLLM } = params;
     const { settings, archiveIndex, npcLedger, activeCampaignId, chapters, semanticFacts } = state;
+    const pinnedBooks = (state.books ?? []).filter(b => state.pinnedBookIds?.includes(b.bookId));
 
     let archiveResult = { scenes: [] as ArchiveScene[], usedTokens: 0 };
 
@@ -60,7 +63,8 @@ export async function archiveRecallStage(params: {
             if (!utilityEndpoint) throw new Error('No utility endpoint');
             const funnelPromise = recallWithChapterFunnel(
                 activeCampaignId, chapters, archiveIndex, finalInput, messages, npcLedger, semanticFacts, archiveRecallBudget, utilityEndpoint, undefined, semanticForRecall, funnelAbort.signal,
-                getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), plannerFilters, state.books
+                getDivergenceSceneIds(state.divergenceRegister ?? EMPTY_REGISTER), plannerFilters, state.books,
+                { pinnedBookIds: pinnedBooks.map(b => b.bookId), plannerBookIds },
             );
             let fallbackTimeoutId: ReturnType<typeof setTimeout>;
             const fallbackPromise = new Promise<{ scenes: string; usedTokens: number } | null>(resolve => {
@@ -103,14 +107,20 @@ export async function archiveRecallStage(params: {
 
     const archiveRecall = archiveResult.scenes.length > 0 ? archiveResult.scenes : undefined;
 
-    // ── Pinned Chapter Injection ──
-    if (state.pinnedChapterIds.length > 0 && activeCampaignId) {
+    // ── Pinned Chapter / Book Injection ──
+    // Chapter pins last one turn; book pins stay until unpinned. Only scenes that
+    // match this turn (keyword or vector) come in, so a standing book pin adds
+    // nothing on a turn that has nothing to do with it.
+    if ((state.pinnedChapterIds.length > 0 || pinnedBooks.length > 0) && activeCampaignId) {
         const alreadyCoveredIds = new Set((archiveRecall ?? []).map(s => s.sceneId));
 
-        const pinnedRanges: [string, string][] = state.pinnedChapterIds
-            .map(id => state.chapters.find(c => c.chapterId === id))
-            .filter((c): c is ArchiveChapter => !!c)
-            .map(c => c.sceneRange);
+        const pinnedRanges: [string, string][] = [
+            ...state.pinnedChapterIds
+                .map(id => state.chapters.find(c => c.chapterId === id))
+                .filter((c): c is ArchiveChapter => !!c)
+                .map(c => c.sceneRange),
+            ...pinnedBooks.map(b => b.sceneRange),
+        ];
 
         if (pinnedRanges.length > 0) {
             try {
@@ -131,13 +141,13 @@ export async function archiveRecallStage(params: {
                         ? await fetchArchiveScenes(activeCampaignId, scoredIds, pinnedBudget)
                         : [];
                     archiveResult.scenes = [...(archiveResult.scenes ?? []), ...pinnedScenes];
-                    console.log(`[Pin] Injected ${pinnedScenes.length} scored scenes from ${pinnedRanges.length} pinned chapter(s)`);
+                    console.log(`[Pin] Injected ${pinnedScenes.length} scored scenes from ${pinnedRanges.length} pinned chapter/book range(s)`);
                 }
             } catch (err) {
                 console.warn('[Pin] Failed to fetch pinned scenes:', err);
             }
         }
-        state.clearPinnedChapters();
+        if (state.pinnedChapterIds.length > 0) state.clearPinnedChapters();
     }
 
     return { scenes: archiveResult.scenes };

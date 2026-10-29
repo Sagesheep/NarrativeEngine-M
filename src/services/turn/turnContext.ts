@@ -49,7 +49,7 @@ export async function gatherContext(
     let plannerPromise: Promise<PlannerResult | null> = Promise.resolve(null);
     if (tierAllows(settings.aiTier, 'planner') && plannerEndpoint?.endpoint) {
         const chapterSummary = state.chapters.length > 0 ? state.chapters[state.chapters.length - 1].summary : undefined;
-        plannerPromise = runPlannerCall(finalInput, messages.slice(-8), npcLedger, chapterSummary, utilityLLM, settings.utilityTimeoutSeconds);
+        plannerPromise = runPlannerCall(finalInput, messages.slice(-8), npcLedger, chapterSummary, utilityLLM, settings.utilityTimeoutSeconds, state.books ?? []);
     }
 
     // Every track that needs nothing from another starts now, side by side (desktop
@@ -85,7 +85,7 @@ export async function gatherContext(
         rulesStage({ context: state.context, settings, finalInput, messages, semanticRuleIds }),
         archiveRecallStage({
             state, finalInput, messages,
-            semanticArchiveHits, semanticArchiveIds, plannerFilters, utilityLLM,
+            semanticArchiveHits, semanticArchiveIds, plannerFilters, plannerBookIds: plannerResult?.books, utilityLLM,
         }),
         recommenderPromise,
         deepScanPromise,
@@ -121,6 +121,7 @@ export async function gatherContext(
         divergenceRegister: state.divergenceRegister,
         chapters: state.chapters,
         books: state.books,
+        pinnedBookIds: state.pinnedBookIds,
         archiveIndex: state.archiveIndex,
         semanticallyRecalledNpcIds,
         pinnedExcerpts: state.pinnedExcerpts,

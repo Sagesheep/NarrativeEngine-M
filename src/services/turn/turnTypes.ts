@@ -113,6 +113,8 @@ export type TurnState = {
     timeline: TimelineEvent[];
     pinnedChapterIds: string[];
     clearPinnedChapters: () => void;
+    /** Books the player pinned: always shortlisted for recall, full summary in the recap. */
+    pinnedBookIds?: string[];
     deepContextSearch?: boolean;
     /** Optional user query staged from the Deep Search sheet; undefined = classic keying. */
     deepSearchQuery?: string;

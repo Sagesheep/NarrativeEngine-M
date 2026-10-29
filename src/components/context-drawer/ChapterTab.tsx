@@ -24,12 +24,16 @@ export function ChapterTab() {
         activeCampaignId,
         pinnedChapterIds,
         pinChapter,
+        pinnedBookIds,
+        pinBook,
     } = useAppStore(useShallow(s => ({
         chapters: s.chapters,
         setChapters: s.setChapters,
         activeCampaignId: s.activeCampaignId,
         pinnedChapterIds: s.pinnedChapterIds,
         pinChapter: s.pinChapter,
+        pinnedBookIds: s.pinnedBookIds,
+        pinBook: s.pinBook,
     })));
 
     const context = useAppStore(s => s.context);
@@ -496,6 +500,8 @@ export function ChapterTab() {
                                 chapterCount={inBook.length}
                                 isLast={i === bookGroups.length - 1}
                                 busy={bookBusy === book.bookId}
+                                isPinned={pinnedBookIds.includes(book.bookId)}
+                                onTogglePin={() => pinBook(book.bookId)}
                                 onSetEra={(era) => handleSetEra(book.bookId, era)}
                                 onRegenerate={() => handleRegenerateBook(book.bookId)}
                                 onUnbind={handleUnbindBook}
