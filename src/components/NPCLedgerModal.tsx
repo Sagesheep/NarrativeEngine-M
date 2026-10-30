@@ -3,11 +3,11 @@ import { X, Plus, LayoutGrid, List, ArrowLeft, Sparkles, Images } from 'lucide-r
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/apiClient';
 import {
-  gatherUpdateEvidence, proposeRequestedUpdate, buildAcceptedPatch,
+  gatherUpdateEvidence, proposeRequestedUpdate, proposeCanonUpdate, gatherCanonLore, pickDivergence, buildAcceptedPatch,
   type RequestedUpdateResult, type UpdateProposal,
 } from '../services/npc/npcRequestedUpdate';
 import { isEmbedderReady, semanticSearchScored } from '../services/embedding';
-import { NPCUpdateRequestModal } from './npc-ledger/NPCUpdateRequestModal';
+import { NPCUpdateRequestModal, type UpdateRun } from './npc-ledger/NPCUpdateRequestModal';
 import { runNPCReview, addNpcFromSelection, type NPCReviewCandidate, type NPCReviewCancelled } from '../services/npc';
 
 import type { NPCEntry } from '../types';
@@ -155,18 +155,28 @@ export function NPCLedgerModal() {
     if (selectedId) setUpdateRequestOpen(true);
   };
 
-  const handleProposeUpdate = async (request: string): Promise<RequestedUpdateResult> => {
+  const handleProposeUpdate = async ({ request, mode, strong }: UpdateRun): Promise<RequestedUpdateResult> => {
     const state = useAppStore.getState();
     const npc = state.npcLedger.find(n => n.id === selectedId);
     if (!npc) throw new Error('Character not found.');
     const summarizer = state.getActiveSummarizerEndpoint?.();
-    const provider = (summarizer?.endpoint && summarizer?.modelName)
-      ? summarizer
-      : applyActiveSlotThinking(state.settings, 'summarizer', state.getActiveStoryEndpoint());
+    // Strong = the story model; Standard = the supporting (summarizer) model.
+    const provider = strong
+      ? state.getActiveStoryEndpoint()
+      : (summarizer?.endpoint && summarizer?.modelName)
+        ? summarizer
+        : applyActiveSlotThinking(state.settings, 'summarizer', state.getActiveStoryEndpoint());
     if (!provider) throw new Error('No AI endpoint configured.');
+    const matureMode = state.settings?.matureMode ?? false;
 
     setIsAIUpdating(true);
     try {
+      if (mode === 'canon') {
+        // Campaign divergence outranks canon: what happened here beats the source material.
+        const divergence = pickDivergence(npc, state.divergenceRegister.entries
+          .filter(e => e.enabled !== false).map(e => `${e.text} [#${e.sceneRef}]`));
+        return await proposeCanonUpdate(provider, npc, request, { ...gatherCanonLore(npc, state.loreChunks), divergence }, matureMode);
+      }
       const cid = state.activeCampaignId;
       const sceneIds = state.archiveIndex.map(e => e.sceneId);
       const scenes = cid && sceneIds.length > 0 ? await api.archive.getScenes(cid, sceneIds) : [];
@@ -182,7 +192,7 @@ export function NPCLedgerModal() {
       const evidence = gatherUpdateEvidence({
         npc, request, scenes, semanticSceneIds, facts, recentMessages: state.messages,
       });
-      return await proposeRequestedUpdate(provider, npc, request, evidence, state.settings?.matureMode ?? false);
+      return await proposeRequestedUpdate(provider, npc, request, evidence, matureMode);
     } finally { setIsAIUpdating(false); }
   };
 

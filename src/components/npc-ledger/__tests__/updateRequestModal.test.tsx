@@ -14,6 +14,8 @@ function setup(result: RequestedUpdateResult | Error) {
     return { onPropose, onApply, onClose };
 }
 
+const typeRequest = (text: string) => fireEvent.change(screen.getByRole('textbox'), { target: { value: text } });
+
 describe('NPCUpdateRequestModal', () => {
     it('asks what changed, then applies only the fields the player keeps checked', async () => {
         const { onPropose, onApply } = setup({
@@ -21,11 +23,11 @@ describe('NPCUpdateRequestModal', () => {
             proposals: [proposal('abilities', 'Orpheus', 'Pluto'), proposal('goals', 'Survive', 'Protect the dorm')],
         });
         expect(screen.getByText('What needs to be updated?')).toBeTruthy();
-        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'My Persona is Pluto' } });
+        typeRequest('My Persona is Pluto');
         fireEvent.click(screen.getByText(/Find & propose/));
 
         await waitFor(() => expect(screen.getByText('Pluto')).toBeTruthy());
-        expect(onPropose).toHaveBeenCalledWith('My Persona is Pluto');
+        expect(onPropose).toHaveBeenCalledWith({ request: 'My Persona is Pluto', mode: 'story', strong: false });
         expect(screen.getByText(/No supporting scene found/)).toBeTruthy();
 
         const boxes = screen.getAllByRole('checkbox');
@@ -34,16 +36,35 @@ describe('NPCUpdateRequestModal', () => {
         expect(onApply).toHaveBeenCalledWith([expect.objectContaining({ field: 'abilities' })]);
     });
 
-    it('nothing is saved when there is nothing to change', async () => {
-        const { onApply } = setup({ evidenceFound: true, proposals: [] });
-        fireEvent.click(screen.getByText(/Find & propose/));
+    it('check recent chat runs with no request', async () => {
+        const { onPropose, onApply } = setup({ evidenceFound: true, proposals: [] });
+        fireEvent.click(screen.getByText(/Check recent chat/));
         await waitFor(() => expect(screen.getByText('No changes needed.')).toBeTruthy());
+        expect(onPropose).toHaveBeenCalledWith({ request: '', mode: 'story', strong: false });
         expect(screen.queryByText(/No supporting scene found/)).toBeNull();
         expect(onApply).not.toHaveBeenCalled();
     });
 
+    it('complete from canon defaults to the strong model and can run blank', async () => {
+        const { onPropose } = setup({ evidenceFound: true, proposals: [], warning: 'No lore entry for this character' });
+        fireEvent.click(screen.getByText('Complete from canon'));
+        expect(screen.queryByText(/Check recent chat/)).toBeNull();
+        fireEvent.click(screen.getByText(/^Complete$/));
+        await waitFor(() => expect(screen.getByText(/No lore entry/)).toBeTruthy());
+        expect(onPropose).toHaveBeenCalledWith({ request: '', mode: 'canon', strong: true });
+    });
+
+    it('the model switch is the player\'s call', async () => {
+        const { onPropose } = setup({ evidenceFound: true, proposals: [] });
+        fireEvent.click(screen.getByText('Strong'));
+        typeRequest('lost his sword');
+        fireEvent.click(screen.getByText(/Find & propose/));
+        await waitFor(() => expect(onPropose).toHaveBeenCalledWith({ request: 'lost his sword', mode: 'story', strong: true }));
+    });
+
     it('shows a failure and lets the player retry', async () => {
         const { onPropose } = setup(new Error('No AI endpoint configured.'));
+        typeRequest('x');
         fireEvent.click(screen.getByText(/Find & propose/));
         await waitFor(() => expect(screen.getByText('No AI endpoint configured.')).toBeTruthy());
         fireEvent.click(screen.getByText(/Find & propose/));

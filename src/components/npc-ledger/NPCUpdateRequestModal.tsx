@@ -1,26 +1,35 @@
 import { useEffect, useState } from 'react';
-import { X, Loader2, Sparkles } from 'lucide-react';
+import { X, Loader2, Sparkles, MessageSquare } from 'lucide-react';
 import type { RequestedUpdateResult, UpdateProposal } from '../../services/npc/npcRequestedUpdate';
 import { useBackHandler } from '../../hooks/useBackHandler';
+
+export type UpdateMode = 'story' | 'canon';
+export type UpdateRun = { request: string; mode: UpdateMode; strong: boolean };
 
 type Props = {
     open: boolean;
     npcName: string;
     isPC: boolean;
-    onPropose: (request: string) => Promise<RequestedUpdateResult>;
+    onPropose: (run: UpdateRun) => Promise<RequestedUpdateResult>;
     onApply: (accepted: UpdateProposal[]) => void;
     onClose: () => void;
 };
 
 type Phase = 'input' | 'running' | 'review' | 'error';
 
+const segBtn = (on: boolean) =>
+    `flex-1 px-2 py-1.5 text-[10px] uppercase tracking-wider rounded transition-colors ${on ? 'bg-terminal/20 text-terminal border border-terminal/50' : 'text-text-dim border border-border/50 hover:text-text-primary'}`;
+
 /**
  * "What changed?" — the player names the change, the engine searches the game's
  * history, the AI proposes field edits, and the player confirms each one.
+ * "Match canon" instead rewrites the identity fields from the lore entry / source material.
  */
 export function NPCUpdateRequestModal({ open, npcName, isPC, onPropose, onApply, onClose }: Props) {
     const [phase, setPhase] = useState<Phase>('input');
     const [request, setRequest] = useState('');
+    const [mode, setMode] = useState<UpdateMode>('story');
+    const [strong, setStrong] = useState(false);
     const [result, setResult] = useState<RequestedUpdateResult | null>(null);
     const [checked, setChecked] = useState<Set<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
@@ -36,11 +45,17 @@ export function NPCUpdateRequestModal({ open, npcName, isPC, onPropose, onApply,
 
     if (!open) return null;
 
-    const run = async () => {
+    const pickMode = (m: UpdateMode) => {
+        setMode(m);
+        // Canon recall leans on the model's knowledge of the source: default to the strong one.
+        setStrong(m === 'canon');
+    };
+
+    const run = async (text = request) => {
         setPhase('running');
         setError(null);
         try {
-            const r = await onPropose(request);
+            const r = await onPropose({ request: text, mode, strong });
             setResult(r);
             setChecked(new Set(r.proposals.map(p => p.field)));
             setPhase('review');
@@ -77,18 +92,33 @@ export function NPCUpdateRequestModal({ open, npcName, isPC, onPropose, onApply,
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                     {(phase === 'input' || phase === 'error') && (
                         <>
-                            <label className="block text-xs text-text-primary font-semibold">What needs to be updated?</label>
+                            <div className="flex gap-1.5">
+                                <button onClick={() => pickMode('story')} className={segBtn(mode === 'story')}>What changed</button>
+                                <button onClick={() => pickMode('canon')} className={segBtn(mode === 'canon')}>Complete from canon</button>
+                            </div>
+                            <label className="block text-xs text-text-primary font-semibold">
+                                {mode === 'story' ? 'What needs to be updated?' : 'Anything specific? (optional)'}
+                            </label>
                             <textarea
                                 autoFocus
                                 value={request}
                                 onChange={e => setRequest(e.target.value)}
                                 rows={3}
-                                placeholder={isPC ? 'e.g. "My Persona is Pluto, not Orpheus" or "I got my hair cut short"' : 'e.g. "She lost her sword in the fight at the docks"'}
+                                placeholder={mode === 'canon'
+                                    ? 'Leave blank to complete everything, or e.g. "his Persona and fighting style", "as of the end of the game"'
+                                    : isPC ? 'e.g. "My Persona is Pluto, not Orpheus" or "I got my hair cut short"' : 'e.g. "She lost her sword in the fight at the docks"'}
                                 className="w-full bg-void border border-border rounded px-3 py-2 text-[16px] md:text-sm text-text-primary focus:border-terminal focus:outline-none resize-none"
                             />
                             <p className="text-[10px] text-text-dim/70">
-                                I'll look for it in the story so far. If nothing matches, your words are used as a correction. Leave blank to check the recent chat. Nothing is saved until you confirm.
+                                {mode === 'story'
+                                    ? "I'll look for it in the story so far. If nothing matches, your words are used as a correction. Nothing is saved until you confirm."
+                                    : "Fills in and corrects the whole record from their lore and the source material, but where this campaign has diverged from canon, the campaign wins: looks, powers, personality and axes, voice, traits, drives, triggers, boundaries, combat tier. Status, goals and wants are only filled where empty; items and condition are never touched. Nothing is saved until you confirm."}
                             </p>
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-text-dim uppercase tracking-wider mr-1">Model</span>
+                                <button onClick={() => setStrong(false)} className={segBtn(!strong)}>Standard</button>
+                                <button onClick={() => setStrong(true)} className={segBtn(strong)}>Strong</button>
+                            </div>
                             {phase === 'error' && error && (
                                 <div className="bg-red-900/20 border border-red-500/40 rounded p-3 text-xs text-red-400">{error}</div>
                             )}
@@ -98,7 +128,7 @@ export function NPCUpdateRequestModal({ open, npcName, isPC, onPropose, onApply,
                     {phase === 'running' && (
                         <div className="flex flex-col items-center justify-center py-8 space-y-3">
                             <Loader2 size={24} className="animate-spin text-terminal" />
-                            <div className="text-sm text-text-primary">Searching the story and drafting changes…</div>
+                            <div className="text-sm text-text-primary">{mode === 'canon' ? 'Checking canon and drafting changes…' : 'Searching the story and drafting changes…'}</div>
                         </div>
                     )}
 
@@ -108,6 +138,9 @@ export function NPCUpdateRequestModal({ open, npcName, isPC, onPropose, onApply,
                                 <div className="bg-amber-900/20 border border-amber-500/40 rounded p-2 text-[11px] text-amber-300">
                                     No supporting scene found — these changes come from your request as a correction.
                                 </div>
+                            )}
+                            {result.warning && (
+                                <div className="bg-amber-900/20 border border-amber-500/40 rounded p-2 text-[11px] text-amber-300">{result.warning}</div>
                             )}
                             {result.summary && <p className="text-[11px] text-text-dim italic">{result.summary}</p>}
                             {result.proposals.length === 0 ? (
@@ -145,13 +178,24 @@ export function NPCUpdateRequestModal({ open, npcName, isPC, onPropose, onApply,
                     ) : phase === 'review' ? (
                         <button onClick={onClose} className="px-4 py-2 text-xs text-text-dim hover:text-text-primary uppercase tracking-widest">Close</button>
                     ) : (
-                        <button
-                            onClick={run}
-                            disabled={phase === 'running'}
-                            className="flex items-center gap-1.5 px-4 py-2 bg-terminal text-void text-xs font-bold uppercase tracking-widest rounded disabled:opacity-40"
-                        >
-                            <Sparkles size={12} /> Find &amp; propose
-                        </button>
+                        <>
+                            {mode === 'story' && (
+                                <button
+                                    onClick={() => run('')}
+                                    disabled={phase === 'running'}
+                                    className="flex items-center gap-1.5 px-3 py-2 text-xs text-text-dim hover:text-text-primary uppercase tracking-widest disabled:opacity-40"
+                                >
+                                    <MessageSquare size={12} /> Check recent chat
+                                </button>
+                            )}
+                            <button
+                                onClick={() => run()}
+                                disabled={phase === 'running' || (mode === 'story' && !request.trim())}
+                                className="flex items-center gap-1.5 px-4 py-2 bg-terminal text-void text-xs font-bold uppercase tracking-widest rounded disabled:opacity-40"
+                            >
+                                <Sparkles size={12} /> {mode === 'canon' ? 'Complete' : 'Find & propose'}
+                            </button>
+                        </>
                     )}
                 </div>
             </div>

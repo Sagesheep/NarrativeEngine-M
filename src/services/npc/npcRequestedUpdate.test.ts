@@ -6,7 +6,9 @@ import { llmCall } from '../../utils/llmCall';
 import {
     requestTerms, rankScenes, gatherUpdateEvidence, parseProposals, buildAcceptedPatch,
     buildRequestedUpdatePrompt, proposeRequestedUpdate, type UpdateEvidence,
+    gatherCanonLore, buildCanonUpdatePrompt, proposeCanonUpdate, pickDivergence,
 } from './npcRequestedUpdate';
+import type { LoreChunk } from '../../types';
 
 const mockLlm = vi.mocked(llmCall);
 const provider = { endpoint: 'http://s', modelName: 'deepseek' } as LLMProvider;
@@ -159,6 +161,89 @@ describe('prompt + call', () => {
         expect(r.proposals).toHaveLength(1);
         expect(r.proposals[0]).toMatchObject({ field: 'abilities', after: 'Pluto', source: 'your request' });
         expect(mockLlm.mock.calls[0][0]).toBe(provider);
+    });
+
+    const aki = (over: Partial<NPCEntry> = {}) => pc({
+        id: 'n2', name: 'Akihiko Sanada', isPC: false, canon: true, aliases: 'Akihiko', personality: '', status: 'Alive at the opening',
+        faction: 'SEES', goals: '', signatureKit: { equipment: ['fist weapons', 'Evoker'], abilities: ['Polydeuces'] },
+        personalityHex: { drive: 0, diligence: 0, boldness: 0, warmth: 0, empathy: 0, composure: 0 },
+        canonHex: { drive: 0, diligence: 0, boldness: 0, warmth: 0, empathy: 0, composure: 0 },
+        skillRung: 4, inventory: ['protein bar'], ...over,
+    });
+
+    it('complete from canon: fills the full engine record, lifts the canon lock, spares set play state', async () => {
+        mockLlm.mockResolvedValue(JSON.stringify({ summary: 'Completed from canon.', changes: [
+            { field: 'personality', value: 'Competitive, driven to grow stronger', source: 'canon' },
+            { field: 'personalityHex', value: { drive: 3, diligence: 2, boldness: 2, warmth: 0, empathy: 1, composure: 0 }, source: 'canon' },
+            { field: 'behavioralTriggers', value: [{ keyword: 'Miki', shift: 'goes quiet, then trains harder' }, { keyword: 'Shinjiro', shift: 'pushes too hard' }], source: 'lore' },
+            { field: 'coreWant', value: 'Never be powerless again', source: 'lore' },
+            { field: 'combatTier', value: 'Elite' },
+            { field: 'rungCeiling', value: 'veteran' },
+            { field: 'goals', value: 'Grow stronger', source: 'lore' },   // empty → filled
+            { field: 'faction', value: 'Shadow Operatives' },             // already set → kept
+            { field: 'inventory', value: ['gloves'] },                    // never canon's business
+        ] }));
+        const npc = aki();
+        const r = await proposeCanonUpdate(provider, npc, '', { entry: '### CHARACTER -- Akihiko Sanada', setting: '' });
+        expect(r.proposals.map(p => p.field)).toEqual(['personality', 'personalityHex', 'behavioralTriggers', 'coreWant', 'combatTier', 'rungCeiling', 'goals']);
+        expect(r.warning).toBeUndefined();
+
+        const patch = buildAcceptedPatch(npc, r.proposals);
+        expect(patch).toMatchObject({
+            personality: 'Competitive, driven to grow stronger',
+            personalityHex: { drive: 3, diligence: 2, boldness: 2, warmth: 0, empathy: 1, composure: 0 },
+            canonHex: { drive: 3, diligence: 2, boldness: 2, warmth: 0, empathy: 1, composure: 0 },
+            behavioralTriggers: [{ keyword: 'Miki', shift: 'goes quiet, then trains harder' }, { keyword: 'Shinjiro', shift: 'pushes too hard' }],
+            drives: { coreWant: 'Never be powerless again', sessionWant: '', sceneWant: '' },
+            combatTier: 'elite', rungCeiling: 3, skillRung: 3, goals: 'Grow stronger',
+        });
+    });
+
+    it('complete from canon: campaign divergence outranks canon', async () => {
+        const entries = ['Junpei joined early [#3]', 'Shinjiro survived October 4 [#40]', 'Akihiko quit boxing [#12]', 'Fuuka left SEES [#41]'];
+        const div = pickDivergence({ name: 'Akihiko Sanada', aliases: 'Akihiko' }, entries);
+        // Entries naming him lead, then the newest of the rest.
+        expect(div).toEqual(['Akihiko quit boxing [#12]', 'Fuuka left SEES [#41]', 'Shinjiro survived October 4 [#40]', 'Junpei joined early [#3]']);
+
+        const prompt = buildCanonUpdatePrompt(aki(), '', { entry: 'Shinjiro dies on Oct 4.', setting: '', divergence: div });
+        expect(prompt).toContain('[CAMPAIGN DIVERGENCE — overrides canon]\n- Akihiko quit boxing [#12]');
+        expect(prompt.indexOf('CAMPAIGN DIVERGENCE')).toBeLessThan(prompt.indexOf('[LORE]'));
+        expect(prompt).toContain('the record follows the campaign');
+
+        mockLlm.mockResolvedValue(JSON.stringify({ changes: [{ field: 'storyRelevance', value: 'Shinjiro lived; ...', source: 'campaign' }] }));
+        const r = await proposeCanonUpdate(provider, aki(), '', { entry: 'x', setting: '', divergence: div });
+        expect(r.proposals[0].source).toBe('campaign');
+    });
+
+    it('complete from canon: with no lore it warns that the model is working from memory', async () => {
+        mockLlm.mockResolvedValue(JSON.stringify({ changes: [{ field: 'voice', value: 'Blunt, eager', source: 'canon' }] }));
+        const r = await proposeCanonUpdate(provider, aki(), '', { entry: '', setting: '' });
+        expect(r.proposals[0]).toMatchObject({ field: 'voice', source: 'source material' });
+        expect(r.warning).toBeTruthy();
+    });
+
+    it('complete from canon: gathers the character entry plus every profile chunk about them', () => {
+        const chunk = (over: Partial<LoreChunk>): LoreChunk => ({
+            id: 'c', header: '', content: '', tokens: 0, alwaysInclude: false, triggerKeywords: [], scanDepth: 3,
+            category: 'character', linkedEntities: [], priority: 5, ...over,
+        } as LoreChunk);
+        const chunks = [
+            chunk({ header: '### CHARACTER -- Mitsuru Kirijo', content: '**Aliases:** Mitsuru.\nIce queen.' }),
+            chunk({ header: '### CHARACTER -- Akihiko Sanada', content: '**Aliases:** Akihiko.\n**Element:** electricity' }),
+            chunk({ header: '### [CHUNK: OVERVIEW -- Profile Akihiko Sanada]', content: 'Couldn\'t save his sister Miki.', category: 'world_overview', triggerKeywords: ['Akihiko', 'Sanada'] }),
+            chunk({ header: '## World', content: 'Persona 3: the Dark Hour.', category: 'world_overview', alwaysInclude: true }),
+        ];
+        const lore = gatherCanonLore({ name: 'Akihiko Sanada', aliases: 'Akihiko' }, chunks);
+        expect(lore.entry).toContain('electricity');
+        expect(lore.entry).toContain('sister Miki');
+        expect(lore.entry).not.toContain('Ice queen');
+        expect(lore.entry.indexOf('electricity')).toBeLessThan(lore.entry.indexOf('Miki'));
+        expect(lore.setting).toContain('Dark Hour');
+
+        const prompt = buildCanonUpdatePrompt(aki(), '', lore);
+        expect(prompt).toContain('[LORE]\n### CHARACTER -- Akihiko Sanada');
+        expect(prompt).toContain('Personality axes (personalityHex): drive 0');
+        expect(prompt).not.toContain('Inventory (inventory)');
     });
 
     it('an unusable answer is an error, not a silent no-op', async () => {
