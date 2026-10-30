@@ -735,7 +735,7 @@ export type LoreChunk = {
     summary?: string;           // One-line auto-summary for recommender index
     keywordsEnriched?: boolean; // true after LLM enrichment pass; undefined = not yet enriched
     enrichedVersion?: number;   // ENRICHER_VERSION the chunk was last enriched at; undefined = pre-versioning
-    ragMode?: 'always' | 'keyword' | 'vector'; // explicit mode from <!-- rag: --> hint; authoritative over heuristics
+    ragMode?: 'always' | 'keyword' | 'vector' | 'hybrid'; // explicit mode from <!-- rag: --> hint; authoritative over heuristics; hybrid = vector + keyword
     authoredKeywords?: boolean; // true when the <!-- rag: --> hint supplied triggers; they are used as-is and never auto-extended or LLM-enriched
     activationModes?: ('vector' | 'keyword' | 'always')[]; // undefined = derive from alwaysInclude/ragMode (back-compat)
     modesUserEdited?: boolean; // true after UI toggle; preserved across re-imports

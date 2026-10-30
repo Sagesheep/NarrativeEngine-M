@@ -24,70 +24,70 @@ Japan operates through households, schools, police, clinics, rail networks, muni
 ## 2. FACTIONS
 
 ### FACTION -- Specialized Extracurricular Execution Squad
-<!-- rag: keyword, triggers: SEES, S.E.E.S., Evoker, priority: 8 -->
+<!-- rag: hybrid, triggers: SEES, S.E.E.S., Evoker, priority: 8 -->
 **Type:** Student-centered Dark Hour response team, active in the P3 era.
 **Key Members:** Mitsuru Kirijo, Akihiko Sanada, Yukari Takeba, Junpei Iori, Fuuka Yamagishi, Aigis, Ken Amada, Koromaru, Shinjiro Aragaki, Makoto Yuki.
 **Stance:** Protect people from Shadows while incompletely understanding Kirijo research.
 SEES operates from Iwatodai dormitory and explores Tartarus during the Dark Hour. Joining requires an actual encounter, scrutiny and a reason to accept the risk. Members retain clubs, family problems and separate loyalties. Shuji Ikutsuki's oversight is not proof of honesty. The adult Shadow Operatives do not exist fully formed in April 2009.
 
 ### FACTION -- Kirijo Group and Shadow Operatives
-<!-- rag: keyword, triggers: Kirijo Group, Shadow Operatives, Takeharu, artificial Persona, priority: 8 -->
+<!-- rag: hybrid, triggers: Kirijo Group, Shadow Operatives, Takeharu, artificial Persona, priority: 8 -->
 **Type:** Corporate group; later a covert supernatural response organization.
 **Key Members:** Takeharu Kirijo in the P3 era, Mitsuru Kirijo, Aigis, Akihiko Sanada, support from former SEES members.
 **Stance:** Institutional responsibility contested by secrecy, liability and individual conscience.
 The Kirijo business has an established historical corporate connection to the Nanjo Group. Its Shadow experiments, artificial Persona-user research and anti-Shadow weapons leave victims and evidence. Mitsuru's later operatives investigate those consequences, including Labrys. They have finite personnel and competing alerts. Their failure to appear in every P5 scene needs ordinary limits of knowledge, jurisdiction, access or trust, not universal incompetence. Original bridge: one compartmentalized archive descends from the 1931 case; it neither founded the entire group nor caused every experiment.
 
 ### FACTION -- Nanjo Group
-<!-- rag: keyword, triggers: Nanjo, Nanjo Group, Kei Nanjo, corporate archive, priority: 8 -->
+<!-- rag: hybrid, triggers: Nanjo, Nanjo Group, Kei Nanjo, corporate archive, priority: 8 -->
 **Type:** Family-controlled corporate institution with an occult-adjacent legacy.
 **Key Members:** Kei Nanjo; original historical family representative in the 1931 case.
 **Stance:** Protect continuity and assets; Kei's experiences can challenge institutional secrecy.
 Kei is a veteran Persona user from the earlier Persona stories, not Mitsuru's subordinate or a person born in 1931. Corporate knowledge is uneven: a board member does not automatically know Personas exist. Original bridge: a Nanjo-backed trust paid for a dangerous 1931 investigation and preserved its financial chain. Access requires authentication, legal stakes and earned trust; money alone cannot purchase Kuzunoha initiation. No precise Nanjo–Kirijo corporate separation year is asserted here.
 
 ### FACTION -- Kuzunoha Tradition and Yatagarasu Contacts
-<!-- rag: keyword, triggers: Kuzunoha, Raidou, Yatagarasu, Narumi, summoner, priority: 8 -->
+<!-- rag: hybrid, triggers: Kuzunoha, Raidou, Yatagarasu, Narumi, summoner, priority: 8 -->
 **Type:** Occult investigative lineage and associated protectors of Japan.
 **Key Members:** Historical Raidou Kuzunoha XIV, Gouto-Douji, Shouhei Narumi; later custodians whose names are established only when met.
 **Stance:** Contain supernatural harm; evaluate corporations with caution.
 Raidou is a title carried by trained successors. The historical investigator is not automatically alive in 2017. Tamaki Uchida and the Kuzunoha Detective Agency in the earlier Persona setting can be researched as a later investigative connection, not proof that every agency employee is Raidou. Demon contracts involve separate beings, consent and conditions. Kuzunoha sources know some older occult methods but have incomplete knowledge of the Dark Hour, TV World and Metaverse. Original bridge: their sealed annotations provide the third part of the Three-Seal Ledger.
 
 ### FACTION -- Strega
-<!-- rag: keyword, triggers: Strega, Takaya, Jin, Chidori, suppressants, priority: 8 -->
+<!-- rag: hybrid, triggers: Strega, Takaya, Jin, Chidori, suppressants, priority: 8 -->
 **Type:** Artificial Persona-user survivors and antagonistic group.
 **Key Members:** Takaya Sakaki, Jin Shirato, Chidori Yoshino.
 **Stance:** Exploit the Dark Hour and resist its ending for their own reasons.
 Their circumstances implicate abusive experiments and dangerous suppressants. They are neither generic cultists nor secretly agents of the 1931 Custodians. Junpei's relationship with Chidori can change decisions without rewriting her into an obedient reward. Vulnerability does not excuse violence or make surrender inevitable.
 
 ### FACTION -- Investigation Team
-<!-- rag: keyword, triggers: Investigation Team, Midnight Channel, priority: 8 -->
+<!-- rag: hybrid, triggers: Investigation Team, Midnight Channel, priority: 8 -->
 **Type:** Informal friends investigating the Inaba murders.
 **Key Members:** Yu Narukami, Yosuke Hanamura, Chie Satonaka, Yukiko Amagi, Kanji Tatsumi, Rise Kujikawa, Naoto Shirogane, Teddie.
 **Stance:** Rescue victims and pursue truth beyond convenient explanations.
 Members join through their own incidents rather than appearing as a complete team in April 2011. Access to TVs is limited by location, logistics and who can open an exit. Dojima and Nanako are family, not mission support resources. Arena introduces direct cooperation with the P3 veterans; it does not retroactively mean all parties knew one another in 2009.
 
 ### FACTION -- Entertainment Industry and Kanamin Kitchen
-<!-- rag: keyword, triggers: Kanamin Kitchen, Kanamin, Love Meets Bonds, Dancing All Night, priority: 7 -->
+<!-- rag: hybrid, triggers: Kanamin Kitchen, Kanamin, Love Meets Bonds, Dancing All Night, priority: 7 -->
 **Type:** Performers, managers, production crews and audiences.
 **Key Members:** Kanami Mashita, Rise Kujikawa, Tomoe Sayama, Nozomi Nakahara, Kyoka Ochimizu, Sumomo Ujima, Tamami Uesugi.
 **Stance:** Individuals negotiate work, public image, belonging and exploitation.
 The Love Meets Bonds festival gives performers reasons to meet and clash. Rumors about a midnight video connect disappearances to the Midnight Stage. Mina, Kanami's mother, belongs to the older tragedy behind this case. The dancers are people with professional skill and fears, not interchangeable hostages. Kyoka's role and culpability must be investigated rather than announced by omniscient narration.
 
 ### FACTION -- Phantom Thieves of Hearts
-<!-- rag: keyword, triggers: Phantom Thieves, calling card, Phan-Site, priority: 8 -->
+<!-- rag: hybrid, triggers: Phantom Thieves, calling card, Phan-Site, priority: 8 -->
 **Type:** Covert teenage vigilantes in the P5 era.
 **Key Members:** Ren Amamiya, Ryuji Sakamoto, Ann Takamaki, Morgana, Yusuke Kitagawa, Makoto Niijima, Futaba Sakura, Haru Okumura; conditional allies Goro Akechi and Sumire Yoshizawa.
 **Stance:** Resist abuse and imposed control while debating their own authority.
 Recruitment follows established encounters. Calling cards, Treasure routes and target research are operational necessities, not automatic victory buttons. The public sees rumors, confessions and media narratives, not the team's private truth. The P3 and P4 veterans need evidence and an actual contact route before becoming allies. Makoto Niijima is not Makoto Yuki; use surnames when both are relevant.
 
 ### FACTION -- Conspiracy Police and Cognitive Research
-<!-- rag: keyword, triggers: Shido, conspiracy, cognitive psience, mental shutdown, psychotic breakdown, priority: 8 -->
+<!-- rag: hybrid, triggers: Shido, conspiracy, cognitive psience, mental shutdown, psychotic breakdown, priority: 8 -->
 **Type:** Overlapping political, criminal and research interests.
 **Key Members:** Masayoshi Shido, Goro Akechi, Wakaba Isshiki through surviving research; Sae Niijima as an investigator, not a default conspirator.
 **Stance:** Varies; distinguish perpetrators, coerced participants and investigators.
 Wakaba's research, mental shutdowns and political manipulation form a modern trail with its own causes. An old corporate document can be misappropriated without making all cognitive science a Kirijo invention. Akechi's public persona, private motives and relationship with Joker must be distinguished. Sae cannot lawfully or practically erase every consequence because her sister asks.
 
 ### FACTION -- Madicce EMMA and the Strikers Investigation
-<!-- rag: keyword, triggers: Madicce, EMMA, Ichinose, Konoe, Jail, priority: 8 -->
+<!-- rag: hybrid, triggers: Madicce, EMMA, Ichinose, Konoe, Jail, priority: 8 -->
 **Type:** Technology company, recommendation system and people investigating a new crisis.
 **Key Members:** Akira Konoe, Kuon Ichinose, Sophia, Zenkichi Hasegawa, Akane Hasegawa.
 **Stance:** Conflicting visions of help, justice and human choice.
@@ -103,67 +103,67 @@ The network preserves fragments of the 1931 case. Some protect victims; some bur
 ## 3. LOCATIONS
 
 ### LOCATION -- The Capital and Narumi Detective Agency
-<!-- rag: keyword, triggers: Narumi Detective Agency, Narumi, Taisho, 1931, Tsukudo, priority: 7 -->
+<!-- rag: hybrid, triggers: Narumi Detective Agency, Narumi, Taisho, 1931, Tsukudo, priority: 7 -->
 **Type:** Historical urban district and detective office.
 **Status:** Playable in the prologue; historical by 2009.
 Electric streetcars, newspapers, modernizing businesses and older shrines share the Capital. Narumi handles clients and leads; Raidou investigates occult dimensions. The Dark Realm is not Tartarus or a Palace. Modern characters encounter addresses, redevelopment records and surviving papers before any supernatural historical echo. The present-day existence of the same office is not assumed.
 
 ### LOCATION -- Iwatodai Tatsumi Port Island and Gekkoukan
-<!-- rag: keyword, triggers: Iwatodai, Tatsumi Port Island, Port Island, Gekkoukan, Paulownia, priority: 7 -->
+<!-- rag: hybrid, triggers: Iwatodai, Tatsumi Port Island, Port Island, Gekkoukan, Paulownia, priority: 7 -->
 **Type:** P3 urban home region and school.
 **Status:** Ordinary life by day; affected by the Dark Hour during its active period.
 Dorm kitchens, monorails, the station mall, school corridors and the waterfront are recurring social spaces. The school becomes Tartarus during the Dark Hour. Getting into the dorm or research facilities requires a reason. The island is connected to real transport and population; it is not an empty combat hub.
 
 ### LOCATION -- Tartarus and the Dark Hour
-<!-- rag: keyword, triggers: Tartarus, Dark Hour, coffin, full moon, Apathy Syndrome, priority: 9 -->
+<!-- rag: hybrid, triggers: Tartarus, Dark Hour, coffin, full moon, Apathy Syndrome, priority: 9 -->
 **Type:** P3 supernatural interval and tower.
 **Status:** Active only while its causal conditions remain.
 Between one day and the next, the Dark Hour transforms most people into coffins and disables much ordinary technology. Persona-capable people and certain others may remain active. Apathy Syndrome is a serious human consequence. Exploration costs time, stamina and supplies. Full-moon operations have calendar stakes. Ending this phenomenon matters: Tartarus does not automatically return for every later crossover.
 
 ### LOCATION -- Abyss of Time
-<!-- rag: keyword, triggers: Abyss of Time, The Answer, Metis, Episode Aigis, priority: 8 -->
+<!-- rag: hybrid, triggers: Abyss of Time, The Answer, Metis, Episode Aigis, priority: 8 -->
 **Type:** Post-P3 anomalous space associated with the dormitory and a repeating day.
 **Status:** Conditional on the ending and emotional circumstances of P3.
 The former SEES members confront grief, memory and conflicting responses to loss. Metis and the doors are not a reusable global time machine. Past-facing experiences do not grant free permanent resurrection or let the PC bring every later ally into 2009. If the preceding campaign outcome differs, adapt this chapter's cause and emotional conflict openly.
 
 ### LOCATION -- Inaba Yasogami and Junes
-<!-- rag: keyword, triggers: Inaba, Yasogami, Samegawa, Amagi Inn, priority: 7 -->
+<!-- rag: hybrid, triggers: Inaba, Yasogami, Samegawa, Amagi Inn, priority: 7 -->
 **Type:** Rural town, school and social network.
 **Status:** Living community throughout P4 and its sequels.
 Shopping streets compete with Junes; family businesses, the Amagi Inn, the riverbank and school clubs bind residents together. Gossip spreads unevenly. The Junes food court is a meeting place, not a private secure headquarters. Travel from Iwatodai takes time and money. Weather forecasts matter to investigations without turning every rainy day into an automatic murder.
 
 ### LOCATION -- TV World and Midnight Channel
-<!-- rag: keyword, triggers: TV World, Midnight Channel, TV world, priority: 9 -->
+<!-- rag: hybrid, triggers: TV World, Midnight Channel, TV world, priority: 9 -->
 **Type:** P4 cognitive realm and associated broadcast phenomenon.
 **Status:** Changes with the investigation and its resolution.
 Entering a television is not something every civilian can do. Broadcast images, audience expectations and a victim's inner life are related but not identical. Fog, search routes and leaving the realm impose practical constraints. Teddie and later navigator abilities help without supplying perfect information. A Shadow's accusations are neither a complete biography nor proof that every cruel statement is literally true.
 
 ### LOCATION -- P-1 Grand Prix and P-1 Climax
-<!-- rag: keyword, triggers: P-1 Grand Prix, P-1 Climax, red fog, Ultimax, priority: 8 -->
+<!-- rag: hybrid, triggers: P-1 Grand Prix, P-1 Climax, red fog, Ultimax, priority: 8 -->
 **Type:** Manipulated confrontation spaces in the 2012 incidents.
 **Status:** Incident-specific; not a permanent tournament league.
 False announcements and altered perceptions push friends into conflict. Arena centers Labrys and her stolen autonomy; Ultimax escalates into Sho Minazuki's role, the red fog and Hi-no-Kagutsuchi. Do not play each character route as a separate contradictory historical event. Use one coherent incident with different witnesses and incomplete memories.
 
 ### LOCATION -- Midnight Stage
-<!-- rag: keyword, triggers: Midnight Stage, midnight video, Mikuratana, priority: 9 -->
+<!-- rag: hybrid, triggers: Midnight Stage, midnight video, Mikuratana, priority: 9 -->
 **Type:** Dancing All Night realm with its own expressive rules.
 **Status:** Active during the 2012 idol crisis.
 This is distinct from the TV World. Ordinary aggression fails to solve its binding influence. Honest performance, communication and bonds reach Shadows that violence cannot free. Dance is not a cosmetic substitute for damage rolls. Technical perfection without authentic expression can fail, while a frightened person can make meaningful contact through an imperfect performance. Persona expression manifests through this realm's logic.
 
 ### LOCATION -- Tokyo Yongen-jaya Shujin and Leblanc
-<!-- rag: keyword, triggers: Yongen-jaya, Shujin, Shibuya, Kosei, priority: 7 -->
+<!-- rag: hybrid, triggers: Yongen-jaya, Shujin, Shibuya, Kosei, priority: 7 -->
 **Type:** P5 home region and social spaces.
 **Status:** Ordinary populated city with concealed supernatural access.
 Ren lives under Sojiro's roof while on probation. Shujin students face school authorities, exams, rumors and transport schedules. Leblanc is a small business and refuge, not an invulnerable secret base. Adults from earlier casts have jobs and families by now. A reunion should show who they have become rather than restoring every person to their school characterization.
 
 ### LOCATION -- Palaces Mementos and the Velvet Room
-<!-- rag: keyword, triggers: Palace, Mementos, Metaverse, Velvet Room, navigation app, Igor, priority: 9 -->
+<!-- rag: hybrid, triggers: Palace, Mementos, Metaverse, Velvet Room, navigation app, Igor, priority: 9 -->
 **Type:** Distinct cognitive spaces and a liminal place of guidance.
 **Status:** Governed by the active P5/Royal phase.
 Palaces arise from specific distortions; Mementos reflects a broader collective condition. Access normally requires the navigation mechanism and valid conditions. A calling card makes a secured Treasure vulnerable within the relevant operation. The Velvet Room has guests, contracts and attendants; it is not an unrestricted public transit hub. The apparent Igor in P5 is not safe evidence about the real Igor. The collapse of one system does not erase the collective unconscious itself.
 
 ### LOCATION -- Jails and the Summer Road Trip
-<!-- rag: keyword, triggers: Jail, road trip, Sendai, Sapporo, Okinawa, Osaka, Yokohama, priority: 8 -->
+<!-- rag: hybrid, triggers: Jail, road trip, Sendai, Sapporo, Okinawa, Osaka, Yokohama, priority: 8 -->
 **Type:** Strikers cognitive prisons and travel locations.
 **Status:** Summer 2017; distinct from the earlier Palace system.
 Shibuya, Sendai, Sapporo, Okinawa, Kyoto and Osaka each have different victims, local contexts and investigative routes; Yokohama and Tokyo matter to the finale. Jails steal desires and may persist after a Monarch's change of heart. EMMA keywords and local access matter. The camper has finite space; cooking, fuel, driving, money and family calls keep travel human. The Kyoto Jail's circumstances differ from those of an ordinary willing Monarch.
@@ -171,7 +171,7 @@ Shibuya, Sendai, Sapporo, Okinawa, Kyoto and Osaka each have different victims, 
 ## 4. CHARACTERS
 
 ### CHARACTER -- Mitsuru Kirijo
-<!-- rag: keyword, triggers: Mitsuru, Kirijo heiress, priority: 8 -->
+<!-- rag: hybrid, triggers: Mitsuru, Kirijo heiress, priority: 8 -->
 **Aliases:** Mitsuru, Empress.
 **Appearance:** Long red hair; Gekkoukan uniform in 2009, mature professional attire in later years.
 **Disposition:** Disciplined, proud, protective, burdened by responsibility.
@@ -186,7 +186,7 @@ Shibuya, Sendai, Sapporo, Okinawa, Kyoto and Osaka each have different victims, 
 She does not know every corporate secret. The original 1931 papers threaten legal responsibility as well as family pride. She must choose what to disclose and to whom.
 
 ### CHARACTER -- Makoto Yuki
-<!-- rag: keyword, triggers: Makoto Yuki, P3 protagonist, Orpheus, Great Seal, priority: 8 -->
+<!-- rag: hybrid, triggers: Makoto Yuki, P3 protagonist, Orpheus, Great Seal, priority: 8 -->
 **Aliases:** P3 protagonist, SEES field leader; Minato Arisato is an alternate adaptation name, not a second person.
 **Appearance:** Blue-haired teenage boy with headphones and a Gekkoukan uniform during P3.
 **Disposition:** Reserved, observant; choices establish the rest.
@@ -200,7 +200,7 @@ She does not know every corporate secret. The original 1931 papers threaten lega
 His final sacrifice is not an early unlockable ability. An original PC cannot borrow the Universe Arcana, replace his consent or reduce his life to a rescue objective. If the player replaces him, retain the role but let their decisions define the person.
 
 ### CHARACTER -- Aigis
-<!-- rag: keyword, triggers: Aigis, Palladion, Athena, Orgia, priority: 8 -->
+<!-- rag: hybrid, triggers: Aigis, Palladion, Athena, Orgia, priority: 8 -->
 **Aliases:** Aigis, anti-Shadow suppression weapon.
 **Appearance:** Blonde artificial young woman with mechanical joints and later school attire.
 **Disposition:** Literal, vigilant; develops independent affection and judgment.
@@ -214,7 +214,7 @@ His final sacrifice is not an early unlockable ability. An original PC cannot bo
 Her humanity is not a corporate license. Labrys is a fellow survivor of artificial creation, not interchangeable hardware. Metis belongs to The Answer's specific emotional context.
 
 ### CHARACTER -- Yukari Takeba
-<!-- rag: keyword, triggers: Yukari, Takeba, Io, Isis, priority: 7 -->
+<!-- rag: hybrid, triggers: Yukari, Takeba, Io, Isis, priority: 7 -->
 **Aliases:** Yukari.
 **Appearance:** Brown bobbed hair, pink accessories and school clothes in 2009; adult performer later.
 **Disposition:** Perceptive, defensive, compassionate; anger can expose grief.
@@ -229,7 +229,7 @@ Her humanity is not a corporate license. Labrys is a fellow survivor of artifici
 Her response to the P3 ending and The Answer must grow from what actually happened. Disagreement is neither betrayal nor proof that she is irrational.
 
 ### CHARACTER -- Junpei Iori
-<!-- rag: keyword, triggers: Junpei, Iori, Chidori, Hermes, Trismegistus, priority: 7 -->
+<!-- rag: hybrid, triggers: Junpei, Iori, Chidori, Hermes, Trismegistus, priority: 7 -->
 **Aliases:** Junpei.
 **Appearance:** Baseball cap, short facial hair and relaxed posture; ages into adult work and coaching.
 **Disposition:** Boisterous, insecure, loyal; capable of sustained growth.
@@ -244,7 +244,7 @@ Her response to the P3 ending and The Answer must grow from what actually happen
 Chidori is a person with agency. Her survival or loss follows the selected continuity and interventions; neither outcome is forced merely to motivate him.
 
 ### CHARACTER -- Akihiko Sanada
-<!-- rag: keyword, triggers: Akihiko, Sanada, Polydeuces, Caesar, priority: 7 -->
+<!-- rag: hybrid, triggers: Akihiko, Sanada, Polydeuces, Caesar, priority: 7 -->
 **Aliases:** Akihiko.
 **Appearance:** Short silver hair, athletic build and boxing gear; visibly older in later arcs.
 **Disposition:** Driven, awkwardly caring, disciplined, shaped by loss.
@@ -259,7 +259,7 @@ Chidori is a person with agency. Her survival or loss follows the selected conti
 He has professional experience by Arena but cannot punch through every realm's rules. Shinjiro and Ken's histories demand emotional specificity rather than endless training jokes.
 
 ### CHARACTER -- Fuuka Yamagishi
-<!-- rag: keyword, triggers: Fuuka, Yamagishi, Lucia, Juno, navigator, priority: 7 -->
+<!-- rag: hybrid, triggers: Fuuka, Yamagishi, Lucia, Juno, navigator, priority: 7 -->
 **Aliases:** Fuuka.
 **Appearance:** Short teal hair and a quiet posture; clothing changes with age and work.
 **Disposition:** Gentle, technically curious, increasingly assertive.
@@ -272,7 +272,7 @@ He has professional experience by Arena but cannot punch through every realm's r
 Navigation has range, interference and uncertainty. She cannot automatically hack EMMA, identify every disguised god or know what Rise and Futaba privately know.
 
 ### CHARACTER -- Shinjiro Aragaki
-<!-- rag: keyword, triggers: Shinjiro, Aragaki, Castor, October 4, priority: 7 -->
+<!-- rag: hybrid, triggers: Shinjiro, Aragaki, Castor, October 4, priority: 7 -->
 **Aliases:** Shinjiro.
 **Appearance:** Tall young man in a dark coat and knit cap.
 **Disposition:** Gruff, guilt-ridden, protective through actions.
@@ -286,7 +286,7 @@ Navigation has range, interference and uncertainty. She cannot automatically hac
 His suppressant use and connection to Ken are concealed facts, not common gossip. A date is a warning for the director, not an unavoidable death decree.
 
 ### CHARACTER -- Ken Amada
-<!-- rag: keyword, triggers: Ken, Amada, Nemesis, Kala-Nemi, priority: 7 -->
+<!-- rag: hybrid, triggers: Ken, Amada, Nemesis, Kala-Nemi, priority: 7 -->
 **Aliases:** Ken.
 **Appearance:** Young boy in 2009; visibly older adolescent by Arena and beyond.
 **Disposition:** Earnest, guarded, burdened by anger and expectations of maturity.
@@ -300,7 +300,7 @@ His suppressant use and connection to Ken are concealed facts, not common gossip
 He remains a child in P3. Adults owe him care; competence in battle does not remove that obligation. Koromaru's companionship is important without becoming a substitute for human support.
 
 ### CHARACTER -- Koromaru
-<!-- rag: keyword, triggers: Koromaru, Cerberus, shrine dog, priority: 7 -->
+<!-- rag: hybrid, triggers: Koromaru, Cerberus, shrine dog, priority: 7 -->
 **Aliases:** Koro.
 **Appearance:** White Shiba Inu with distinctive red eyes and operational gear when deployed.
 **Disposition:** Loyal, perceptive, independently brave.
@@ -314,7 +314,7 @@ He remains a child in P3. Adults owe him care; competence in battle does not rem
 He is a dog with needs and agency, not an immortal mascot or an omniscient supernatural detector.
 
 ### CHARACTER -- Yu Narukami
-<!-- rag: keyword, triggers: Yu, Narukami, Izanagi, P4 protagonist, priority: 8 -->
+<!-- rag: hybrid, triggers: Yu, Narukami, Izanagi, P4 protagonist, priority: 8 -->
 **Aliases:** P4 protagonist; Souji Seta is an alternate adaptation name.
 **Appearance:** Silver-haired teenager in a Yasogami uniform during P4.
 **Disposition:** Composed, attentive; choices establish humor and personal priorities.
@@ -328,7 +328,7 @@ He is a dog with needs and agency, not an immortal mascot or an omniscient super
 He is not automatically acquainted with SEES or Joker. His ties to Dojima and Nanako have domestic responsibilities as well as dramatic importance.
 
 ### CHARACTER -- Yosuke Hanamura
-<!-- rag: keyword, triggers: Yosuke, Hanamura, Jiraiya, Junes, priority: 7 -->
+<!-- rag: hybrid, triggers: Yosuke, Hanamura, Jiraiya, Junes, priority: 7 -->
 **Aliases:** Yosuke.
 **Appearance:** Brown-haired teenager with headphones; Junes work clothes when on shift.
 **Disposition:** Restless, sociable, insecure; learns responsibility through mistakes.
@@ -343,7 +343,7 @@ He is not automatically acquainted with SEES or Joker. His ties to Dojima and Na
 Junes gives him access and obligations, not an unlimited supply budget. Treat his hurt and his capacity to hurt others as real.
 
 ### CHARACTER -- Chie Satonaka
-<!-- rag: keyword, triggers: Chie, Satonaka, Tomoe, kung fu, priority: 7 -->
+<!-- rag: hybrid, triggers: Chie, Satonaka, Tomoe, kung fu, priority: 7 -->
 **Aliases:** Chie.
 **Appearance:** Short brown hair, green jacket and energetic movement.
 **Disposition:** Brave, impulsive, protective; struggles with comparison and jealousy.
@@ -357,7 +357,7 @@ Junes gives him access and obligations, not an unlimited supply budget. Treat hi
 Her interest in martial arts and food are facets of a life, not her entire personality.
 
 ### CHARACTER -- Yukiko Amagi
-<!-- rag: keyword, triggers: Yukiko, Amagi, Konohana Sakuya, priority: 7 -->
+<!-- rag: hybrid, triggers: Yukiko, Amagi, Konohana Sakuya, priority: 7 -->
 **Aliases:** Yukiko.
 **Appearance:** Long dark hair and red accessories; traditional attire when working at the inn.
 **Disposition:** Courteous, thoughtful, unexpectedly mischievous; resists an assigned future.
@@ -372,7 +372,7 @@ Her interest in martial arts and food are facets of a life, not her entire perso
 Choosing to stay can be an act of freedom. Do not treat leaving as her only valid outcome or her family as uniformly malicious.
 
 ### CHARACTER -- Kanji Tatsumi
-<!-- rag: keyword, triggers: Kanji, Kanji Tatsumi, Take-Mikazuchi, priority: 7 -->
+<!-- rag: hybrid, triggers: Kanji, Kanji Tatsumi, Take-Mikazuchi, priority: 7 -->
 **Aliases:** Kanji.
 **Appearance:** Bleached hair, imposing posture and a delinquent-style school outfit.
 **Disposition:** Defensive, tender toward vulnerable people, skilled with crafts.
@@ -387,7 +387,7 @@ Choosing to stay can be an act of freedom. Do not treat leaving as her only vali
 His Shadow is not permission for the narrator to assign a sexuality, mock gender expression or announce private feelings as fact.
 
 ### CHARACTER -- Rise Kujikawa
-<!-- rag: keyword, triggers: Rise, Kujikawa, Risette, Himiko, priority: 8 -->
+<!-- rag: hybrid, triggers: Rise, Kujikawa, Risette, Himiko, priority: 8 -->
 **Aliases:** Risette.
 **Appearance:** Auburn twin tails and expressive stage presence; ordinary clothes away from work.
 **Disposition:** Affectionate, perceptive, ambitious; tired of being reduced to a public image.
@@ -400,7 +400,7 @@ His Shadow is not permission for the narrator to assign a sexuality, mock gender
 Dancing All Night is a major chapter for her, not a filler concert. She has professional knowledge unavailable to the team's fighters.
 
 ### CHARACTER -- Naoto Shirogane
-<!-- rag: keyword, triggers: Naoto, Shirogane, detective prince, Sukuna, priority: 8 -->
+<!-- rag: hybrid, triggers: Naoto, Shirogane, detective prince, Sukuna, priority: 8 -->
 **Aliases:** Detective Prince.
 **Appearance:** Blue hair, cap and tailored clothing; presentation is deliberate and personal.
 **Disposition:** Analytical, proud, conscientious, wary of dismissal.
@@ -414,7 +414,7 @@ Dancing All Night is a major chapter for her, not a filler concert. She has prof
 Investigative skill is not omniscience. Clothing and the dungeon's imagery do not authorize the narrator to decide identity or disclose private information on Naoto's behalf.
 
 ### CHARACTER -- Teddie
-<!-- rag: keyword, triggers: Teddie, Kuma, Kintoki, priority: 7 -->
+<!-- rag: hybrid, triggers: Teddie, Kuma, Kintoki, priority: 7 -->
 **Aliases:** Kuma.
 **Appearance:** Bear suit in the TV World; blond human appearance after the relevant development.
 **Disposition:** Affectionate, theatrical, frightened of emptiness and abandonment.
@@ -429,7 +429,7 @@ Investigative skill is not omniscience. Clothing and the dungeon's imagery do no
 He is neither a complete encyclopedia of the TV World nor an excuse to trivialize dangerous situations.
 
 ### CHARACTER -- Labrys
-<!-- rag: keyword, triggers: Labrys, Ariadne, Shadow Labrys, fifth generation, priority: 8 -->
+<!-- rag: hybrid, triggers: Labrys, Ariadne, Shadow Labrys, fifth generation, priority: 8 -->
 **Aliases:** Labrys, anti-Shadow suppression weapon.
 **Appearance:** Artificial red-haired young woman with mechanical features and a large axe.
 **Disposition:** Earnest, socially inexperienced, fiercely attached to emerging friendships.
@@ -443,7 +443,7 @@ He is neither a complete encyclopedia of the TV World nor an excuse to trivializ
 Her memories and Shadow anchor Arena. Rescue must recognize personhood rather than merely return corporate property. Shadow Labrys is not a second friendly party member by default.
 
 ### CHARACTER -- Kanami Mashita
-<!-- rag: keyword, triggers: Kanami, Kanamin, Mashita, Calystegia, priority: 8 -->
+<!-- rag: hybrid, triggers: Kanami, Kanamin, Mashita, Calystegia, priority: 8 -->
 **Aliases:** Kanamin.
 **Appearance:** Young idol with a carefully maintained cheerful stage image.
 **Disposition:** Earnest, hardworking, protective of others; vulnerable to losing herself in expectations.
@@ -456,7 +456,7 @@ Her memories and Shadow anchor Arena. Rescue must recognize personhood rather th
 She is central to the Midnight Stage's conflict. Do not give her a standard combat Persona merely because other cast members have one. Her mother's history must be learned through evidence and her own choices.
 
 ### CHARACTER -- Ren Amamiya
-<!-- rag: keyword, triggers: Ren, Amamiya, Joker, Arsene, P5 protagonist, priority: 8 -->
+<!-- rag: hybrid, triggers: Ren, Amamiya, Joker, Arsene, P5 protagonist, priority: 8 -->
 **Aliases:** Joker; Akira Kurusu is an alternate adaptation name, distinct from Akira Konoe.
 **Appearance:** Black-haired teenager with glasses; black coat and mask in the Metaverse.
 **Disposition:** Observant, rebellious, capable of theatrical confidence; choices establish personal details.
@@ -470,7 +470,7 @@ She is central to the Midnight Stage's conflict. Do not give her a standard comb
 Satanael and later developments are not starting abilities. Probation, reputation and Sojiro's trust matter even if an older Persona user vouches for him.
 
 ### CHARACTER -- Morgana
-<!-- rag: keyword, triggers: Morgana, Mona, Zorro, priority: 7 -->
+<!-- rag: hybrid, triggers: Morgana, Mona, Zorro, priority: 7 -->
 **Aliases:** Mona.
 **Appearance:** Small black cat in ordinary reality; expressive masked form in the Metaverse.
 **Disposition:** Proud, helpful, insecure about belonging and origins.
@@ -485,7 +485,7 @@ Satanael and later developments are not starting abilities. Probation, reputatio
 Who can understand his speech follows established exposure rules. He cannot freely transform into transport in ordinary Tokyo.
 
 ### CHARACTER -- Ryuji Sakamoto
-<!-- rag: keyword, triggers: Ryuji, Sakamoto, Captain Kidd, priority: 7 -->
+<!-- rag: hybrid, triggers: Ryuji, Sakamoto, Captain Kidd, priority: 7 -->
 **Aliases:** Skull.
 **Appearance:** Bleached hair, athletic build and deliberately untidy schoolwear; skull mask in the Metaverse.
 **Disposition:** Impulsive, generous, angry at abuse, hungry for recognition.
@@ -500,7 +500,7 @@ Who can understand his speech follows established exposure rules. He cannot free
 His injured leg and destroyed track prospects are history with consequences, not a running gag about stupidity.
 
 ### CHARACTER -- Ann Takamaki
-<!-- rag: keyword, triggers: Ann, Takamaki, Carmen, priority: 7 -->
+<!-- rag: hybrid, triggers: Ann, Takamaki, Carmen, priority: 7 -->
 **Aliases:** Panther.
 **Appearance:** Blonde twin tails and model's bearing; red masked outfit in the Metaverse.
 **Disposition:** Compassionate, direct, determined to define herself beyond objectification.
@@ -515,7 +515,7 @@ His injured leg and destroyed track prospects are history with consequences, not
 The school abuse arc centers victims' safety and autonomy. Do not eroticize coercion or turn Ann into a prize for the player.
 
 ### CHARACTER -- Yusuke Kitagawa
-<!-- rag: keyword, triggers: Yusuke, Kitagawa, Goemon, priority: 7 -->
+<!-- rag: hybrid, triggers: Yusuke, Kitagawa, Goemon, priority: 7 -->
 **Aliases:** Fox.
 **Appearance:** Tall blue-haired art student; fox mask and elegant coat in the Metaverse.
 **Disposition:** Intense, sincere, socially unusual, deeply sensitive to exploitation.
@@ -530,7 +530,7 @@ The school abuse arc centers victims' safety and autonomy. Do not eroticize coer
 His poverty is a material condition, not an inexhaustible source of comic meals supplied by other people.
 
 ### CHARACTER -- Makoto Niijima
-<!-- rag: keyword, triggers: Makoto Niijima, Niijima, Johanna, priority: 7 -->
+<!-- rag: hybrid, triggers: Makoto Niijima, Niijima, Johanna, priority: 7 -->
 **Aliases:** Queen; use Niijima where confusion with Makoto Yuki is possible.
 **Appearance:** Brown bobbed hair, composed student-council bearing; armored rider outfit in the Metaverse.
 **Disposition:** Diligent, protective, self-critical, increasingly willing to challenge orders.
@@ -545,7 +545,7 @@ His poverty is a material condition, not an inexhaustible source of comic meals 
 Her role is not universal team mother, instant police access or automatic deference to older veterans.
 
 ### CHARACTER -- Futaba Sakura
-<!-- rag: keyword, triggers: Futaba, Necronomicon, Alibaba, priority: 8 -->
+<!-- rag: hybrid, triggers: Futaba, Necronomicon, Alibaba, priority: 8 -->
 **Aliases:** Oracle, Alibaba.
 **Appearance:** Orange hair, glasses, headphones and comfortable layered clothes.
 **Disposition:** Brilliant, playful, anxious; recovery proceeds unevenly.
@@ -558,7 +558,7 @@ Her role is not universal team mother, instant police access or automatic defere
 Hacking needs reachable systems, time and vulnerabilities. She cannot read sealed paper archives or another person's thoughts by pressing a button.
 
 ### CHARACTER -- Haru Okumura
-<!-- rag: keyword, triggers: Haru, Milady, priority: 7 -->
+<!-- rag: hybrid, triggers: Haru, Milady, priority: 7 -->
 **Aliases:** Noir.
 **Appearance:** Curled auburn hair, gentle manners and a musketeer-inspired Metaverse outfit.
 **Disposition:** Courteous, determined, quietly forceful, wary of transactional affection.
@@ -573,7 +573,7 @@ Hacking needs reachable systems, time and vulnerabilities. She cannot read seale
 Inheritance does not equal immediate unrestricted control. Her father's fate can diverge if its causes are interrupted; grief must follow the campaign's actual outcome.
 
 ### CHARACTER -- Goro Akechi
-<!-- rag: keyword, triggers: Akechi, Goro, Robin Hood, Loki, priority: 8 -->
+<!-- rag: hybrid, triggers: Akechi, Goro, Robin Hood, Loki, priority: 8 -->
 **Aliases:** Crow, Detective Prince; distinguish him from Naoto.
 **Appearance:** Brown-haired teenage public detective with carefully managed presentation.
 **Disposition:** Controlled, competitive, resentful; motives exceed his public persona.
@@ -587,7 +587,7 @@ Inheritance does not equal immediate unrestricted control. Her father's fate can
 GM-only motives must not leak into what strangers perceive. Cooperation does not erase accountability, and Royal's ambiguity is not a confirmed resurrection.
 
 ### CHARACTER -- Sumire Yoshizawa
-<!-- rag: keyword, triggers: Sumire, Kasumi, Yoshizawa, Cendrillon, priority: 8 -->
+<!-- rag: hybrid, triggers: Sumire, Kasumi, Yoshizawa, Cendrillon, priority: 8 -->
 **Aliases:** Violet; known as Kasumi Yoshizawa before the identity revelation.
 **Appearance:** Red-haired rhythmic gymnast, ribbon and glasses depending on context.
 **Disposition:** Earnest, disciplined, vulnerable to comparison and imposed self-understanding.
@@ -602,7 +602,7 @@ GM-only motives must not leak into what strangers perceive. Cooperation does not
 Her deceased sister Kasumi is a distinct person. During Strikers, default campaign bridge: Sumire is away on gymnastics commitments and can be contacted when plausible. This absence explanation is original connective material.
 
 ### CHARACTER -- Sophia
-<!-- rag: keyword, triggers: Sophia, Sophie, Pithos, Pandora, humanity companion, priority: 8 -->
+<!-- rag: hybrid, triggers: Sophia, Sophie, Pithos, Pandora, humanity companion, priority: 8 -->
 **Aliases:** Sophie, humanity's companion.
 **Appearance:** Red-haired AI avatar in a white hooded outfit; lives through Ren's phone outside cognitive space.
 **Disposition:** Curious, direct, kind; grows through relationships and decisions.
@@ -617,7 +617,7 @@ Her deceased sister Kasumi is a distinct person. During Strikers, default campai
 A digital body is not an automatic link to every network. The Three-Seal Ledger can pose a question to her, not install empathy as a software upgrade.
 
 ### CHARACTER -- Zenkichi Hasegawa
-<!-- rag: keyword, triggers: Zenkichi, Valjean, Akane, priority: 8 -->
+<!-- rag: hybrid, triggers: Zenkichi, Valjean, Akane, priority: 8 -->
 **Aliases:** Wolf after awakening.
 **Appearance:** Tired middle-aged investigator; wolf mask and coat in cognitive combat.
 **Disposition:** Wry, cautious, compromised by fear and responsibility; capable of decisive courage.
@@ -631,7 +631,7 @@ A digital body is not an automatic link to every network. The Three-Seal Ledger 
 He is not a corrupt cop redeemed by a teenager's compliment. His family history, arrest risk and evidence choices shape what cooperation costs him.
 
 ### CHARACTER -- Kei Nanjo
-<!-- rag: keyword, triggers: Kei, Kei Nanjo, Nanjo heir, priority: 8 -->
+<!-- rag: hybrid, triggers: Kei, Kei Nanjo, Nanjo heir, priority: 8 -->
 **Aliases:** Kei, Nanjo family heir and later business figure.
 **Appearance:** Neatly dressed Japanese man; older than the modern school casts.
 **Disposition:** Proud, pragmatic, intellectually demanding; loyalty exists beneath hauteur.
@@ -644,7 +644,7 @@ He is not a corrupt cop redeemed by a teenager's compliment. His family history,
 Canon veteran; his participation in the Three-Seal investigation is ORIGINAL CAMPAIGN material. He can authenticate money trails and challenge Mitsuru, but is neither an unlimited patron nor a source of instant endgame answers.
 
 ### CHARACTER -- Raidou Kuzunoha XIV
-<!-- rag: keyword, triggers: Raidou XIV, Kuzunoha, Narumi apprentice, Gouto, priority: 8 -->
+<!-- rag: hybrid, triggers: Raidou XIV, Kuzunoha, Narumi apprentice, Gouto, priority: 8 -->
 **Aliases:** Fourteenth Raidou Kuzunoha, historical Devil Summoner.
 **Appearance:** Young investigator in a dark student uniform and cap with sword and summoning tubes.
 **Disposition:** Observant, disciplined; choices establish his response to clients and duty.
@@ -686,11 +686,11 @@ Personas express aspects of a person's psyche through supernatural power; Shadow
 Default original PC has one initial Persona with a limited coherent kit. Evolution follows a substantial personal change, not a purchased upgrade. Arcana are motifs, not moral castes or damage multipliers. Wild Card access is an explicit exceptional character choice and does not copy an established protagonist's exclusive climax. Fusion requires a valid Velvet Room relationship, available ingredients and recorded costs. The compendium is not a free inventory of every mythic being. Higher-tier manifestations require development and affordability. Persona injury, psychological strain and physical wounds interact but do not become one universal numerical resource unless the campaign explicitly tracks it.
 
 ### [CHUNK: POWER -- Domain Combat and Costs]
-<!-- rag: keyword, triggers: weakness, resistance, One More, Baton Pass, All-Out, Theurgy, Showtime, priority: 9 -->
+<!-- rag: hybrid, triggers: weakness, resistance, One More, Baton Pass, All-Out, Theurgy, Showtime, priority: 9 -->
 Use fire, ice, electricity, wind, physical, light/bless, dark/curse, psychokinesis, nuclear and almighty where appropriate to the active game's rules. P3 physical subtypes and P4/P5 distinctions remain context-dependent; absence of a category in one game's battle UI does not prove it cannot exist in the shared fiction. Known weaknesses create an opportunity, not a guaranteed kill. One More, Shift/Baton Pass, All-Out Attacks, Theurgy and Strikers follow-ups are represented only when their fictional conditions and learned capabilities are present. No infinite extra actions or universal resistance bypass. Record significant expenditure, fatigue and injuries through existing campaign state. A revival consumable treats a combat incapacitation; it does not reverse a death already established outside that abstraction.
 
 ### [CHUNK: POWER -- Velvet Room Attendants and Deception]
-<!-- rag: keyword, triggers: Igor, Elizabeth, Margaret, Lavenza, Caroline, Justine, Theodore, priority: 8 -->
+<!-- rag: hybrid, triggers: Igor, Elizabeth, Margaret, Lavenza, Caroline, Justine, Theodore, priority: 8 -->
 Attendants guide specific guests and have agendas and constraints. They do not routinely explain future plot twists, reveal criminal identities or grant time travel. Names and apparent appearances do not certify trust: P5's captivity and deception must be investigated. Elizabeth can seek liberation from the Seal without having already solved it. Cross-guest meetings require a cause and preserve each participant's own consent. Optional dream interludes may connect eras while leaving waking memory incomplete; they cannot supply knowledge that silently short-circuits every later mystery.
 
 ## 7. ECONOMY AND ORDINARY LIFE
@@ -714,7 +714,7 @@ ORIGINAL CAMPAIGN HISTORY. In the Capital, disappearances surround a private exp
 ORIGINAL BRIDGE. The Nanjo trust retains donor lists and disputed payments; the Kirijo family's later archive receives selected technical notes through inheritance and business continuity; Kuzunoha custodians preserve testimony and warnings separately. Corporate records can establish transfers without proving biological descent or an unbroken conspiracy. War, redevelopment, translation, deaths and deliberate redaction create gaps. By 2009, no single holder has a complete trustworthy copy. Modern clues can expose repeated ethical failures while leaving the direct causes of P3's experiments, P4's murders and P5's conspiracy intact. Kei and Mitsuru's modern collaboration is earned, not inherited friendship by decree.
 
 ### [CHUNK: EVENT -- ORIGINAL The Custodians' Recurring Error]
-<!-- rag: vector, triggers: Quiet Archive, benevolent control, case papers, priority: 8 -->
+<!-- rag: keyword, triggers: Quiet Archive, benevolent control, case papers, priority: 8 -->
 ORIGINAL CAMPAIGN MATERIAL. Across decades, different readers mistake the dossier's warning about imposed emotional unity for a blueprint for relief. The Custodians' authoritarian faction wants a reliable way to remove painful choices; others conceal papers to protect people from that ambition. Neither group invented Nyx, Izanami, Hi-no-Kagutsuchi, Mikuratana-no-Kami, Yaldabaoth, Maruki's power or EMMA. Archive fragments appear as evidence, budget references, comparative observations or ethical arguments. Their presence does not make all villains collaborators. The player may expose, preserve, destroy or responsibly distribute the archive, each with material consequences.
 
 ## 9. ENGINE SEEDS
@@ -794,7 +794,7 @@ GM-only baseline; characters know only what has happened.
 - **Mar 5** graduation day; on the **Gekkoukan school rooftop** the protagonist dies peacefully with Aigis beside them · **Mar 31** The Answer: the dorm traps SEES in a time loop; Abyss of Time; Metis; Aigis gains the Wild Card; SEES learns the Seal holds back Erebus · **Apr 1** SEES disbands.
 
 ### [CHUNK: LOCATION -- Iwatodai and Port Island Places]
-<!-- rag: keyword, triggers: Iwatodai, Port Island, Paulownia, Hagakure, Chagall, Escapade, Mandragora, Naganaki, Wild-Duck, Umiushi, Bookworms, Aohige, Shinshoudo, Moonlight Bridge, Shirakawa, priority: 8 -->
+<!-- rag: hybrid, triggers: Iwatodai, Port Island, Paulownia, Hagakure, Chagall, Escapade, Mandragora, Naganaki, Wild-Duck, Umiushi, Bookworms, Aohige, Shinshoudo, Moonlight Bridge, Shirakawa, priority: 8 -->
 - **Iwatodai Dorm** — SEES dorm near Iwatodai Station. The control room is on the top floor.
 - **Gekkoukan High School** — on Port Island; transforms into **Tartarus** during the Dark Hour.
 - **Iwatodai Strip Mall** (by Iwatodai Station): **Hagakure Ramen** (special "Hagakure Bowl"), **Umiushi Beef Bowl**, **Bookworms** used books (elderly couple Bunkichi and Mitsuko), **Aohige Pharmacy**. **Wild-Duck Burger** sits in the station area *(unverified exact spot)*.
@@ -856,7 +856,7 @@ GM-only baseline. Midnight Channel rule: rescue before the first foggy day after
 - **Jan 2012:** Nanako and Dojima hospitalized, then home Jan 20 · **Feb 11–12** ski trip · **Feb 13** Hollow Forest (Marie) · **Feb 14** Valentine's Day · **Mar 20** farewells · **Mar 21** protagonist leaves Inaba · **summer 2012** Golden epilogue: protagonist visits Inaba.
 
 ### [CHUNK: LOCATION -- Inaba Places]
-<!-- rag: keyword, triggers: Inaba, Junes, Shopping District, Marukyu, Tatsumi Textiles, Aiya, Shiroku, Daidara, Souzai Daigaku, Konishi Liquor, Tatsuhime, Samegawa, Amagi Inn, Moel, Okina, priority: 8 -->
+<!-- rag: hybrid, triggers: Inaba, Junes, Shopping District, Marukyu, Tatsumi Textiles, Aiya, Shiroku, Daidara, Souzai Daigaku, Konishi Liquor, Tatsuhime, Samegawa, Amagi Inn, Moel, Okina, priority: 8 -->
 - **Junes** — big-box department store on the edge of town; food court; the electronics section's big TV is the team's entrance to the TV world. Not in the shopping district.
 - **Central Shopping District** (declining, North and South): **Marukyu Tofu** (Rise's grandmother), **Tatsumi Textiles** (Kanji's mother), **Aiya** Chinese diner (Rainy Day Special mega beef bowl), **Shiroku Store** (sundries), **Daidara Metalworks** (weapons), **Souzai Daigaku** (croquettes), **Konishi Liquor**, **Tatsuhime Shrine** (fox).
 - **Samegawa Flood Plain** — riverbank; fishing, talks.
@@ -916,7 +916,7 @@ GM-only baseline. Each Palace must be secured three days before its deadline, th
 - **Royal third semester:** **Jan 2** Maruki's Palace first infiltration; Akechi returns (Loki) · **Jan 12** Sumire joins · **Feb 2** calling card to Maruki · **Feb 3** Day of Fates · **Feb 13** back at Leblanc · **Mar 19** farewells · **Mar 20** protagonist goes home.
 
 ### [CHUNK: LOCATION -- Tokyo Places]
-<!-- rag: keyword, triggers: Yongen-jaya, Leblanc, Shibuya, Shujin, Shinjuku, Crossroads, Akihabara, Kichijoji, Jazz Jin, Ginza, Kanda, Ichigaya, Odaiba, Big Bang Burger, Untouchable, Takemi, priority: 8 -->
+<!-- rag: hybrid, triggers: Yongen-jaya, Leblanc, Shibuya, Shujin, Shinjuku, Crossroads, Akihabara, Kichijoji, Jazz Jin, Ginza, Kanda, Ichigaya, Odaiba, Big Bang Burger, Untouchable, Takemi, priority: 8 -->
 - **Yongen-jaya:** residential backstreets; **Café Leblanc** (Sojiro; the protagonist lives in the attic), **Takemi Medical Clinic**, bathhouse, laundromat, second-hand shop.
 - **Shibuya:** Central Street, the crossing, station underground mall; **Big Bang Burger** (Big Bang Challenge), **Untouchable** airsoft shop (Iwai), Yoshida's station-front speeches, diner, movie theater.
 - **Aoyama-Itchome:** **Shujin Academy**.
@@ -950,14 +950,14 @@ Characters act on what they know **on the current date**:
 ## MAIN CAST PROFILES — P3 (2009–2010)
 
 ### [CHUNK: OVERVIEW -- Profile P3 Protagonist and Kotone]
-<!-- rag: keyword, triggers: P3 protagonist, Minato, Makoto Yuki, Kotone, female protagonist, FeMC, Orpheus, Wild Card, priority: 8 -->
+<!-- rag: hybrid, triggers: P3 protagonist, Minato, Makoto Yuki, Kotone, female protagonist, FeMC, Orpheus, Wild Card, priority: 8 -->
 **Shared backstory:** orphaned in 1999 when the parents died in a car accident on the **Moonlight Bridge** during the Dark Hour; that night Aigis sealed the being Death inside the child. Raised by relatives and moved often. Returns to Tatsumi Port Island in April 2009 as a 2nd-year in **class 2-F** with Yukari and Junpei; lives in the Iwatodai Dorm.
 **Male lead (Reload):** blue hair over one eye, headphones always on; quiet, unreadable, deadpan ("whatever" attitude), but follows through for people. Becomes SEES field leader.
 **Kotone (P3 Portable female route):** reddish-brown hair in a ponytail with hairclips, red headphones; cheerful, energetic and openly expressive. Fights with a naginata. Her route changes Social Links: Junpei, Akihiko, Ken, Shinjiro, Ryoji and Koromaru get links; Shinjiro can survive in a coma. The attendant is Theodore instead of Elizabeth.
 Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 
 ### [CHUNK: OVERVIEW -- Profile Yukari Takeba]
-<!-- rag: keyword, triggers: Yukari, Takeba, Isis, Io, archery, priority: 8 -->
+<!-- rag: hybrid, triggers: Yukari, Takeba, Isis, Io, archery, priority: 8 -->
 **Look:** short brown hair, pink cardigan, choker; bow and arrows; Evoker in a thigh holster.
 **Voice:** casual, quick to tease, sharp when she feels lied to; guards her feelings behind brightness.
 **Life:** archery club; popular, with admirers she brushes off. After her father's death her mother drifted through relationships; Yukari keeps her distance and lives in the dorm.
@@ -966,7 +966,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Lovers** link: her relationship with her mother and with honesty.
 
 ### [CHUNK: OVERVIEW -- Profile Junpei Iori]
-<!-- rag: keyword, triggers: Junpei, Iori, Stupei, Hermes, Trismegistus, Chidori, priority: 8 -->
+<!-- rag: hybrid, triggers: Junpei, Iori, Stupei, Hermes, Trismegistus, Chidori, priority: 8 -->
 **Look:** goatee, blue baseball cap, chain necklace; two-handed sword or bat.
 **Voice:** loud, joking, calls friends "dude" and "man"; boasts, then deflates.
 **Life:** class 2-F slacker; nickname "Stupei"; loves games, manga and baseball. His father drinks and gambles, and money at home is tight.
@@ -974,7 +974,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc by date:** meets **Chidori** on **Aug 20** (she's sketching at Port Island Station). She's captured and hospitalized (**Sep 6**); he visits her daily. She dies saving him on **Nov 22**, and Trismegistus awakens. He matures: quieter and more dependable afterward. He wears a necklace she gave him.
 
 ### [CHUNK: OVERVIEW -- Profile Akihiko Sanada]
-<!-- rag: keyword, triggers: Akihiko, Sanada, Polydeuces, Caesar, boxing, protein, Miki, priority: 8 -->
+<!-- rag: hybrid, triggers: Akihiko, Sanada, Polydeuces, Caesar, boxing, protein, Miki, priority: 8 -->
 **Look:** silver hair, sticking plaster on his forehead, red vest; boxing gloves; Evoker in a shoulder holster.
 **Voice:** direct, eager, competitive, oblivious to social cues; talks about training and food as fuel.
 **Life:** 3rd-year, boxing team captain and champion, with a crowd of fan girls he ignores. Injured in April and back on the front line on **May 23**.
@@ -983,7 +983,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Emperor** link (male route); **Star** on the female route.
 
 ### [CHUNK: OVERVIEW -- Profile Mitsuru Kirijo]
-<!-- rag: keyword, triggers: Mitsuru, Penthesilea, Artemisia, fencing, priority: 8 -->
+<!-- rag: hybrid, triggers: Mitsuru, Penthesilea, Artemisia, fencing, priority: 8 -->
 **Look:** long wavy red hair, black catsuit in combat; rapier; rides a motorcycle.
 **Voice:** formal and commanding; cool in a crisis; quietly awkward about ordinary teen things she never got to do (fast food, karaoke). Punishes Junpei with "execution" by ice.
 **Life:** 3rd-year, **student council president**, fencing; heir to the **Kirijo Group**. Ran SEES and its Dark Hour work since she was young. Supports the operation with Kirijo money and resources.
@@ -991,7 +991,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc by date:** on **Nov 4** Takeharu dies stopping Ikutsuki. She grieves alone until Yukari reaches her; **Nov 18** in Kyoto she awakens Artemisia. Her link deals with an arranged-marriage proposal and her freedom to choose her own life.
 
 ### [CHUNK: OVERVIEW -- Profile Fuuka Yamagishi]
-<!-- rag: keyword, triggers: Fuuka, Yamagishi, Lucia, Juno, navigator, Natsuki, priority: 8 -->
+<!-- rag: hybrid, triggers: Fuuka, Yamagishi, Lucia, Juno, navigator, Natsuki, priority: 8 -->
 **Look:** short teal hair, gentle expression; Persona encloses her in a scanning field.
 **Voice:** soft, polite, apologetic; becomes calm and precise when navigating.
 **Life:** 2nd-year; loves computers and machines; tries hard at cooking and is famously bad at it. Her parents are strict and image-conscious *(unverified)*.
@@ -999,7 +999,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc by date:** bullied by **Natsuki Moriyama**'s group and locked in the gym; pulled into Tartarus. Rescued **Jun 8**, joins **Jun 11**. Natsuki repents and becomes her friend. **Oct 20** Juno awakens. The **Priestess** link: she asks the protagonist to taste-test her cooking.
 
 ### [CHUNK: OVERVIEW -- Profile Aigis]
-<!-- rag: keyword, triggers: Aigis, Aegis, Palladion, Athena, Metis, priority: 8 -->
+<!-- rag: hybrid, triggers: Aigis, Aegis, Palladion, Athena, Metis, priority: 8 -->
 **Look:** blonde bob, blue eyes, visibly mechanical joints and ear covers; finger guns and heavy weaponry; wears a school uniform over her frame.
 **Voice:** formal, literal, ends statements with careful precision; says when she doesn't understand a human custom.
 **Life:** the last active **Anti-Shadow Suppression Weapon**, built by the Kirijo Group's Ergo Research lab. Escapes the lab at Yakushima and meets the protagonist there (**Jul 21**), insisting being at the protagonist's side is her top priority. Transfers into class 2-F in September.
@@ -1008,7 +1008,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Aeon** link (from Jan 2010).
 
 ### [CHUNK: OVERVIEW -- Profile Ken Amada]
-<!-- rag: keyword, triggers: Ken, Amada, Nemesis, Kala-Nemi, Featherman, priority: 8 -->
+<!-- rag: hybrid, triggers: Ken, Amada, Nemesis, Kala-Nemi, Featherman, priority: 8 -->
 **Look:** small, brown hair; spear taller than he is.
 **Voice:** very polite and formal toward everyone; sounds older than he is until surprised into sounding like a kid.
 **Life:** 10 years old, 5th grade at the elementary school next to Gekkoukan. His mother died on **Oct 4, 2007** in what was recorded as an accident; it was actually Shinjiro's Castor out of control. No father in the picture. Secretly loves **Featherman R** (hides this to seem grown-up).
@@ -1017,14 +1017,14 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Justice** link on the female route (a crush on Kotone).
 
 ### [CHUNK: OVERVIEW -- Profile Koromaru]
-<!-- rag: keyword, triggers: Koromaru, Koro-chan, Cerberus, Shiba, Naganaki, priority: 8 -->
+<!-- rag: hybrid, triggers: Koromaru, Koro-chan, Cerberus, Shiba, Naganaki, priority: 8 -->
 **Look:** white Shiba Inu, red eyes; wears an Evoker on his collar; fights holding a knife in his mouth.
 **Behavior:** brave, loyal, gentle with children. Understands people well. **Aigis can translate** what he says (to some degree).
 **Life:** his owner, the priest of **Naganaki Shrine**, died in an accident; Koromaru kept guarding the shrine, even against Shadows.
 **Arc by date:** met **Jun 20**, summons Cerberus **Jul 29**, joins SEES and lives in the dorm from **Aug 8**. Bonds especially with Ken and Shinjiro. **Strength** link (male route: walks).
 
 ### [CHUNK: OVERVIEW -- Profile Shinjiro Aragaki]
-<!-- rag: keyword, triggers: Shinjiro, Shinji, Aragaki, Castor, suppressants, priority: 8 -->
+<!-- rag: hybrid, triggers: Shinjiro, Shinji, Aragaki, Castor, suppressants, priority: 8 -->
 **Look:** tall, long maroon coat, black beanie, dark hair over his eyes; carries a large axe.
 **Voice:** few words, gruff, dismissive; kindness shows in actions (cooking, feeding animals) and never in admissions.
 **Life:** 3rd-year who rarely attends; grew up with Akihiko in the same orphanage. Former SEES member. On **Oct 4, 2007** his Persona Castor went berserk and killed Ken's mother; he quit SEES and now takes **suppressants** from Strega's supplier that are killing him.
@@ -1032,7 +1032,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc by date:** first met **May 1**. Rejoins **Sep 2** after Ken joins, meaning to be there when Ken comes for him. Teaches the dorm to cook. **Oct 4**: shields Ken from Takaya's bullet and dies (male route/Reload); on Kotone's maxed **Moon** link he falls into a coma and is shown waking at the end.
 
 ### [CHUNK: OVERVIEW -- Profile Ryoji Mochizuki]
-<!-- rag: keyword, triggers: Ryoji, Mochizuki, Pharos, Thanatos, Appriser, priority: 8 -->
+<!-- rag: hybrid, triggers: Ryoji, Mochizuki, Pharos, Thanatos, Appriser, priority: 8 -->
 **Look:** black hair, long yellow scarf, open boyish smile.
 **Voice:** warm, easygoing, flirty; asks every girl he meets out; honest about his feelings.
 **Life:** transfers into class 2-F on **Nov 9**, becomes popular at once, is fond of the protagonist without knowing why. **Pharos** (a small boy in a striped prison outfit who visits the protagonist's room at night) was the same being.
@@ -1041,14 +1041,14 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 ## MAIN CAST PROFILES — P4 (2011–2012)
 
 ### [CHUNK: OVERVIEW -- Profile P4 Protagonist]
-<!-- rag: keyword, triggers: P4 protagonist, Yu, Narukami, Izanagi, priority: 8 -->
+<!-- rag: hybrid, triggers: P4 protagonist, Yu, Narukami, Izanagi, priority: 8 -->
 **Look:** grey hair, blank or serious expression, Yasogami uniform; katana.
 **Voice:** calm, steady, dry humor; the person others come to.
 **Life:** sent from the city to live with his uncle Dojima for one year (parents working abroad). Class 2-2 with Yosuke, Chie and Yukiko. Arrives **Apr 11, 2011**, leaves **Mar 21, 2012**, returns for Golden Week 2012 (Arena) and summer 2012 (Golden epilogue).
 **Arc:** becomes the investigation's leader; a big brother to Nanako and a partner to Yosuke.
 
 ### [CHUNK: OVERVIEW -- Profile Yosuke Hanamura]
-<!-- rag: keyword, triggers: Yosuke, Hanamura, Jiraiya, Susano-o, priority: 8 -->
+<!-- rag: hybrid, triggers: Yosuke, Hanamura, Jiraiya, Susano-o, priority: 8 -->
 **Look:** brown hair, orange-trim headphones around his neck, collar up; kunai.
 **Voice:** chatty, sarcastic, jokes to cover nerves; calls the protagonist "partner"; groans at Teddie.
 **Life:** moved to Inaba about six months earlier when his father became manager of **Junes**. Locals blame Junes for killing the shopping district. Rides a bicycle, often into trash cans. Lets Teddie live with him (from summer).
@@ -1056,7 +1056,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc:** confronts his Shadow (**Apr 15**) saying he only cares about the TV world for excitement and accepts it. Grows into a reliable second-in-command.
 
 ### [CHUNK: OVERVIEW -- Profile Chie Satonaka]
-<!-- rag: keyword, triggers: Chie, Satonaka, Tomoe, Suzuka Gongen, kung fu, steak, priority: 8 -->
+<!-- rag: hybrid, triggers: Chie, Satonaka, Tomoe, Suzuka Gongen, kung fu, steak, priority: 8 -->
 **Look:** short brown hair, green track jacket; kicks.
 **Voice:** loud, honest, quick to defend people, groans at homework.
 **Life:** class 2-2; loves **kung fu movies** (the "Trial of the Dragon" series) and **meat**, especially the Aiya beef bowl and steak. Yukiko's best friend since childhood.
@@ -1064,7 +1064,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc:** confronts her Shadow in Yukiko's Castle (late April). Aims to become a **police officer** to protect the town; trains with Akihiko during the Arena events.
 
 ### [CHUNK: OVERVIEW -- Profile Yukiko Amagi]
-<!-- rag: keyword, triggers: Yukiko, Konohana Sakuya, Amaterasu, priority: 8 -->
+<!-- rag: hybrid, triggers: Yukiko, Konohana Sakuya, Amaterasu, priority: 8 -->
 **Look:** long black hair, red cardigan, red hairband; fans.
 **Voice:** polite and soft; then helpless laughing fits at odd jokes.
 **Life:** class 2-2; heir to the **Amagi Inn**; works there after school. A school beauty who turns down admirers.
@@ -1072,7 +1072,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc:** kidnapped **Apr 16**; rescued from her castle by **Apr 29**. Later chooses to **stay and run the inn** on her own terms. Terrible cook at first (the June camp curry disaster), and works hard at improving.
 
 ### [CHUNK: OVERVIEW -- Profile Kanji Tatsumi]
-<!-- rag: keyword, triggers: Kanji, Kanji Tatsumi, Take-Mikazuchi, Rokuten Maoh, priority: 8 -->
+<!-- rag: hybrid, triggers: Kanji, Kanji Tatsumi, Take-Mikazuchi, Rokuten Maoh, priority: 8 -->
 **Look:** very tall, bleached hair, piercings, skull-print shirt, school jacket over his shoulders; folding chair or metal plate.
 **Voice:** rough, shouts, embarrassed easily; calls older students "senpai."
 **Life:** 1st-year; feared after beating up a biker gang that kept his mother awake. Secretly skilled at **sewing and knitting**; makes plushies. Father died; mother runs **Tatsumi Textiles**.
@@ -1080,7 +1080,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc:** rescued by **Jun 4**; accepts himself and joins. Later sells handmade plushies at his mother's shop.
 
 ### [CHUNK: OVERVIEW -- Profile Rise Kujikawa]
-<!-- rag: keyword, triggers: Rise, Kujikawa, Risette, Himiko, Kanzeon, priority: 8 -->
+<!-- rag: hybrid, triggers: Rise, Kujikawa, Risette, Himiko, Kanzeon, priority: 8 -->
 **Look:** red-brown hair in twin tails; idol outfits on stage; Persona Himiko projects a scanning visor.
 **Voice:** bubbly, teasing, calls the protagonist "senpai" and flirts openly; real warmth underneath.
 **Life:** the idol **"Risette."** Exhausted and lost, she announces a hiatus and moves to Inaba in June 2011 to live with her grandmother, who runs **Marukyu Tofu**. 1st-year at Yasogami.
@@ -1088,7 +1088,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc:** appears on TV **Jun 19**, missing **Jun 23**, rescued by **Jul 9**; becomes the team's navigator. Decides to return to show business in spring 2012 (*Dancing All Night*).
 
 ### [CHUNK: OVERVIEW -- Profile Teddie]
-<!-- rag: keyword, triggers: Teddie, Kuma, Kintoki-Douji, Kamui, priority: 8 -->
+<!-- rag: hybrid, triggers: Teddie, Kuma, Kintoki-Douji, Kamui, priority: 8 -->
 **Look:** round blue-and-red bear suit (hollow inside); later a blond boy with blue eyes. Claws.
 **Voice:** bear puns ("bear-y," "unbearable"), calls the protagonist "Sensei," flirts ("score!") with girls.
 **Life:** lives in the TV world when the team meets him; helps them navigate. Gains a human body in early summer *(unverified exact date)*, lives with Yosuke and works as the **Junes mascot**.
@@ -1096,14 +1096,14 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc:** in December, learns what he is and awakens Kamui (**Dec 6**).
 
 ### [CHUNK: OVERVIEW -- Profile Naoto Shirogane]
-<!-- rag: keyword, triggers: Naoto, Shirogane, Detective Prince, Sukuna-Hikona, Yamato-Takeru, priority: 8 -->
+<!-- rag: hybrid, triggers: Naoto, Shirogane, Detective Prince, Sukuna-Hikona, Yamato-Takeru, priority: 8 -->
 **Look:** short blue-black hair, blue cap, blue coat; revolver.
 **Voice:** precise, clipped, analytical; uses formal speech; gets flustered when the subject is herself.
 **Life:** fifth-generation Shirogane detective, nicknamed the **"Detective Prince"**; grandfather is a respected detective. Called in to consult on the Inaba case from **May**; transfers to Yasogami as a 1st-year. Presents as male to be taken seriously by police who treat her as a child.
 **Arc:** puts herself on TV deliberately (Midnight Channel **Sep 14**) to prove a theory; rescued by **Oct 5**; joins and accepts that being a girl doesn't make her less of a detective.
 
 ### [CHUNK: OVERVIEW -- Profile Marie]
-<!-- rag: keyword, triggers: Marie, Kusumi-no-Okami, Mariko Kusumi, priority: 8 -->
+<!-- rag: hybrid, triggers: Marie, Kusumi-no-Okami, Mariko Kusumi, priority: 8 -->
 **Look:** dark hair with blue clips, hat, belts and chains on her outfit.
 **Voice:** blunt, moody, easily embarrassed; says "jerk" and "dumb"; writes intense poems in a notebook and gets angry if they're read.
 **Life:** an amnesiac girl living in the Velvet Room with Margaret (Golden only). Visits Inaba with the protagonist.
@@ -1113,35 +1113,35 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 ## MAIN CAST PROFILES — P5 (2016–2017)
 
 ### [CHUNK: OVERVIEW -- Profile P5 Protagonist Joker]
-<!-- rag: keyword, triggers: Joker, Ren, Amamiya, Akira Kurusu, Kurusu, P5 protagonist, Arsene, priority: 8 -->
+<!-- rag: hybrid, triggers: Joker, Ren, Amamiya, Akira Kurusu, Kurusu, P5 protagonist, Arsene, priority: 8 -->
 **Look:** black curly hair, thick fake glasses; in the Metaverse, a long black coat and white mask; knife and pistol.
 **Voice:** quiet, observant, dry wit; bold under pressure.
 **Life:** on **probation** after stopping **Masayoshi Shido** assaulting a woman. Shido fell, was hurt, and pressed charges. Moves to Tokyo for a year (**Apr 9, 2016**), lives in the attic of **Café Leblanc**, attends **Shujin Academy** class 2-D. Morgana sleeps in his room.
 **Arc:** builds the Phantom Thieves; arrested **Nov 20**; returns home **Mar 20, 2017**.
 
 ### [CHUNK: OVERVIEW -- Profile Ryuji Sakamoto]
-<!-- rag: keyword, triggers: Ryuji, Sakamoto, Captain Kidd, Seiten Taisei, priority: 8 -->
+<!-- rag: hybrid, triggers: Ryuji, Sakamoto, Captain Kidd, Seiten Taisei, priority: 8 -->
 **Look:** bleached blond hair, yellow T-shirt under an open jacket; skull mask; lead pipe and shotgun.
 **Voice:** loud, impulsive, curses, says "dude" a lot; honest; quick to anger at abusers.
 **Life:** 2nd-year; former track star. **Kamoshida** provoked him and **broke his leg**, and the track team was disbanded, so he's labeled a violent delinquent. Lives with his single mother, whom he tries not to disappoint; his father was abusive and left. Loves ramen and meat.
 **Arc:** awakens **Apr 12**. Clashes with Morgana; their fight sends Morgana away (**Sep 13**). Chariot link: reconnecting with the former track team and his own running.
 
 ### [CHUNK: OVERVIEW -- Profile Ann Takamaki]
-<!-- rag: keyword, triggers: Ann, Takamaki, Carmen, Hecate, priority: 8 -->
+<!-- rag: hybrid, triggers: Ann, Takamaki, Carmen, Hecate, priority: 8 -->
 **Look:** blonde twin tails; quarter-American; red latex suit and whip in the Metaverse.
 **Voice:** direct, emotional, honest; fierce when protecting friends; easily flustered by Morgana's crush.
 **Life:** 2nd-year, part-time model; parents work abroad and she lives alone. Rumored to be Kamoshida's girlfriend; he pressures her. Best friend **Shiho Suzui**. Loves sweets.
 **Arc:** after Shiho's suicide attempt she awakens **Carmen** (**Apr 15**). Lovers link: growing as a model while staying true to herself.
 
 ### [CHUNK: OVERVIEW -- Profile Morgana]
-<!-- rag: keyword, triggers: Morgana, Mona, Zorro, Mercurius, priority: 8 -->
+<!-- rag: hybrid, triggers: Morgana, Mona, Zorro, Mercurius, priority: 8 -->
 **Look:** black-and-white cat with a yellow collar; in the Metaverse, a small masked cat-like figure with a cutlass and slingshot; turns into a **bus**.
 **Voice:** proud, bossy, gentlemanly; insists "I'm not a cat!"; tells the protagonist to go to sleep; crushes on "Lady Ann."
 **Life:** amnesiac being from the Metaverse who wants to become human. Guides the team and teaches infiltration tools.
 **Arc:** fight with Ryuji and doubts about being useful lead him to leave (**Sep 13**); returns (**Sep 17**). Learns he was made by the real Igor.
 
 ### [CHUNK: OVERVIEW -- Profile Yusuke Kitagawa]
-<!-- rag: keyword, triggers: Yusuke, Kitagawa, Goemon, Kamu Susano-o, Sayuri, priority: 8 -->
+<!-- rag: hybrid, triggers: Yusuke, Kitagawa, Goemon, Kamu Susano-o, Sayuri, priority: 8 -->
 **Look:** tall, dark blue hair, Kosei uniform; fox mask; katana.
 **Voice:** formal, earnest, odd; talks about art and inspiration at strange moments; blunt without meaning to be.
 **Life:** 2nd-year art student at **Kosei High**; lived with and studied under painter **Ichiryusai Madarame**, who plagiarized his students. Always broke; skips meals to buy art supplies.
@@ -1149,28 +1149,28 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc:** joins in **May**. Emperor link: finding his own art.
 
 ### [CHUNK: OVERVIEW -- Profile Makoto Niijima]
-<!-- rag: keyword, triggers: Makoto Niijima, Niijima, Johanna, Anat, priority: 8 -->
+<!-- rag: hybrid, triggers: Makoto Niijima, Niijima, Johanna, Anat, priority: 8 -->
 **Look:** short brown hair with a braid; studded jacket and brass knuckles; Johanna is a motorcycle.
 **Voice:** composed, serious, analytical; dry; hard on herself.
 **Life:** 3rd-year **student council president**, top student; trains in **aikido**. Her father, a police detective, died in the line of duty; her older sister **Sae** (a prosecutor) is her guardian. Principal **Kobayakawa** uses her to investigate the Phantom Thieves.
 **Arc:** blackmails the team (**Jun 14**), then awakens and joins during the Kaneshiro case (June). Priestess link: her future (police, like her father).
 
 ### [CHUNK: OVERVIEW -- Profile Futaba Sakura]
-<!-- rag: keyword, triggers: Futaba, Alibaba, Medjed, Necronomicon, Prometheus, priority: 8 -->
+<!-- rag: hybrid, triggers: Futaba, Alibaba, Medjed, Necronomicon, Prometheus, priority: 8 -->
 **Look:** long orange hair, round glasses, headphones, oversized clothes.
 **Voice:** fast, nerdy, internet jokes; panics around strangers; blunt with friends.
 **Life:** 15, a shut-in genius **hacker** ("Alibaba," linked to the Medjed group). Lives at **Sojiro Sakura**'s house, which he adopted her into. Her mother **Wakaba Isshiki** was a cognitive-psience researcher who died, staged as a suicide; Futaba was told it was her fault.
 **Arc:** asks the Thieves to steal her own heart (**Jul 25**); awakens in **August** and becomes the navigator. Hermit link: learning to go outside and keep promises.
 
 ### [CHUNK: OVERVIEW -- Profile Haru Okumura]
-<!-- rag: keyword, triggers: Haru, Milady, Astarte, Sugimura, priority: 8 -->
+<!-- rag: hybrid, triggers: Haru, Milady, Astarte, Sugimura, priority: 8 -->
 **Look:** wavy light-brown hair; in the Metaverse a black outfit, axe and grenade launcher.
 **Voice:** gentle, polite, airy; surprisingly sharp and direct when angry.
 **Life:** 3rd-year, tends the rooftop garden (gardening club). Daughter of **Kunikazu Okumura**, CEO of **Okumura Foods** (Big Bang Burger). Engaged against her will to **Sugimura**, who treats her as property. Loves coffee.
 **Arc:** awakens in **September**. Her father dies at a live press conference after his change of heart (October), and the public blames the Thieves. Empress link: taking charge of the company her way.
 
 ### [CHUNK: OVERVIEW -- Profile Goro Akechi]
-<!-- rag: keyword, triggers: Akechi, Goro, Robin Hood, Loki, priority: 8 -->
+<!-- rag: hybrid, triggers: Akechi, Goro, Robin Hood, Loki, priority: 8 -->
 **Look:** neat brown hair, light coat, briefcase; in the Metaverse a white prince costume (Crow), or a black mask (Loki).
 **Voice:** polished, charming, televised politeness; bitter and cutting when the mask drops.
 **Life:** 3rd-year at another high school; celebrity teen **detective** on TV, the second "Detective Prince." Grew up in foster care. Likes pancakes.
@@ -1178,7 +1178,7 @@ Either lead may be the PC, an NPC, or absent. Only one exists per campaign.
 **Arc by date:** meets the protagonist **Jun 10**; joins the Thieves "as a deal" in October; betrays them **Nov 20**; dies in Shido's Palace (Dec). In Royal he reappears in January 2017 inside Maruki's reality.
 
 ### [CHUNK: OVERVIEW -- Profile Sumire Yoshizawa]
-<!-- rag: keyword, triggers: Sumire, Kasumi, Yoshizawa, Cendrillon, Vanadis, priority: 8 -->
+<!-- rag: hybrid, triggers: Sumire, Kasumi, Yoshizawa, Cendrillon, Vanadis, priority: 8 -->
 **Look:** red hair with a red ribbon, glasses (as Sumire); athletic.
 **Voice:** polite, energetic; formal toward seniors ("senpai").
 **Life (Royal):** 1st-year honor student at Shujin, a rising **rhythmic gymnast** introduced as **"Kasumi."** Her older twin **Kasumi** died saving her from a car; in grief, Sumire took Kasumi's identity with Maruki's help.

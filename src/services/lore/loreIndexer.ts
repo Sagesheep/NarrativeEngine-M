@@ -1,4 +1,5 @@
 import type { LoreChunk } from '../../types';
+import { ragModeToActivation } from './loreChunker';
 import { embeddingStorage } from '../storage/embeddingStorage';
 import { getCurrentModelId } from '../embedding';
 import { enqueueProgressiveWithExistingCheck } from '../embedding/embeddingScheduler';
@@ -11,7 +12,7 @@ export type IndexingProgress = {
 
 export function deriveDefaultLoreMeta(chunk: LoreChunk): ('vector' | 'keyword' | 'always')[] {
     if (chunk.activationModes) return chunk.activationModes;
-    if (chunk.ragMode) return [chunk.ragMode];
+    if (chunk.ragMode) return ragModeToActivation(chunk.ragMode);
     if (chunk.alwaysInclude || chunk.priority >= 9) return ['always'];
     return ['vector', 'keyword'];
 }

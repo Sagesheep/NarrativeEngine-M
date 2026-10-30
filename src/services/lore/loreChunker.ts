@@ -175,21 +175,28 @@ export function classifyCategory(header: string, content: string, parentHeader?:
     return 'misc';
 }
 
+type RagMode = NonNullable<LoreChunk['ragMode']>;
+
 type RagHint = {
-    mode: 'always' | 'keyword' | 'vector';
+    mode: RagMode;
     priority?: number;
     triggers: string[];
     secondary: string[];
 };
+
+/** Activation modes a `<!-- rag: -->` hint mode stands for; `hybrid` = keyword OR semantic match. */
+export function ragModeToActivation(mode: RagMode): ('vector' | 'keyword' | 'always')[] {
+    return mode === 'hybrid' ? ['vector', 'keyword'] : [mode];
+}
 
 function parseRagHint(line: string): RagHint | null {
     const match = line.match(/<!--\s*rag:\s*(.+?)\s*-->/i);
     if (!match) return null;
     const body = match[1];
 
-    const modeMatch = body.match(/^(always|keyword|vector)/i);
+    const modeMatch = body.match(/^(always|keyword|vector|hybrid)/i);
     if (!modeMatch) return null;
-    const mode = modeMatch[1].toLowerCase() as 'always' | 'keyword' | 'vector';
+    const mode = modeMatch[1].toLowerCase() as RagMode;
 
     const priorityMatch = body.match(/priority:\s*(\d+)/i);
     const priority = priorityMatch ? parseInt(priorityMatch[1], 10) : undefined;
@@ -295,10 +302,8 @@ export function chunkLoreFile(markdown: string, category?: 'lore' | 'rule'): Lor
             let activationModes: ('vector' | 'keyword' | 'always')[];
             if (ragHint?.mode === 'always' || alwaysInclude) {
                 activationModes = ['always'];
-            } else if (ragHint?.mode === 'keyword') {
-                activationModes = ['keyword'];
-            } else if (ragHint?.mode === 'vector') {
-                activationModes = ['vector'];
+            } else if (ragHint) {
+                activationModes = ragModeToActivation(ragHint.mode);
             } else {
                 // No hint: default to BOTH semantic + keyword so the chunk can be
                 // pulled in by meaning-similarity OR an exact term match.

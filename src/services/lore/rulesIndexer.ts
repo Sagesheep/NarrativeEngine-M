@@ -1,5 +1,5 @@
 import type { LoreChunk, RuleChunkMeta, LLMProvider } from '../../types';
-import { chunkLoreFile } from './loreChunker';
+import { chunkLoreFile, ragModeToActivation } from './loreChunker';
 import { embeddingStorage, EMBEDDING_VERSION } from '../storage/embeddingStorage';
 import { enqueueProgressiveWithExistingCheck } from '../embedding/embeddingScheduler';
 import { llmCall } from '../../utils/llmCall';
@@ -75,7 +75,7 @@ function deriveDefaultMeta(chunk: LoreChunk, existingMeta?: RuleChunkMeta): Rule
     // ragMode from hint is authoritative; fall back to alwaysInclude/priority heuristic
     let defaultModes: ('vector' | 'keyword' | 'always')[];
     if (chunk.ragMode) {
-        defaultModes = [chunk.ragMode];
+        defaultModes = ragModeToActivation(chunk.ragMode);
     } else {
         const isAlwaysCategory = chunk.alwaysInclude || chunk.priority >= 9;
         // No hint: default to BOTH semantic + keyword (matches lore default).
@@ -86,7 +86,7 @@ function deriveDefaultMeta(chunk: LoreChunk, existingMeta?: RuleChunkMeta): Rule
         return {
             ...existingMeta,
             // Re-apply authoritative ragMode if present — overrides stale stored mode
-            activationModes: chunk.ragMode ? [chunk.ragMode] : existingMeta.activationModes,
+            activationModes: chunk.ragMode ? ragModeToActivation(chunk.ragMode) : existingMeta.activationModes,
             triggerKeywords: existingMeta.keywordsUserEdited
                 ? existingMeta.triggerKeywords
                 : merged,

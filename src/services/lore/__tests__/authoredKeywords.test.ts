@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { chunkLoreFile } from '../loreChunker';
+import { chunkLoreFile, ragModeToActivation } from '../loreChunker';
 import { retrieveRelevantLore } from '../loreRetriever';
+import { deriveDefaultLoreMeta } from '../loreIndexer';
 import { computeLoreBudget } from '../../turn/stages/loreStage';
 
 vi.mock('../../../utils/llmCall', () => ({ llmCall: vi.fn() }));
@@ -52,6 +53,38 @@ describe('authored lore triggers', () => {
         expect(prompt).not.toContain('profile-akihiko');
         expect(prompt).toContain('untagged-notes');
         expect(chunks[0].triggerKeywords).toEqual(['Akihiko', 'Sanada']);
+    });
+});
+
+describe('hybrid hint mode', () => {
+    const HYBRID = `### [CHUNK: OVERVIEW -- Profile Akihiko]
+<!-- rag: hybrid, triggers: Akihiko, Sanada, priority: 8 -->
+Boxing captain at Gekkoukan.`;
+
+    it('activates by keyword or vector and keeps authored triggers', () => {
+        const [chunk] = chunkLoreFile(HYBRID);
+        expect(chunk.ragMode).toBe('hybrid');
+        expect(chunk.activationModes).toEqual(['vector', 'keyword']);
+        expect(chunk.triggerKeywords).toEqual(['Akihiko', 'Sanada']);
+        expect(chunk.authoredKeywords).toBe(true);
+    });
+
+    it('is retrieved by a semantic hit alone', () => {
+        const chunks = chunkLoreFile(HYBRID);
+        const hits = retrieveRelevantLore(chunks, 'Who is the boxer?', 5000, [], [chunks[0].id]);
+        expect(hits.map(c => c.id)).toContain(chunks[0].id);
+    });
+
+    it('a keyword-only chunk ignores semantic hits', () => {
+        const chunks = chunkLoreFile(HYBRID.replace('rag: hybrid', 'rag: keyword'));
+        const hits = retrieveRelevantLore(chunks, 'Who is the boxer?', 5000, [], [chunks[0].id]);
+        expect(hits).toHaveLength(0);
+    });
+
+    it('rules and lore indexers expand hybrid to both modes', () => {
+        const [chunk] = chunkLoreFile(HYBRID);
+        expect(deriveDefaultLoreMeta({ ...chunk, activationModes: undefined })).toEqual(['vector', 'keyword']);
+        expect(ragModeToActivation('keyword')).toEqual(['keyword']);
     });
 });
 
