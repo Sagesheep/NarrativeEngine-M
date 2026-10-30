@@ -109,6 +109,27 @@ describe('proposals', () => {
         });
         expect(buildAcceptedPatch(pc(), [])).toEqual({});
     });
+
+    it('covers aliases, inventory, region, element and wants', () => {
+        const npc = pc({ inventory: ['bandage'], wants: { short: ['eat'], medium: ['make a friend'], long: 'Survive' } });
+        const out = parseProposals({ changes: [
+            { field: 'aliases', value: 'Yuki, Leader' }, { field: 'inventory', value: ['bandage', 'Evoker'] },
+            { field: 'region', value: 'Tartarus' }, { field: 'element', value: 'almighty' },
+            { field: 'longWant', value: 'End the Dark Hour' },
+        ] }, npc, ev);
+        expect(out.map(p => p.field)).toEqual(['aliases', 'inventory', 'region', 'element', 'longWant']);
+        expect(buildAcceptedPatch(npc, out)).toEqual({
+            aliases: 'Yuki, Leader', inventory: ['bandage', 'Evoker'], region: 'Tartarus',
+            signatureKit: { equipment: ['Evoker yet to be issued', 'one-handed sword'], abilities: ['Orpheus'], element: 'almighty' },
+            wants: { short: ['eat'], medium: ['make a friend'], long: 'End the Dark Hour' },
+        });
+    });
+
+    it('traits stay inside the vocabulary and never wipe on a bad answer', () => {
+        const [p] = parseProposals({ changes: [{ field: 'traits', value: ['Loyal', 'sparkly', 'loyal', 'proud'] }] }, pc(), ev);
+        expect(p.value).toEqual(['loyal', 'proud']);
+        expect(parseProposals({ changes: [{ field: 'traits', value: ['sparkly'] }] }, pc({ traits: ['loyal'] }), ev)).toEqual([]);
+    });
 });
 
 describe('prompt + call', () => {

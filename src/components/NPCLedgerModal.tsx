@@ -182,7 +182,7 @@ export function NPCLedgerModal() {
       const evidence = gatherUpdateEvidence({
         npc, request, scenes, semanticSceneIds, facts, recentMessages: state.messages,
       });
-      return await proposeRequestedUpdate(provider, npc, request, evidence);
+      return await proposeRequestedUpdate(provider, npc, request, evidence, state.settings?.matureMode ?? false);
     } finally { setIsAIUpdating(false); }
   };
 

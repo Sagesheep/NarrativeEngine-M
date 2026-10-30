@@ -12,6 +12,7 @@ import type { ChatMessage, LLMProvider, NPCEntry } from '../../types';
 import { llmParseJson } from './npcShared';
 import { sanitizeSignatureKit } from './signatureKit';
 import { stripCanonLockedFields } from './npcCanon';
+import { validateTraits, offeredTraitNames } from './npcValidator';
 import { JSON_ONLY_FOOTER, ANCHOR_BEFORE_INPUT, INPUT_DELIMITER, joinPromptSections } from '../infrastructure';
 
 // ── Evidence ──────────────────────────────────────────────────────────────
@@ -117,18 +118,28 @@ export function gatherUpdateEvidence(input: EvidenceInput): UpdateEvidence {
 // ── Proposal ──────────────────────────────────────────────────────────────
 
 export type UpdatableField =
-    | 'appearance' | 'equipment' | 'abilities' | 'condition' | 'status' | 'faction'
-    | 'personality' | 'voice' | 'disposition' | 'goals' | 'storyRelevance' | 'hardBoundaries' | 'softBoundaries';
+    | 'aliases' | 'appearance' | 'appearanceTags' | 'equipment' | 'abilities' | 'element' | 'inventory'
+    | 'condition' | 'status' | 'faction' | 'region' | 'haunt'
+    | 'personality' | 'voice' | 'disposition' | 'traits' | 'exampleOutput'
+    | 'goals' | 'longWant' | 'mediumWants' | 'storyRelevance' | 'hardBoundaries' | 'softBoundaries';
 
 export const FIELD_LABELS: Record<UpdatableField, string> = {
-    appearance: 'Appearance', equipment: 'Equipment', abilities: 'Abilities / powers', condition: 'Condition',
-    status: 'Status', faction: 'Faction', personality: 'Personality', voice: 'Voice', disposition: 'Disposition',
-    goals: 'Goals', storyRelevance: 'Story relevance', hardBoundaries: "Won't do", softBoundaries: 'Resents',
+    aliases: 'Aliases', appearance: 'Appearance', appearanceTags: 'Portrait tags', equipment: 'Equipment',
+    abilities: 'Abilities / powers', element: 'Element', inventory: 'Inventory', condition: 'Condition',
+    status: 'Status', faction: 'Faction', region: 'Region', haunt: 'Usual haunt',
+    personality: 'Personality', voice: 'Voice', disposition: 'Disposition', traits: 'Traits', exampleOutput: 'Example dialogue',
+    goals: 'Goals', longWant: 'Long-term want', mediumWants: 'Medium wants', storyRelevance: 'Story relevance',
+    hardBoundaries: "Won't do", softBoundaries: 'Resents',
 };
 const FIELDS = Object.keys(FIELD_LABELS) as UpdatableField[];
 const STATUSES = ['Alive', 'Deceased', 'Missing', 'Unknown'];
 const CONDITIONS = ['healthy', 'wounded', 'critical', 'dead'];
 const TEXT_MAX = 1000;
+/** List fields and how many items each keeps. */
+const LIST_MAX: Partial<Record<UpdatableField, number>> = {
+    equipment: 8, abilities: 8, inventory: 20, traits: 5, mediumWants: 5, hardBoundaries: 8, softBoundaries: 8,
+};
+const isList = (f: UpdatableField) => f in LIST_MAX;
 
 export type UpdateProposal = {
     field: UpdatableField;
@@ -152,6 +163,11 @@ function currentValue(npc: NPCEntry, field: UpdatableField): string | string[] {
     switch (field) {
         case 'equipment': return npc.signatureKit?.equipment ?? [];
         case 'abilities': return npc.signatureKit?.abilities ?? [];
+        case 'element': return npc.signatureKit?.element ?? '';
+        case 'inventory': return npc.inventory ?? [];
+        case 'traits': return npc.traits ?? [];
+        case 'longWant': return npc.wants?.long ?? '';
+        case 'mediumWants': return npc.wants?.medium ?? [];
         case 'condition': return npc.condition ?? 'healthy';
         case 'hardBoundaries': return npc.hardBoundaries ?? [];
         case 'softBoundaries': return npc.softBoundaries ?? [];
@@ -161,10 +177,16 @@ function currentValue(npc: NPCEntry, field: UpdatableField): string | string[] {
 
 const show = (v: string | string[]): string => Array.isArray(v) ? (v.length ? v.join(', ') : '(none)') : (v.trim() || '(empty)');
 
-function normalizeValue(field: UpdatableField, raw: unknown): string | string[] | undefined {
-    if (field === 'equipment' || field === 'abilities' || field === 'hardBoundaries' || field === 'softBoundaries') {
+function normalizeValue(field: UpdatableField, raw: unknown, matureMode: boolean): string | string[] | undefined {
+    if (field === 'traits') {
         if (!Array.isArray(raw)) return undefined;
-        return raw.map(x => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 8);
+        const traits = validateTraits(raw, matureMode);
+        // Every proposed trait was off-vocabulary: reject rather than wipe the record.
+        return raw.length > 0 && traits.length === 0 ? undefined : traits;
+    }
+    if (isList(field)) {
+        if (!Array.isArray(raw)) return undefined;
+        return raw.map(x => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, LIST_MAX[field]);
     }
     if (typeof raw !== 'string') return undefined;
     const v = raw.replace(/\s+/g, ' ').trim();
@@ -186,7 +208,7 @@ function sourceLabel(raw: unknown, evidence: UpdateEvidence): string {
 }
 
 /** Validate the model's proposals against the record. Unknown fields, bad values and no-ops are dropped. */
-export function parseProposals(raw: unknown, npc: NPCEntry, evidence: UpdateEvidence): UpdateProposal[] {
+export function parseProposals(raw: unknown, npc: NPCEntry, evidence: UpdateEvidence, matureMode = false): UpdateProposal[] {
     if (!raw || typeof raw !== 'object') return [];
     const list = (raw as Record<string, unknown>).changes;
     if (!Array.isArray(list)) return [];
@@ -196,7 +218,7 @@ export function parseProposals(raw: unknown, npc: NPCEntry, evidence: UpdateEvid
         const c = item as Record<string, unknown>;
         const field = c.field as UpdatableField;
         if (!FIELDS.includes(field) || out.some(p => p.field === field)) continue;
-        const value = normalizeValue(field, c.value);
+        const value = normalizeValue(field, c.value, matureMode);
         if (value === undefined) continue;
         const before = currentValue(npc, field);
         if (JSON.stringify(before) === JSON.stringify(value)) continue;
@@ -215,7 +237,7 @@ function recordText(npc: NPCEntry): string {
     return FIELDS.map(f => `${FIELD_LABELS[f]} (${f}): ${show(currentValue(npc, f))}`).join('\n');
 }
 
-export function buildRequestedUpdatePrompt(npc: NPCEntry, request: string, evidence: UpdateEvidence): string {
+export function buildRequestedUpdatePrompt(npc: NPCEntry, request: string, evidence: UpdateEvidence, matureMode = false): string {
     const who = npc.isPC ? "the PLAYER'S OWN CHARACTER" : 'a non-player character';
     const req = request.trim();
     const evidenceText = [
@@ -230,8 +252,8 @@ export function buildRequestedUpdatePrompt(npc: NPCEntry, request: string, evide
 1. ${req ? 'Change ONLY the fields the PLAYER REQUEST is about.' : 'The player left the request blank: change only fields the RECENT CHAT shows actually changed (completed, lasting changes — not plans, hypotheticals or temporary effects).'}
 2. Use the EVIDENCE to get details right (names, items, wording). Cite it in "source": "scene 012", "fact" or "recent".
 3. ${evidence.found ? 'If the evidence is silent on the request, or contradicts it, follow the PLAYER REQUEST anyway — the player is correcting the record. Use "source": "request" and say what conflicted in "note".' : 'NO MATCHING EVIDENCE WAS FOUND. The PLAYER REQUEST is the authority: apply it exactly as stated, with "source": "request".'}
-4. Edit in place: keep every unchanged detail of a field exactly as written. Text fields are the FULL new text; list fields (equipment, abilities, hardBoundaries, softBoundaries) are the FULL new list of short items.
-5. Allowed fields: ${FIELDS.join(', ')}. status ∈ Alive|Deceased|Missing|Unknown. condition ∈ healthy|wounded|critical|dead. Never change anything else.
+4. Edit in place: keep every unchanged detail of a field exactly as written. Text fields are the FULL new text; list fields (${FIELDS.filter(isList).join(', ')}) are the FULL new list of short items.
+5. Allowed fields: ${FIELDS.join(', ')}. status ∈ Alive|Deceased|Missing|Unknown. condition ∈ healthy|wounded|critical|dead. traits: up to 5, ONLY from: ${offeredTraitNames(matureMode).join(', ')}. Never change anything else.
 6. If nothing needs changing, return {"changes": []}.
 
 OUTPUT: {"summary": "one short sentence", "changes": [{"field": "abilities", "value": ["Pluto"], "source": "request", "note": "record said Orpheus"}]}`,
@@ -247,24 +269,29 @@ export async function proposeRequestedUpdate(
     npc: NPCEntry,
     request: string,
     evidence: UpdateEvidence,
+    matureMode = false,
 ): Promise<RequestedUpdateResult> {
-    const parsed = await llmParseJson<Record<string, unknown>>(provider, buildRequestedUpdatePrompt(npc, request, evidence), 'NPC Requested Update');
+    const parsed = await llmParseJson<Record<string, unknown>>(provider, buildRequestedUpdatePrompt(npc, request, evidence, matureMode), 'NPC Requested Update');
     if (!parsed) throw new Error('The AI returned no usable answer.');
     return {
-        proposals: parseProposals(parsed, npc, evidence),
+        proposals: parseProposals(parsed, npc, evidence, matureMode),
         evidenceFound: evidence.found,
         summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 300) : undefined,
     };
 }
 
-/** Patch for the proposals the player accepted (equipment/abilities merge into the kit). */
+/** Patch for the proposals the player accepted (kit fields merge into the kit, wants into wants). */
 export function buildAcceptedPatch(npc: NPCEntry, accepted: UpdateProposal[]): Partial<NPCEntry> {
     const patch: Record<string, unknown> = {};
     const kit: Record<string, unknown> = {};
+    const wants: Record<string, unknown> = {};
     for (const p of accepted) {
-        if (p.field === 'equipment' || p.field === 'abilities') kit[p.field] = p.value;
+        if (p.field === 'equipment' || p.field === 'abilities' || p.field === 'element') kit[p.field] = p.value;
+        else if (p.field === 'longWant') wants.long = p.value;
+        else if (p.field === 'mediumWants') wants.medium = p.value;
         else patch[p.field] = p.value;
     }
     if (Object.keys(kit).length > 0) patch.signatureKit = sanitizeSignatureKit(kit, npc.signatureKit);
+    if (Object.keys(wants).length > 0) patch.wants = { short: npc.wants?.short ?? [], medium: npc.wants?.medium ?? [], long: npc.wants?.long ?? '', ...wants };
     return patch as Partial<NPCEntry>;
 }
