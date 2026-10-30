@@ -126,6 +126,7 @@ export type AppSettings = {
     autoArchiveStaleNPCsTurns?: number; // 0 disables auto-archive; default 15
 
     rulesBudgetPct?: number;        // fraction of contextLimit for rules RAG, default 0.10
+    loreBudgetTokens?: number;      // max world-lore tokens per turn; 0/undefined = auto (5% of contextLimit, min 1200)
     autoGenerateRuleKeywords?: boolean; // default true; false = header+bold derivation only
     embeddingModel?: 'standard' | 'high'; // default 'standard'
     matureMode?: boolean;            // default false; gates mature-tier NPC traits/wants (NPC Agency Phase 2)
@@ -735,6 +736,7 @@ export type LoreChunk = {
     keywordsEnriched?: boolean; // true after LLM enrichment pass; undefined = not yet enriched
     enrichedVersion?: number;   // ENRICHER_VERSION the chunk was last enriched at; undefined = pre-versioning
     ragMode?: 'always' | 'keyword' | 'vector'; // explicit mode from <!-- rag: --> hint; authoritative over heuristics
+    authoredKeywords?: boolean; // true when the <!-- rag: --> hint supplied triggers; they are used as-is and never auto-extended or LLM-enriched
     activationModes?: ('vector' | 'keyword' | 'always')[]; // undefined = derive from alwaysInclude/ragMode (back-compat)
     modesUserEdited?: boolean; // true after UI toggle; preserved across re-imports
     embeddedModelId?: string; // last model id this chunk was embedded with (diff aid)

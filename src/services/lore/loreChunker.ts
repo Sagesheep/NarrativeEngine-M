@@ -318,11 +318,12 @@ export function chunkLoreFile(markdown: string, category?: 'lore' | 'rule'): Lor
                 : assignPriority(autoCategory, alwaysInclude);
             const chunkPriority = ragHint?.priority ?? basePriority;
 
-            // If hint provides triggers, prepend them to auto-extracted keywords
-            const autoKeywords = extractTriggerKeywords(currentHeader, content);
-            const triggerKeywords = ragHint?.triggers.length
-                ? [...new Set([...ragHint.triggers, ...autoKeywords])]
-                : autoKeywords;
+            // Hint-authored triggers are authoritative: auto-extraction pulls in generic words
+            // (dates, months, common nouns) that outscore the names the author chose.
+            const authoredKeywords = !!ragHint?.triggers.length;
+            const triggerKeywords = authoredKeywords
+                ? [...new Set(ragHint!.triggers)]
+                : extractTriggerKeywords(currentHeader, content);
 
             chunks.push({
                 id,
@@ -339,6 +340,7 @@ export function chunkLoreFile(markdown: string, category?: 'lore' | 'rule'): Lor
                 priority: chunkPriority,
                 summary: generateSummary(currentHeader, content),
                 ragMode: ragHint?.mode,
+                ...(authoredKeywords ? { authoredKeywords: true } : {}),
                 activationModes,
                 modesUserEdited: false,
             });

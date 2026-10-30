@@ -9,7 +9,7 @@ import { gatherFactsAndTimeline } from './stages/factsTimelineStage';
 import { recallNpcsSemantically } from './stages/npcSemanticRecallStage';
 import { semanticCandidatesStage } from './stages/semanticCandidatesStage';
 import { rerankStage } from './stages/rerankStage';
-import { loreStage } from './stages/loreStage';
+import { loreStage, computeLoreBudget } from './stages/loreStage';
 import { rulesStage } from './stages/rulesStage';
 import { archiveRecallStage } from './stages/archiveRecallStage';
 import { deepScanStage } from './stages/deepScanStage';
@@ -80,7 +80,7 @@ export async function gatherContext(
 
     // World-lore RAG (sync) and rules RAG, then archive recall (flat recall →
     // pinned-chapter injection). Recall runs while the other tracks finish.
-    const relevantLore = loreStage({ loreChunks, finalInput, messages, semanticLoreIds });
+    const relevantLore = loreStage({ loreChunks, finalInput, messages, semanticLoreIds, tokenBudget: computeLoreBudget(settings) });
     const [relevantRules, archiveResult, recommender, deepContextSummary, semanticFactText, semanticallyRecalledNpcIds] = await Promise.all([
         rulesStage({ context: state.context, settings, finalInput, messages, semanticRuleIds }),
         archiveRecallStage({

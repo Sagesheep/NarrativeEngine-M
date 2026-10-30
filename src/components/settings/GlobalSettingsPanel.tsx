@@ -1,6 +1,7 @@
 import { useAppStore } from '../../store/useAppStore';
 import type { CondenseAggressiveness, AiTier } from '../../types';
 import { sealSceneBudget } from '../../services/archive';
+import { computeLoreBudget } from '../../services/turn/stages/loreStage';
 import { DEFAULT_STORY_TIMEOUT_SECONDS, DEFAULT_UTILITY_TIMEOUT_SECONDS, MIN_AI_TIMEOUT_SECONDS, MAX_AI_TIMEOUT_SECONDS, normalizeTimeoutSeconds } from '../../services/llm/timeouts';
 import {
     READING_DEFAULTS, READING_FONTS, READING_LEADINGS, READING_SIZE_MIN, READING_SIZE_MAX,
@@ -420,6 +421,29 @@ export function GlobalSettingsPanel() {
                             />
                             <p className="text-[9px] text-text-dim mt-1 italic">Tokens of scene text a chapter seal reads (summary + facts). Longer chapters are trimmed evenly per scene, keeping each scene's setup and outcome. 0 = auto (40% of context limit, max 60k). Higher = more thorough but slower.</p>
                         </div>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <div>
+                                <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">World Lore Budget (tokens)</label>
+                                <p className="text-[10px] text-text-dim">World-lore chunks sent per turn, always-on chunks included. 0 = auto (5% of context limit, min 1,200).</p>
+                            </div>
+                            <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-xs ml-3 shrink-0">
+                                {(!settings.loreBudgetTokens || settings.loreBudgetTokens <= 0)
+                                    ? `auto (${computeLoreBudget(settings).toLocaleString()})`
+                                    : settings.loreBudgetTokens.toLocaleString()}
+                            </span>
+                        </div>
+                        <input
+                            type="number"
+                            step={500}
+                            min={0}
+                            max={settings.contextLimit || 200000}
+                            value={settings.loreBudgetTokens ?? 0}
+                            onChange={(e) => updateSettings({ loreBudgetTokens: Math.max(0, parseInt(e.target.value) || 0) })}
+                            className="w-full bg-void border border-border px-3 py-2 text-[16px] md:text-sm font-mono focus:border-terminal focus:outline-none"
+                        />
                     </div>
 
                     <div>

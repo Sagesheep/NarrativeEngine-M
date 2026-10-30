@@ -77,7 +77,9 @@ export async function enrichLoreKeywords(
     utilityEndpoint: LLMProvider,
     saveLoreChunks: (campaignId: string, chunks: LoreChunk[]) => Promise<void>,
 ): Promise<void> {
-    const toEnrich = chunks.filter(c => !c.alwaysInclude && (c.enrichedVersion ?? 0) < ENRICHER_VERSION);
+    // Author-supplied triggers are never replaced: the enricher would swap curated names for
+    // its own guesses and can add a secondary AND-gate that blocks the chunk entirely.
+    const toEnrich = chunks.filter(c => !c.alwaysInclude && !c.authoredKeywords && (c.enrichedVersion ?? 0) < ENRICHER_VERSION);
 
     if (toEnrich.length === 0) {
         console.log('[LoreEnricher] All chunks already enriched, skipping.');
