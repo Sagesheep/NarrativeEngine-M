@@ -102,9 +102,11 @@ function scoreEntry(
     }
     const npcStrengths = entry.npcStrengths ?? {};
     for (const [npc, strength] of Object.entries(npcStrengths)) {
-        if (contextActivations[npc]) {
-            const idfWeight = idf[npc] ?? 1;
-            keywordRelevance += contextActivations[npc] * strength * 1.5 * idfWeight;
+        // The index stores display names ("Rin Holmes"); activations and IDF key on lowercase.
+        const key = npc.toLowerCase();
+        if (contextActivations[key]) {
+            const idfWeight = idf[key] ?? 1;
+            keywordRelevance += contextActivations[key] * strength * 1.5 * idfWeight;
         }
     }
 
@@ -191,18 +193,48 @@ export function extractContextActivations(
     }
 
     if (npcLedger) {
-        for (const npc of npcLedger) {
-            activations[npc.name.toLowerCase()] = 1.0;
-            if (npc.aliases) {
-                for (const alias of npc.aliases.split(',').map(a => a.trim().toLowerCase()).filter(Boolean)) {
-                    activations[alias] = 1.0;
+        // Only NPCs named in the current exchange count. Activating the whole ledger gave
+        // every scene with any known NPC a match, whoever this turn was actually about.
+        const activateNpcs = (text: string, weight: number) => {
+            for (const npc of namedNpcs(text, npcLedger)) {
+                const name = npc.name.toLowerCase();
+                activations[name] = Math.max(activations[name] ?? 0, weight);
+                for (const alias of (npc.aliases ?? '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean)) {
+                    activations[alias] = Math.max(activations[alias] ?? 0, weight);
                 }
             }
-        }
+        };
+        const last3Gm = recentMessages.filter(m => m.role === 'assistant').slice(-3);
+        activateNpcs(last3Gm.map(m => m.content || '').join('\n'), 0.7);
+        activateNpcs(userMessage, 1.0);
     }
 
     return activations;
 }
+
+// Name words that say nothing about who someone is ("The Broker", "Lady Soll").
+const NON_NAME_WORDS = new Set(['the', 'lady', 'lord', 'sir', 'master', 'mistress', 'captain', 'old', 'young', 'madam', 'mister', 'doctor', 'dr', 'mr', 'mrs', 'ms']);
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Ledger NPCs named as whole words in `text`, in any capitalisation: full name, alias,
+ *  or a single name word ("Rin" for "Rin Holmes"). */
+export function namedNpcs(text: string, ledger: readonly NPCEntry[]): NPCEntry[] {
+    if (!text) return [];
+    const named = (term: string) => new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(term)}(?![\\p{L}\\p{N}])`, 'iu').test(text);
+    return ledger.filter(npc => {
+        if (typeof npc.name !== 'string' || npc.name.trim() === '') return false;
+        const terms = [
+            npc.name.trim(),
+            ...(npc.aliases ?? '').split(',').map(a => a.trim()),
+            ...npc.name.split(/\s+/).filter(word => word.length >= 3 && !NON_NAME_WORDS.has(word.toLowerCase())),
+        ].filter(term => term.length >= 2);
+        return terms.some(named);
+    });
+}
+
+// Small on purpose: on a long campaign most scenes carry a divergence entry, so anything
+// bigger than a tie-breaker would rank the mark above what the scene is actually about.
+export const DIVERGENCE_RELEVANCE_BONUS = 0.5;
 
 /**
  * Expand context activations using semantic fact relationships.
@@ -318,9 +350,14 @@ export function retrieveArchiveMemory(
     const totalScenes = scopedIndex.length;
 
     const scored = scopedIndex.map(entry => {
-        const { keywordRelevance, recency, importance } = scoreEntry(
+        const scoredEntry = scoreEntry(
             entry, contextText, contextActivations, totalScenes, idf
         );
+        const { recency, importance } = scoredEntry;
+        let { keywordRelevance } = scoredEntry;
+        // A nudge, not a pass: only for scenes that already match this turn. The divergence
+        // register itself reaches the writer separately, whichever scenes are recalled.
+        if (keywordRelevance > 0 && divergenceSceneIds?.has(entry.sceneId)) keywordRelevance += DIVERGENCE_RELEVANCE_BONUS;
 
         let filterBoost = 1.0;
         if (filters && entry.events && entry.events.length > 0) {
@@ -375,27 +412,7 @@ export function retrieveArchiveMemory(
     const fused = fuseRecall(keywordRanked, embeddingRanked);
     const dynamicMax = computeDynamicMax(keywordRanked, embeddingRanked, maxScenes);
 
-    // Divergence scenes (where the story left canon) must surface for continuity even
-    // when they don't match the current turn's keywords or embeddings. Force them to the
-    // front: matched ones keep their fused order, unmatched ones follow by recency.
-    let ordered = fused;
-    if (divergenceSceneIds && divergenceSceneIds.size > 0) {
-        const fusedSet = new Set(fused);
-        const divInScope = scopedIndex
-            .map(e => e.sceneId)
-            .filter(id => divergenceSceneIds.has(id));
-        if (divInScope.length > 0) {
-            const divSet = new Set(divInScope);
-            const matchedDiv = fused.filter(id => divSet.has(id));
-            const unmatchedDiv = divInScope
-                .filter(id => !fusedSet.has(id))
-                .sort((a, b) => parseInt(b, 10) - parseInt(a, 10));
-            const rest = fused.filter(id => !divSet.has(id));
-            ordered = [...matchedDiv, ...unmatchedDiv, ...rest];
-        }
-    }
-
-    const result = ordered.slice(0, dynamicMax);
+    const result = fused.slice(0, dynamicMax);
 
     console.log(
         `[Archive Retrieval] Hybrid: ${keywordRanked.length} keyword hits, ${embeddingRanked.length} embedding hits, ` +

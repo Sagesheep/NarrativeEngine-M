@@ -193,7 +193,16 @@ describe('retrieveArchiveMemory with RRF fusion', () => {
         expect(result.every(id => parseInt(id) >= 1 && parseInt(id) <= 5)).toBe(true);
     });
 
-    it('force-recalls a divergence scene even with zero keyword/embedding match', () => {
+    it('matches NPC strengths stored under capitalised display names', () => {
+        const entries = [
+            makeEntry('001', ['harbor'], [], { harbor: 0.5 }, {}),
+            makeEntry('002', ['Rin Holmes'], ['Rin Holmes'], {}, { 'Rin Holmes': 0.7 }),
+        ];
+        const result = retrieveArchiveMemory(entries, 'Where is Rin Holmes?', [], undefined, 2);
+        expect(result).toContain('002');
+    });
+
+    it('does not recall a divergence scene that does not match the turn', () => {
         // Build enough matching scenes to fill dynamicMax without the divergence scene.
         const entries: ArchiveIndexEntry[] = [];
         for (let i = 0; i < 10; i++) {
@@ -209,11 +218,11 @@ describe('retrieveArchiveMemory with RRF fusion', () => {
         const withDiv = retrieveArchiveMemory(
             entries, 'dragon', [], undefined, 3, undefined, undefined, undefined, new Set(['099'])
         );
-        // The zero-match divergence scene must surface despite no relevance.
-        expect(withDiv).toContain('099');
+        // Divergence is a nudge for matching scenes, not a pass for every marked scene.
+        expect(withDiv).not.toContain('099');
     });
 
-    it('promotes a matched divergence scene toward the front', () => {
+    it('nudges a matched divergence scene ahead of equal matches', () => {
         const entries: ArchiveIndexEntry[] = [];
         for (let i = 0; i < 6; i++) {
             entries.push(makeEntry(String(i).padStart(3, '0'), ['dragon'], [], { dragon: 0.8 }, {}));

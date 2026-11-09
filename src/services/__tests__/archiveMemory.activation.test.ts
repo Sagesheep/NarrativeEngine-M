@@ -62,17 +62,30 @@ describe('extractContextActivations with smooth decay', () => {
         expect(activations['dragon']).toBe(1.0);
     });
 
-    it('NPC ledger forces names to 1.0', () => {
-        const messages = [makeMsg('assistant', 'something happened')];
-        const npcLedger = [{
-            id: 'npc1', name: 'Malachar', aliases: 'Mal', appearance: '',
-            faction: '', storyRelevance: '', disposition: '', status: '',
-            goals: '', voice: '', personality: '', exampleOutput: '', affinity: 0,
-        }];
+    const ledgerNpc = (name: string, aliases = '') => ({
+        id: name, name, aliases, appearance: '',
+        faction: '', storyRelevance: '', disposition: '', status: '',
+        goals: '', voice: '', personality: '', exampleOutput: '', affinity: 0,
+    });
 
-        const activations = extractContextActivations('hello', messages, npcLedger);
+    it('activates an NPC named in the player message at 1.0, with aliases', () => {
+        const messages = [makeMsg('assistant', 'something happened')];
+        const activations = extractContextActivations('I ask malachar about it', messages, [ledgerNpc('Malachar', 'Mal')]);
         expect(activations['malachar']).toBe(1.0);
         expect(activations['mal']).toBe(1.0);
+    });
+
+    it('does not activate ledger NPCs nobody named this exchange', () => {
+        const messages = [makeMsg('assistant', 'something happened')];
+        const activations = extractContextActivations('hello', messages, [ledgerNpc('Malachar', 'Mal')]);
+        expect(activations['malachar']).toBeUndefined();
+        expect(activations['mal']).toBeUndefined();
+    });
+
+    it('activates an NPC named in the last 3 GM replies at least 0.7, by a single name word', () => {
+        const messages = [makeMsg('assistant', 'Rin nods at you.')];
+        const activations = extractContextActivations('hello', messages, [ledgerNpc('Rin Holmes')]);
+        expect(activations['rin holmes']).toBeGreaterThanOrEqual(0.7);
     });
 
     it('decay with 0.92 base at turn 30 clamped to 0.15', () => {
