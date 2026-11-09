@@ -427,7 +427,15 @@ export const MessageBubble = memo(function MessageBubble({
                 textarea.setSelectionRange(length, length);
 
                 // Center the bubble in viewport (prevents keyboard occlusion)
-                bubbleRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                // Scroll only the message list: scrollIntoView also scrolls overflow:hidden
+                // ancestors, shoving the whole app layout upward.
+                const bubble = bubbleRef.current;
+                let list = bubble?.parentElement ?? null;
+                while (list && !/(auto|scroll)/.test(getComputedStyle(list).overflowY)) list = list.parentElement;
+                if (bubble && list) {
+                    const offset = bubble.getBoundingClientRect().top - list.getBoundingClientRect().top;
+                    list.scrollTo({ top: list.scrollTop + offset - (list.clientHeight - bubble.clientHeight) / 2, behavior: 'smooth' });
+                }
 
                 // Set initial auto-grow height
                 textarea.style.height = 'auto';

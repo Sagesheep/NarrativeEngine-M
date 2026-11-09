@@ -137,7 +137,7 @@ export function minifyLoreChunk(chunk: LoreChunk): string {
  * [Aff: …] band), and the free-text personality is omitted once the personality hexagon exists
  * so the model sees one personality signal, not two.
  */
-export function minifyNPC(npc: NPCEntry, offStage?: boolean): string {
+export function minifyNPC(npc: NPCEntry, offStage?: boolean, goalSentElsewhere = false): string {
     const aliases = npc.aliases ? `(${npc.aliases})` : '';
     const name = npc.name.toUpperCase();
     const status = npc.status || 'Alive';
@@ -152,10 +152,12 @@ export function minifyNPC(npc: NPCEntry, offStage?: boolean): string {
         ? ''
         : (personalityRaw.length > 60 ? personalityRaw.substring(0, 60) + '…' : (personalityRaw || '?'));
 
-    const goals = npc.goals || '?';
+    // Goals are not sent when the caller already sends wants.long as GOAL (full detail):
+    // the free text would repeat it. Brief NPCs get no GOAL line, so they keep goals.
+    const goals = goalSentElsewhere ? '' : (npc.goals || '');
 
     const parts = [appearance];
     if (personality) parts.push(personality);
-    parts.push(goals);
+    if (goals) parts.push(goals);
     return `[${name}${aliases}]${frozenTag} ${status} | ${parts.join(' | ')}`;
 }

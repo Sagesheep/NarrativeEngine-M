@@ -581,7 +581,8 @@ export function assembleWorldBlocks(opts: {
                 levelLog.push(`${npc.name}:${level}${offStage ? '' : '@present'}`);
 
                 // Core tier — always injected (kit dropped only for brief + absent).
-                const coreParts: string[] = [minifyNPC(npc, offStage)];
+                // Full detail sends wants.long as GOAL in the extended tier; don't repeat goals.
+                const coreParts: string[] = [minifyNPC(npc, offStage, full && Boolean(npc.wants?.long))];
                 const coreDirective = buildCoreDirective(npc, full || !offStage);
                 if (coreDirective) coreParts.push(coreDirective);
                 const coreLine = coreParts.join(' | ');

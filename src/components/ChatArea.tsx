@@ -126,7 +126,6 @@ export function ChatArea() {
 
     const [streamingStats, setStreamingStatsLocal] = useState<StreamingStats | null>(null);
     const streamStartRef = useRef<number>(0);
-    const bottomRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -328,10 +327,17 @@ export function ChatArea() {
         requestAnimationFrame(() => {
             if (editingMessageId) {
                 const editing = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(editingMessageId)}"]`);
-                editing?.querySelector('textarea')?.scrollIntoView({ block: 'center' });
+                const sc = scrollContainerRef.current;
+                const box = editing?.querySelector('textarea');
+                if (sc && box) {
+                    // Scroll the list itself: scrollIntoView also scrolls every ancestor,
+                    // including overflow:hidden app shells, shoving the whole UI upward.
+                    const offset = box.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+                    sc.scrollTo({ top: sc.scrollTop + offset - (sc.clientHeight - box.clientHeight) / 2 });
+                }
                 return;
             }
-            bottomRef.current?.scrollIntoView({ block: 'end' });
+            scrollListToBottom('auto');
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on keyboard open/close
     }, [keyboardVisible]);
@@ -377,8 +383,14 @@ export function ChatArea() {
             if (el.getBoundingClientRect().top - cTop < -threshold) target = el;
             else break;
         }
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        else container.scrollTo({ top: 0, behavior: 'smooth' });
+        // Not scrollIntoView: that also scrolls overflow:hidden ancestors.
+        const top = target ? container.scrollTop + (target.getBoundingClientRect().top - cTop) : 0;
+        container.scrollTo({ top, behavior: 'smooth' });
+    };
+
+    const scrollListToBottom = (behavior: ScrollBehavior) => {
+        const sc = scrollContainerRef.current;
+        sc?.scrollTo({ top: sc.scrollHeight, behavior });
     };
 
     const handleStop = () => {
@@ -520,7 +532,6 @@ export function ChatArea() {
                         </div>
                     </div>
                 ) : null}
-                <div ref={bottomRef} />
             </div>
 
             <PinnedMemoriesPanel open={pinnedPanelOpen} onClose={() => setPinnedPanelOpen(false)} />
@@ -537,7 +548,7 @@ export function ChatArea() {
                         </button>
                         {showScrollFab && (
                             <button
-                                onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                                onClick={() => scrollListToBottom('smooth')}
                                 title="Jump to latest message"
                                 className="w-11 h-11 rounded-full bg-terminal text-surface shadow-lg flex items-center justify-center"
                             >

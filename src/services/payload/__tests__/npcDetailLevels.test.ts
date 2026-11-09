@@ -75,6 +75,9 @@ describe('NPC detail levels in the payload', () => {
         expect(l).toContain('KIT: rusted cutlass');
         expect(l).toContain('Voice: gravelly drawl');
         expect(l).toContain('NOW: find the key');
+        // wants.long goes out as GOAL, so the free-text goals are not repeated.
+        expect(l).toContain('GOAL: rule the harbor');
+        expect(l).not.toContain('legacy-goals');
     });
 
     it('brief + present keeps core, voice, hard boundaries, kit; omits full-only fields', () => {
